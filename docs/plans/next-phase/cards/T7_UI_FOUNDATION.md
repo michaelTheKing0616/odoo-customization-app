@@ -108,6 +108,14 @@ pnpm --filter @odoo-custom/web test:e2e e2e/vision-verify-sweep.spec.ts   # writ
 - **Change:** `e2e/a11y-primary.spec.ts` path list (use the `/e2e/*` harness pages when a route needs a live connection).
 - **Acceptance:** [ ] every route in `../13` (or its harness twin) runs axe with zero serious or critical violations.
 
+### UI-F13 — One canvas reorder primitive
+- **Status:** OPEN
+- **Pressure:** C2 U1 F2 K2 V2 I0 +0 = 9 → Grok standard
+- **Owns the pattern.** Form, kanban, and printouts all reorder blocks with up/down buttons today. This card builds the one interaction. Screen cards consume it. They do not each invent a drag layer.
+- **Change:** `src/components/ui/canvas/ReorderableBlocks.tsx` (pointer drag, keyboard arrows, drop rejected outside the canvas). Then switch these callers only: `components/reports/ReportCanvas.tsx`, `components/designer/FormCanvas.tsx`, `components/designer/KanbanCardPreview.tsx`, `components/designer/DesignerStructuralCanvas.tsx`, `components/designer/DesignerAdvancedStructureCanvas.tsx`.
+- **Acceptance:** [ ] one component, five callers; [ ] keyboard path still passes `e2e/designer-keyboard.spec.ts` and `FormCanvas.test.tsx`; [ ] a drop outside the canvas inserts nothing.
+- **Do not:** restyle the designer page here (that is UI-S-12, after UI-SP-DESIGNER). Do not change the saved XML or QWeb.
+
 ## Page splits (no behavior change; characterization tests first)
 
 Template for every UI-SP card: **Pressure** C2 U1 F2 K1 V1 I0 = 7 → Grok standard. **Steps:** (1) write or confirm characterization tests (Vitest render + one Playwright happy path) before editing; (2) move sections into `components/<area>/` files under 400 lines each; (3) page file under 300 lines; (4) no prop, route, copy, or API change; (5) tests unchanged and green. **Do not:** restyle in the same card (R-09: one writer per file). **Acceptance:** [ ] line counts met; [ ] tests unchanged and green; [ ] typecheck count unchanged. **Rollback:** revert the card's commit.

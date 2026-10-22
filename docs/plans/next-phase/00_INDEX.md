@@ -86,6 +86,9 @@ Cards already scored at 14+ in `cards/` (see the Band column of `14`): policy ma
 | `12_SECURITY_PRIVACY.md` | Threats, injection, SSRF, secrets, NDPA |
 | `13_UI_SCREEN_SPECS.md` | One block per route; also the card file for screen cards UI-S-01–62 |
 | `14_WORK_CARDS.md` | Card index: format, status legend, routing, shared do-not and commands, table of all 330 cards with status, pressure, and file |
+| `cards/T1_LIVE_CONTEXT.md` | GND-PKT–GATE: every LLM surface that names Odoo structure sees the live schema first |
+| `cards/HARNESS.md` | H1–H8 continuous eval, LLM-as-judge, shadow and canary |
+| `cards/T7_PDF_STUDIO.md` | PDF-01–06, premium printout designer (extends the existing reports editor) |
 | `cards/*.md` | The executable cards, one file per track slice (BL, T1, T2, T3, T4, T5A, T5B, T5C, T6, T7 foundation, T7 screens pointer, T8 engine core, T8 suites/skills/evals, T8 bots/pilots, T9). `cards/_LEGACY_14_v1.md` is the superseded v1 card list, kept unchanged |
 | `BL04_LINT_SLOT.md` | BL-04 output note (lint slots), written by the builder that took BL-04 |
 | `15_DOD_AND_E2E.md` | Master DoD, compiler DoD, E2E, new DoD |

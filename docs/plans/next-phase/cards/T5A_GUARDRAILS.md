@@ -88,11 +88,11 @@ uv run --directory packages/odoo-client pytest -q tests/test_rpc_policy.py
 - **Negative:** a non-admin calling verify gets 403 (or 404 under the client-approver policy).
 
 ### 5A-06 — Snapshot before DESTRUCTIVE or BILLABLE on production
-- **Status:** PARTIAL. `snapshot_gate.py` refuses production `destructive` and `code` routes without `X-Snapshot-Id` naming a `metadata_snapshots` row for the connection. It does not check that the snapshot was taken immediately before, and BILLABLE is not named.
+- **Status:** DONE. pytest `tests/test_snapshot_gate.py` — 28 passed. Freshness window is 10 minutes. A 2-hour-old snapshot, a snapshot from another connection, and a missing snapshot on BILLABLE are refused. Odoo 20 accepts a metadata snapshot inside that window.
 - **depends_on:** 5A-01
 - **Pressure:** C2 U1 F3 K2 V1 I2 +0 = 11 → Grok high effort
 - **Steps:** (1) add a freshness window: the snapshot's `created_at` is within 10 minutes and newer than the last write audited for that connection; (2) cover BILLABLE classes; (3) on Odoo 20 accept a metadata snapshot (O20-08).
-- **Acceptance:** [ ] 5A-6 and DoD 28: a DESTRUCTIVE or BILLABLE production apply refuses without a successful snapshot recorded immediately before.
+- **Acceptance:** [x] 5A-6 and DoD 28: a DESTRUCTIVE or BILLABLE production apply refuses without a successful snapshot recorded immediately before.
 - **Negative:** a 2-hour-old snapshot id is refused; a snapshot from another connection is refused.
 
 ### 5A-07 — Zero MCP writes (code inspection)
@@ -112,14 +112,14 @@ uv run --directory packages/odoo-client pytest -q tests/test_rpc_policy.py
 - **Status:** DONE. Every name exists in `tests/test_rpc_classify.py` or `tests/test_audit_chain.py`: `test_read_is_read`, `test_create_is_reversible`, `test_unlink_destructive_and_forbidden`, `test_security_models_destructive`, `test_billable_depends_on_edition`, `test_protected_params_forbidden`, `test_mass_write`, `test_policy_thresholds`, `test_audit_chain_and_tamper`, `test_redaction`.
 
 ### 5A-11 — Rollback tiers wired
-- **Status:** OPEN
+- **Status:** DONE
 - **depends_on:** 5A-05, 5A-06
 - **Pressure:** C2 U2 F3 K2 V2 I2 +0 = 13 → Grok high effort
 - **Rule (copied):** (1) database snapshot restore where `/web/database/*` exists (not Online, not Odoo.sh, not relied on for 20); (2) compensating plan from the audit: created → unlink, updated → write old values; module installs and posted entries are not undone this way; (3) manual, with the changelog.
-- **Acceptance:** [ ] a compensating plan is generated from `change` rows and goes through the change-set pipeline (not a raw RPC loop); [ ] module install and posted entries are listed as "not reversible by this tier".
-- **Negative:** a compensating plan that would unlink `res.users` is refused by never-allowed.
+- **Acceptance:** [x] a compensating plan is generated from `change` rows and goes through the change-set pipeline (not a raw RPC loop) (`test_compensating_plan_from_change_rows_goes_through_pipeline`, pytest 6 passed); [x] module install and posted entries are listed as "not reversible by this tier" (`test_module_install_and_posted_entries_not_reversible_by_this_tier`).
+- **Negative:** a compensating plan that would unlink `res.users` is refused by never-allowed (`test_compensating_plan_unlink_res_users_refused_by_never_allowed`).
 
 ### 5A-12 — Production budgets (blueprint §5.6)
-- **Status:** PARTIAL (agent runtime caps exist: `BudgetExceeded`, `LoopDetected`).
+- **Status:** DONE. pytest `tests/test_production_budgets.py` — 6 passed. Everyday R3 stays one approval (T6-06). The old two-person wording is not restored.
 - **Pressure:** 7 → Grok standard
-- **Acceptance:** [ ] max 40 LLM steps, max 120 tool calls, blast radius 200 records per apply (L4: 50), change windows, two-person R3, kill switch, each with a test or a pointer to the card that owns it.
+- **Acceptance:** [x] max 40 LLM steps, max 120 tool calls, blast radius 200 records per apply (L4: 50), change windows, one-approval R3, kill switch, each with a test or a pointer to the card that owns it.

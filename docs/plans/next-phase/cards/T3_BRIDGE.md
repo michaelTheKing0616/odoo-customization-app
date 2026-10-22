@@ -2,9 +2,9 @@
 
 Self-contained. Rules: `../T3_BRIDGE.md`. The 2026-09-29 addendum wins on contract shape, Connections, and connector tiers. D3 (name Ingenium Bridge), D4 (Shopify first pilot), D5 (Connections first-class) are closed.
 
-**Shared do-not:** do not weaken a lock in `../01`; no secrets in logs; no customer database; `:8001` does not reload; never loosen a test; no live LLM in PR tests; stay inside "Change". **T3-specific:** contracts reference `connection_id`, never inline `odoo_target` or `third_party` credential blocks; secrets live on the Connection, encrypted at rest; two-way sync refused unless `conflict_resolution` is set; money entities require `money_policy`; every event carries `idempotency_key`; webhook signature verification is required when the connector supports it; Postgres queue only, no managed queue SaaS; jobs resume from a fresh plan, never a stale one; 3c (LLM-generated) only after 3b cannot express the connector; do not weaken the connector interface to make 3b pass (R-05); Paystack is not the pilot; Autopilot payment connectors are not this contract; Bridge DDL never dry-runs in place on production; kill switch `ingenium.bridge.enabled`; no outbound telemetry (INV-19).
+**Shared do-not:** do not weaken a lock in `../01`; no secrets in logs; no customer database; `:8001` does not reload; never loosen a test; no live LLM in PR tests; stay inside "Change". **T3-specific:** contracts reference `connection_id`, never inline `odoo_target` or `third_party` credential blocks; secrets live on the Connection, encrypted at rest; two-way sync refused unless `conflict_resolution` is set; money entities require `money_policy`; every event carries `idempotency_key`; webhook signature verification is required when the connector supports it; Postgres queue only, no managed queue SaaS; jobs resume from a fresh plan, never a stale one; 3c (LLM-generated) only after 3b cannot express the connector; do not add a Shopify branch above the connector to make 3b pass (R-05); a poll-only or GraphQL platform is in scope and is not forced through webhook HMAC; Paystack is not the pilot; Autopilot payment connectors are not this contract; Bridge DDL never dry-runs in place on production; kill switch `ingenium.bridge.enabled`; no outbound telemetry (INV-19).
 
-**Interface (copied):** `fetch`, `create`, `update`, `declared_schema`, `verify_webhook_signature`, `parse_webhook_event`.
+**Interface:** the engine above the connector does not grow a per-vendor branch. The six methods on `ShopifyConnector` are the current REST-plus-webhook shape, not the ceiling. A connector declares the capabilities it supports (`declared_schema`, `fetch`, `search`, `create`, `update`, `cancel`, `parse_webhook_event`, `verify_webhook_signature`, `poll`). Auth stays on the Connection. The connector does not write Odoo. See `../T3_BRIDGE.md`.
 
 **Verification tiers (copied):** I static contract validation, incomplete fails. II sandbox dry-run: happy path, duplicate webhook, partial failure, auth failure, rate limit, malformed payload. III reconciliation dry-run with a seeded discrepancy that the run must detect.
 
@@ -52,7 +52,7 @@ cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider \
 - **Pressure:** 4 → cheap
 
 ### BR-05 — Connector interface (six methods)
-- **Status:** DONE (`test_connector_protocol_has_exactly_six_method_names`).
+- **Status:** DONE for the current Shopify class (`test_connector_protocol_has_exactly_six_method_names`). That test locks today's REST-plus-webhook protocol. Widening the declared capabilities (search, cancel, poll) is a later card and must update this test on purpose, not by loosening it.
 - **Pressure:** 4 → cheap
 
 ### BR-06 — Shopify Tier II (six sandbox scenarios)
@@ -68,11 +68,11 @@ cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider \
 - **Pressure:** 11 → Grok high effort
 - **Acceptance:** [ ] reconciliation dry-run against real sandboxes detects a seeded discrepancy (for example one order total off by 1.00).
 
-### BR-08 — Tier 3b generic REST + webhook (config only)
+### BR-08 — Tier 3b generic transport (config only)
 - **Status:** OPEN
 - **depends_on:** BR-07
 - **Pressure:** C3 U2 F2 K2 V2 I2 +0 = 13 → Grok high effort
-- **Acceptance:** [ ] Phase 2: at least one connector expressed as 3b config only (no Python), passing Tiers I–III.
+- **Acceptance:** [ ] Phase 2: at least one connector expressed as 3b config only (no Python), passing Tiers I–III. Config must be able to name transport (REST, GraphQL, webhook, poll, or file), not only REST plus webhook.
 
 ### BR-09 — Genericity proof (DoD 5)
 - **Status:** OPEN

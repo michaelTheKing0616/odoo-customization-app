@@ -45,6 +45,22 @@ A screen restyle card starts only after:
 
 Marketing (`/`, `/pricing`) uses the marketing skill set. Every operate screen uses dense-dashboard rules from `T7_UI_MOTION_COPY.md`.
 
+PDF Studio (`cards/T7_PDF_STUDIO.md`, PDF-01–06) extends the existing reports editor. It may start after UI-F09. PDF-02 waits on UI-F13. PDF-03 waits on `report.inherit`. It does not wait on the rest of T8.
+
+UI-F13 is the shared reorder primitive for the form designer, kanban, structure canvases, and printouts. UI-S-12 is the designer look-and-feel pass. It runs after UI-SP-DESIGNER and UI-F13. No separate designer-redesign track.
+
+## Developer modes (queued 2026-10-04)
+
+`cards/DEV_MODES_PRODUCTION.md`: DEV-CS, then DEV-SR, then DEV-PO. A customer can use Code Studio, Script Runner, and Power Ops without the founder. They wait until T6-06 is done. They do not start during that approval retarget. Promote stays a person. The hard stop stays out of the plan.
+
+## Live schema context (cross-cutting)
+
+`cards/T1_LIVE_CONTEXT.md` (GND-PKT through GND-GATE). GND-PKT starts after T1-A1. Every later LLM surface that names a model, field, method, or view anchor consumes that packet. GenerateIR admit rules stay.
+
+## Harness lane (cross-cutting)
+
+`cards/HARNESS.md` (H1–H8). H1 can start once one negative gate exists. It does not replace T8 eval scenarios or inline critique. PR runs of the active set stay cassette and property checks. Live judge and shadow runs are nightly and bounded. H6 does not wait on ADR-02.
+
 ## Dependency rules that override convenience
 
 - Bridge Phase 0 waits for PR-J1.

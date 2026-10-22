@@ -147,9 +147,13 @@ database.secret, database.uuid, database.create_date, web.base.url,
 database.enterprise_code, database.expiration_date
 ```
 
-### Agent-spec R4 / prohibited in v1 (overlap; the stricter cell wins)
+### Agent-spec R4 (2026-10-04, Tope)
 
-`module.uninstall`; `data.delete` default-deny; group-less ACL; granting admin/system/service accounts; company lock dates, fiscal year, currency, chart of accounts; accounting/journal/legal sequence changes; `rpc.write`; raw SQL.
+Hard stop, both environments: raw SQL, `rpc.write`, payment secrets, posted accounting entries, company lock dates, and a group-less access rule. Two signatures do not unlock these.
+
+Heavy gate: `module.uninstall`, `data.delete`, granting admin/system/service, fiscal year, currency, chart of accounts, and accounting/journal/legal sequence changes. Staging needs one approval. Production needs two distinct people, the domain owner when the target is elevated, a passed simulation, a backup, and an allowed window. The same person through two identities counts once.
+
+R3 is one approval on staging and on production. The approver may be the requester. Granting a real group stays R3. L4 still never applies R3 or R4 (GATE-L4-02).
 
 ### Never automate (blueprint §1.3, verbatim areas)
 

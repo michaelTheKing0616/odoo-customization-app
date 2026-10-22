@@ -43,10 +43,13 @@ The model never writes. Only the executor writes, and only after every step belo
    | R0 | allow | allow |
    | R1 | allow if autonomy ≥ L3, else 1 approval | 1 approval. Auto only at L4 inside the allow-list, or at L3 with a prior staging success and Mode T when the tenant opted in |
    | R2 | 1 approval | 1 approval + simulation. L4 only if the op is on the allow-list and passes GATE-L4-01 |
-   | R3 | 1 approval | 2 approvers, plus the domain owner when the target is elevated, plus simulation, plus backup, plus an allowed window |
-   | R4 | deny | deny |
+   | R3 | 1 approval. The approver may be the requester. | 1 approval. The approver may be the requester. |
+   | R4 heavy | 1 approval | 2 distinct people, plus the domain owner when the target is elevated, plus simulation, plus backup, plus an allowed window |
+   | R4 hard stop | deny | deny |
 
-   Approvals expire after 24 hours on production for R≥2 and after 7 days on staging. The approver is not the requester for R3. A freeze window blocks every apply. A model tier below A caps submitted risk at R2. Tier C cannot submit a change-set.
+   R4 heavy is module uninstall, granting admin/system/service, accounting or legal sequence changes, fiscal year, currency, chart of accounts, and data delete. R4 hard stop is raw SQL, `rpc.write`, payment secrets, posted accounting entries, lock dates, and a group-less access rule. Granting a real group stays R3. L4 never applies R3 or R4 by itself.
+
+   Approvals expire after 24 hours on production for R≥2 and after 7 days on staging. On the heavy gate the requester cannot be both approvers, and two identities of the same person count once. A freeze window blocks every apply. A model tier below A caps submitted risk at R2. Tier C cannot submit a change-set.
 
 7. **It shows exactly what will change.** Before and after, who will see it, how many rows change, and what will not change. Database-structure changes and anything R3 run first on a neutralized staging copy. Small non-structural changes may dry-run inside a Bridge transaction that rolls back. DDL never dry-runs in place on production. A failed simulation returns to planning.
 

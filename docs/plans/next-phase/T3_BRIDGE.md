@@ -22,14 +22,29 @@ Connection record fields: `kind`, `verified_at`, `status`, plus the odoo or thir
 
 ## Connector interface
 
-`fetch`, `create`, `update`, `declared_schema`, `verify_webhook_signature`, `parse_webhook_event`.
+The engine above a connector does not grow a per-vendor branch. Queue, idempotency, contract rules, verification tiers, and the catalog gate stay as they are. A new platform is a new connector plus a field mapping onto Odoo models. The connector never holds Odoo write credentials and never writes Odoo itself. A sync job takes the connector's records and writes Odoo through the public ORM.
+
+The Shopify class currently implements six methods: `fetch`, `create`, `update`, `declared_schema`, `verify_webhook_signature`, `parse_webhook_event`. That is the REST-plus-webhook shape, not the ceiling.
+
+A connector declares which of these it supports. Unsupported ones are absent, not faked:
+
+| Capability | Used for |
+|---|---|
+| `declared_schema` | Entities and fields the platform actually has |
+| `fetch` / `search` | Pull, including a filter, not only a cursor |
+| `create` / `update` / `cancel` | Push and void |
+| `parse_webhook_event` | Inbound HTTP when the platform sends webhooks |
+| `verify_webhook_signature` | Required only when webhooks are declared |
+| `poll` | Platforms with no webhooks |
+
+Auth (API key, OAuth2, HMAC, basic) lives on the Connection, not as a new engine. Transport (REST, GraphQL, webhook, poll, file drop) is connector config. Webhook signatures stay mandatory for webhook transports. A poll-only platform is not rejected for lacking a signature. Tier 3b is "config only, no new Python," and it is not limited to REST plus webhook. Tier 3c remains the path when config cannot express the platform.
 
 ## Tiers
 
 | Tier | Meaning | Rule |
 |---|---|---|
 | 3a | Known catalog connector | Hand-built. Shopify is the first |
-| 3b | Generic REST + webhook, config only | Try this before 3c |
+| 3b | Generic transport, config only (REST, GraphQL, webhook, poll, file) | Try this before 3c |
 | 3c | LLM-generated connector | Allowed only after 3b cannot express it |
 
 Genericity proof: a Tier 3b or 3c expression of Shopify matches the hand-built connector's contract behavior, with zero changes above the connector interface.

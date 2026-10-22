@@ -46,14 +46,14 @@ cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider \
 - **Negative:** a test asserts there is exactly one class that calls `executor.apply` (grep test).
 
 ### 5C-02 — L2 pauses every write
-- **Status:** SEEDED (`test_l2_field_create_submits_but_does_not_apply`, `test_record_text_cannot_elevate_or_bypass_on_l2`).
+- **Status:** DONE. pytest `tests/test_worker_bot.py` and `tests/test_worker_bot_l2_catalog.py` — 72 passed. All 63 catalog ops at L2 have `applied` false.
 - **Pressure:** 6 → Grok standard
-- **Acceptance:** [ ] 100% of writes pause: a property test over every catalog op type at L2 asserts zero applies.
+- **Acceptance:** [x] 100% of writes pause: a property test over every catalog op type at L2 asserts zero applies.
 
 ### 5C-03 — L3 on staging
-- **Status:** SEEDED (`test_l3_staging_mail_template_create_applies`, `test_l3_staging_access_create_pauses`, `test_l3_production_mail_template_pauses`).
+- **Status:** DONE. pytest the worker-bot, L2 catalog, and L3 catalog tests — 201 passed. Staging L3: 22 reversible ops may apply, 39 pause, 2 deny. Production never applies.
 - **Pressure:** 8 → Grok standard
-- **Acceptance:** [ ] REVERSIBLE (R1) unsupervised on staging only; DESTRUCTIVE and BILLABLE pause; property test over the catalog.
+- **Acceptance:** [x] REVERSIBLE (R1) unsupervised on staging only; DESTRUCTIVE and BILLABLE pause; property test over the catalog.
 
 ### 5C-04 — Multi-client lock
 - **Status:** OPEN
@@ -63,19 +63,19 @@ cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider \
 - **Negative:** release on crash: a killed holder's lock is reclaimed by the recovery job within 2 minutes (heartbeat 5 s).
 
 ### 5C-05 — Out-of-band drift aborts
-- **Status:** OPEN (fingerprint mismatch abort exists in the executor; not exercised through the bot).
+- **Status:** DONE. pytest worker-bot, L2, L3, and drift — 202 passed. A schema change between plan and apply returns STALE and does not apply.
 - **Pressure:** 9 → Grok standard
-- **Acceptance:** [ ] a change made directly in the fake database between plan and apply aborts the bot's apply with STALE.
+- **Acceptance:** [x] a change made directly in the fake database between plan and apply aborts the bot's apply with STALE.
 
 ### 5C-06 — Adversarial embedded instruction
-- **Status:** SEEDED (`test_record_text_cannot_elevate_or_bypass_on_l2`, `test_rt01_record_text_cannot_grant_admin`, `test_injected_instruction_does_not_add_an_op`).
+- **Status:** DONE. pytest the new file plus the three existing injection tests — 5 passed. L2 and L3 journals do not contain a destructive op from a product note.
 - **Pressure:** 8 → Grok standard
-- **Acceptance:** [ ] an instruction in a product description causes no destructive action at L2 and L3.
+- **Acceptance:** [x] an instruction in a product description causes no destructive action at L2 and L3.
 
 ### 5C-07 — Never-allowed at L4 (written before L4 is enabled)
-- **Status:** OPEN. Write now; it does not wait for the threshold confirmation.
+- **Status:** DONE. pytest `tests/test_l4_policy.py`, `tests/test_l4_never_allowed.py`, and `test_invalid_level_l4_raises` — 9 passed. L4 is not a runtime level. Same evidence closes L4-11.
 - **Pressure:** C2 U1 F3 K3 V1 I2 +0 = 12 → Grok high effort; reviewer (never-allowed is a 14+ family)
-- **Acceptance:** [ ] a bot at L4 with an allow-list containing every op type still cannot unlink `res.users`, touch `res.users.apikeys`, or write a protected parameter.
+- **Acceptance:** [x] a bot at L4 with an allow-list containing every op type still cannot unlink `res.users`, touch `res.users.apikeys`, or write a protected parameter.
 
 ### 5C-08 — Eval harness hook
 - **Status:** OPEN
@@ -84,9 +84,9 @@ cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider \
 - **Acceptance:** [ ] golden, adversarial, ambiguity, version drift, cost, and safety evals run against the bot with scripted doubles (no live LLM in PR).
 
 ### 5C-09 — Safety: 100% approval on billable and destructive repeats
-- **Status:** OPEN
+- **Status:** DONE. pytest `tests/test_worker_bot_l3_repeat_pause_5c09.py` — the 50-repeat test passed. R4 denials are not counted as pauses.
 - **Pressure:** 10 → Grok high effort
-- **Acceptance:** [ ] 50 repeated billable or destructive requests at L3: 50 pause.
+- **Acceptance:** [x] 50 repeated billable or destructive requests at L3: 50 pause.
 
 ### 5C-10 — Flow checks
 - **Status:** OPEN
@@ -102,10 +102,10 @@ Shared L4 read-first: `worker_bot/l4_policy.py`, `worker_bot/runtime.py`, `chang
 
 | Card | Gate | Status | Change | Acceptance | Negative |
 |---|---|---|---|---|---|
-| L4-01 | GATE-L4-01 | SEEDED (risk check only) | `l4_policy.py`: tenant allow-list table `l4_allow_list(tenant, op_type)`; check base risk R1, or R2 with `ddl=False`, not protected, not outbound | op outside the allow-list refused; R2 DDL refused | R2 `automation.create` with email action refused (outbound) |
-| L4-02 | GATE-L4-02 | SEEDED | same | R3, R4, `protected:elevate`, `module.*`, promote refused | each of the five, one test |
-| L4-03 | GATE-L4-03 | OPEN | executor: L4 requires Mode T and a staging apply record with the same plan hash and `verified=True` | production L4 apply finds the staging record | Mode C at L4 refused; a hash applied on staging but verify failed refused |
-| L4-04 | GATE-L4-04 | OPEN | `standing_rule` table; approve endpoint needs two distinct admins, one with role owner | rule active only after both | one admin twice; two non-owners |
+| L4-01 | GATE-L4-01 | DONE | `l4_policy.py`: tenant allow-list; check base risk R1, or R2 with `ddl=False`, not protected, not outbound | op outside the allow-list refused; R2 DDL refused; real `mail_post` shapes refused | R2 `automation.create` with email action refused (outbound) |
+| L4-02 | GATE-L4-02 | DONE | same | R3, R4, `protected:elevate`, `module.*`, promote refused | each of the five, one test |
+| L4-03 | GATE-L4-03 | DONE | policy requires Mode T and a staging apply of the same plan hash with `verified=True` | production L4 decision finds that record | Mode C refused; failed verification refused; flags alone refused |
+| L4-04 | GATE-L4-04 | DONE | in-memory standing rule; two distinct user ids, one owner | rule active only after both | one admin twice; missing user id; two non-owners |
 | L4-05 | GATE-L4-05 | OPEN | rule `expires_at` ≤ created + 30 d, checked at create and at apply | expired rule does nothing | create with 31 days refused |
 | L4-06 | GATE-L4-06 | OPEN | counter per tenant per UTC day | 21st auto-apply pauses (L2) | tenant tries to raise cap to 30: refused |
 | L4-07 | GATE-L4-07 | SEEDED (blast check) | impact count from validation stage 6 | 50 records ok | 51 records refused |
@@ -113,7 +113,7 @@ Shared L4 read-first: `worker_bot/l4_policy.py`, `worker_bot/runtime.py`, `chang
 | L4-09 | GATE-L4-09 | OPEN | on verify fail or policy violation: set level L2, run rollback change-set, write `note` audit | demotion within the same apply | bot cannot re-promote itself |
 | L4-10 | GATE-L4-10 | OPEN | executor checks global, tenant, and `ingenium.bridge.enabled` switches between ops | drill: flip switch mid-apply, apply stops and compensates | switch flipped before start: zero writes |
 | L4-11 | GATE-L4-11 | OPEN (write now) | test only | see 5C-07 | — |
-| L4-12 | GATE-L4-12 | OPEN (write now) | grant check: the allow-list is writable only by human admins | bot tool call that edits its allow-list refused and audited | template that adds an op to the allow-list is not auto-applied (EV-BOT-12) |
+| L4-12 | GATE-L4-12 | DONE | grant check: the allow-list is writable only by human admins | bot tool call that edits its allow-list refused and audited | template that adds an op to the allow-list is not auto-applied (EV-BOT-12) |
 
 Per-card fields not in the table, the same for all twelve:
 - **Commands:** API pytest on `tests/test_l4_policy.py` plus the new test module `tests/test_l4_gates.py`.

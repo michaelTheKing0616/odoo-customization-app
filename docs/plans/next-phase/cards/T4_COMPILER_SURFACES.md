@@ -96,11 +96,11 @@ pnpm --filter @odoo-custom/web test:e2e e2e/<spec>.ts
 - **Stop:** if D8 is still open, do not pick LiteLLM; document only.
 
 ### T4-SKT — Skills, Sources, Triggers (6.8, compiler DoD 15–18, master DoD 15) — stop-ship
-- **Status:** SEEDED (`test_trigger_existence_is_not_approval`).
+- **Status:** DONE
 - **depends_on:** 5A-04, T6-04
 - **Pressure:** C3 U2 F3 K3 V2 I3 +0 = 16 → frontier + reviewer
-- **Acceptance:** [ ] no code path treats a trigger's existence as pre-approval; each firing re-enters the approval gate and creates a new plan card; [ ] protected models blocked; [ ] a Community trigger works without Enterprise; [ ] audit names the trigger, the person, and the plan hash.
-- **Negative:** fire a trigger twice; two separate approvals are required; a code-inspection test asserts no call from the trigger runner to `executor.apply` without an approval id.
+- **Acceptance:** [x] no code path treats a trigger's existence as pre-approval; each firing re-enters the approval gate and creates a new plan card (`test_existing_trigger_is_not_preapproved`, `test_each_firing_opens_its_own_plan_card`, pytest 11 passed); [x] protected models blocked (`test_protected_models_are_blocked`); [x] a Community trigger works without Enterprise (`test_community_trigger_does_not_need_enterprise`); [x] audit names the trigger, the person, and the plan hash (`test_audit_note_names_trigger_person_and_plan_hash`).
+- **Negative:** fire a trigger twice; two separate approvals are required (`test_two_firings_need_two_approvals`); a code-inspection test asserts no call from the trigger runner to `executor.apply` without an approval id (`test_trigger_runner_does_not_apply_without_approval_id`).
 
 ### T4-E2E — Phase 6 continuous scenario (compiler DoD 19–20)
 - **Status:** OPEN
@@ -109,6 +109,6 @@ pnpm --filter @odoo-custom/web test:e2e e2e/<spec>.ts
 - **Acceptance:** [ ] the Phase 6 scenario passes in one run; [ ] no Bucket A guardrail weakened (diff review against `../01`).
 
 ### T4-GROUND — Dynamic tools grounded, RAG reuses the index, Odoo widgets (compiler DoD 11, 13, 14)
-- **Status:** OPEN
+- **Status:** DONE
 - **Pressure:** 8 → Grok standard
-- **Acceptance:** [ ] dynamic tool targets resolve through `schema_client`; [ ] RAG reads the existing index, no second corpus; [ ] where a spec names an Odoo widget, the generated view uses it.
+- **Acceptance:** [x] dynamic tool targets resolve through `schema_client` (`test_unknown_model_is_rejected_and_never_becomes_a_tool`, pytest 18 passed); [x] RAG reads the existing index, no second corpus (`test_no_second_rag_root`); [x] where a spec names an Odoo widget, the generated view uses it (`test_named_widget_is_emitted_on_generated_view`, `test_generic_standin_does_not_replace_named_widget`, 3 passed).

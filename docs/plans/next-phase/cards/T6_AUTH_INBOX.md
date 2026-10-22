@@ -2,7 +2,7 @@
 
 Self-contained. Gates 6-1 to 6-4 and the role model: `../T6_AUTH_COMMAND_CENTER.md`. Approval rules: `../02_APPROVAL_FLOW.md`. D6 (self-hosted Authlib + TOTP) and D9 (Client Approver is a connection grant; out of scope returns 404) are closed.
 
-**Shared do-not:** do not weaken a lock in `../01`; no secrets in logs (OAuth tokens, TOTP seeds, recovery codes, session ids are secrets); no customer database; `:8001` does not reload; never loosen a test; no live LLM in PR tests; stay inside "Change". **T6-specific:** do not replace the login stack; no Clerk, WorkOS, or Auth0; no second auth log (DoD 31); out-of-scope connections return 404, never a 403 with a body that confirms existence; the requester can never approve their own R3; Slack, Teams, or chatter carry a link only, never an approve action for R ≥ 2; a reaction emoji is never an approval; SAML is later and does not block 6-1.
+**Shared do-not:** do not weaken a lock in `../01`; no secrets in logs (OAuth tokens, TOTP seeds, recovery codes, session ids are secrets); no customer database; `:8001` does not reload; never loosen a test; no live LLM in PR tests; stay inside "Change". **T6-specific:** do not replace the login stack; no Clerk, WorkOS, or Auth0; no second auth log (DoD 31); out-of-scope connections return 404, never a 403 with a body that confirms existence; the requester may approve their own R3; on the heavy R4 gate the requester cannot be both approvers; Slack, Teams, or chatter carry a link only, never an approve action for R ≥ 2; a reaction emoji is never an approval; SAML is later and does not block 6-1.
 
 **Roles (copied):** Owner / Admin = workspace. Consultant = one or more named clients. Client Approver = one connection grant; sees that client's cards; approves and refuses; nothing else. Client Viewer = same scope, no approve.
 
@@ -64,13 +64,12 @@ pnpm --filter @odoo-custom/web test:e2e e2e/a11y-primary.spec.ts
 - **Acceptance:** [ ] the web page renders the nine sections from the API payload with no client-side text generation; [ ] snapshot test of the JSON (GATE-P3-10).
 - **Negative:** changing an assumption produces a new hash and voids the old card.
 
-### T6-06 — R3 two-person rule (14+ card, reviewer)
-- **Status:** SEEDED (`test_r3_production_needs_two_approvers`, `test_requester_cannot_approve_r3`, `test_self_approval_false_for_r3`).
+### T6-06 — R3 one approval; heavy R4 keeps two people (14+ card, reviewer)
+- **Status:** RETARGETED 2026-10-04. Tope: a consultant's everyday R3 work is one approval, and that approver may be the requester. The old two-person gate moves to heavy R4. Hard stop stays on raw SQL, `rpc.write`, payment secrets, posted entries, lock dates, and a group-less access rule.
 - **depends_on:** T6-04
 - **Pressure:** C2 U2 F3 K3 V2 I2 +0 = 14 → frontier + reviewer
-- **Open delta:** domain-owner approver when the target is protected; backup present; allowed time window; the two approvers are distinct users (not the same user via two sessions or two identities).
-- **Acceptance:** [ ] R3 production needs two distinct approvers plus the domain owner when protected, plus a passed simulation, a backup, and an allowed window; [ ] RT-18 refused.
-- **Negative:** one user with Google and Microsoft identities approving twice counts once.
+- **Acceptance:** [ ] production R3 is approved by one person, who may be the requester; [ ] heavy R4 on production needs two distinct people, the domain owner when protected, a passed simulation, a backup, and an allowed window; [ ] hard-stop R4 is refused; [ ] the inbox decide route can carry a heavy-R4 approval.
+- **Negative:** one user with Google and Microsoft identities approving twice counts once on the heavy gate. The requester cannot be both of the two heavy-gate approvers.
 
 ### T6-07 — Client scope on the inbox
 - **Status:** SEEDED (`test_other_connection_is_not_found`, `test_connection_inboxes_do_not_leak_cards`).
@@ -78,17 +77,17 @@ pnpm --filter @odoo-custom/web test:e2e e2e/a11y-primary.spec.ts
 - **Acceptance:** [ ] a Client Approver lists only their connection's cards; any other plan hash returns 404 "not found"; [ ] gate 6-2 extended to the inbox.
 
 ### T6-08 — Command center home
-- **Status:** SEEDED (static tiles at `/command`, no counts).
+- **Status:** DONE. vitest command page 3 passed and approvals page 1 passed. pytest tile tests 2 passed.
 - **depends_on:** T6-03, UI-F02, UI-F03
 - **Pressure:** 8 → Grok standard
-- **Acceptance:** [ ] tiles for clients, pending approvals, failed jobs, drift, each with its own skeleton so a slow source does not blank the page; [ ] route block `/command` in `../13` passes.
+- **Acceptance:** [x] tiles for clients, pending approvals, failed jobs, drift, each with its own skeleton so a slow source does not blank the page; [x] a Client Approver opening `/command` is sent to their inbox.
 - **Negative:** a Client Approver opening `/command` lands on their inbox, not a consultant page with hidden buttons.
 
 ### T6-09 — Per-client page
-- **Status:** OPEN
+- **Status:** DONE. vitest `src/app/connections/[id]/client/page.test.tsx` — 2 passed.
 - **depends_on:** T6-08
 - **Pressure:** 7 → Grok standard
-- **Acceptance:** [ ] connection, open change-sets, last snapshot, and (when T8 exists) bot roster for one connection.
+- **Acceptance:** [x] connection, open change-sets, last snapshot, and (when T8 exists) bot roster for one connection. The roster says it is not available yet.
 
 ### T6-10 — Team grants UI
 - **Status:** OPEN (API exists: `POST /api/accounts/connection-grants`).

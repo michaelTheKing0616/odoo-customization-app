@@ -159,10 +159,11 @@ Evidence of done: shot paths + test output + audit table in the progress log
 - **States:** no custom models; field name collision (suggest `x_` prefix); protected model refused (registry reason shown); offline-queued.
 
 ### UI-S-12 `…/designer` (1429)
-- **Split first:** UI-SP-DESIGNER. **Primary:** Save the view. **Harness:** `/e2e/designer`, `/e2e/designer-ee`, `/e2e/designer-premium`. **Pressure:** 10 → Grok high effort.
+- **Split first:** UI-SP-DESIGNER. **depends_on:** UI-F13 (reorder). **Primary:** Save the view. **Harness:** `/e2e/designer`, `/e2e/designer-ee`, `/e2e/designer-premium`. **Skills:** `high-end-visual-design`, `design-taste-frontend`, `better-layout`, `no-ai-slop`. **Pressure:** 10 → Grok high effort.
 - **States:** view XML invalid (line and reason); inherit conflict; preview stale.
 - **Motion:** the inspector drawer only; the canvas does not animate layout per keystroke. Drag ghost uses transform.
-- **A11y:** keyboard move of fields (`e2e/designer-keyboard.spec.ts` green).
+- **A11y:** keyboard move of fields (`e2e/designer-keyboard.spec.ts` green). Up/down buttons are not the primary reorder once UI-F13 has landed.
+- **Same debt as printouts:** form canvas, kanban card, and both structure canvases. The look-and-feel pass is this card. The interaction primitive is UI-F13. Do not open a separate designer redesign track.
 - **Tests:** `designer-cmp3`, `designer-ee-panels`, `designer-premium`, `designer-vision` specs unchanged and green.
 
 ### UI-S-13 `…/menus` (409)
@@ -182,8 +183,12 @@ Evidence of done: shot paths + test output + audit table in the progress log
 - **Primary:** Deploy a rule. **Pressure:** 6.
 - **Copy:** label it "Odoo approval rules" so it is not confused with the `/approvals` plan inbox (UI-S-50).
 
-### UI-S-17 `…/reports` (482)
-- **Primary:** Save the report. **Pressure:** 6. **States:** QWeb render error (template line); preview loading.
+### UI-S-17 `…/reports` (482) — PDF Studio
+- **depends_on:** PDF-01, PDF-02, PDF-04 (cards in `cards/T7_PDF_STUDIO.md`). Do not restyle this page until those are DONE. Do not build a second designer; extend `ReportDesigner` / `ReportCanvas`.
+- **Primary:** Save the printout. **Skills:** `high-end-visual-design`, `design-taste-frontend`, `better-typography`, `better-layout`, `no-ai-slop`. **Pressure:** 7.
+- **Modes:** create from scratch, or extend a stock report in one slot (header, before body, after body, footer).
+- **States:** QWeb render error names the template line; preview loading; unknown field refused; root-replace inherit refused.
+- **Must not:** raw XPath as the main control; `t-raw`; claim parity by leaving the up/down block list as the only editor.
 
 ### UI-S-18 `…/code-studio` (394)
 - **Primary:** Validate. **Pressure:** 8. **Test:** `e2e/code-studio.spec.ts`.
@@ -200,7 +205,7 @@ Evidence of done: shot paths + test output + audit table in the progress log
   - locked diagnosis card (host, inherit vs. new app, Option A vs. fields); Generate waits for the user to confirm it;
   - stage-accurate progress (T4-PROG);
   - an empty spec is capped at ReviewRequired, and the copy says so;
-  - missing inherit host → offer to install the stock CE app;
+  - a needed stock app is missing, including on a fresh database → explain why, ask once, install, re-read, continue the same request (GND-MOD). Do not stop with an error. Do not ask the user to name the app;
   - gold or authored classify → no pack or stock chips.
 - **Must not:** remove the honesty banners; show "Cert Gold" for an empty spec. Test: `e2e/studio-preview.spec.ts`.
 
@@ -261,7 +266,8 @@ Evidence of done: shot paths + test output + audit table in the progress log
 - **Split first:** UI-SP-CONFIG (`ConfigCommandCenter`). **Primary:** Save the setting. **Pressure:** 7. **depends_on:** T5B cards for import or export controls.
 
 ### UI-S-37 `…/live-demo-copilot` (528)
-- **Primary:** Start the session. **Pressure:** 6. **States:** consent before launch; session live; ended.
+- **Primary:** Start the session. **Pressure:** 6. **depends_on:** GND-DEMO. **States:** consent before launch; session live; ended.
+- **No client database is normal.** The demo target defaults to Odoo 20. Odoo 19, 18, and 17 are the other choices. The consultant also picks Community, Enterprise, or both. "Can Odoo do this?" names the edition: stock Community, Enterprise only, stock once an app is installed, customization, or not sure. The overlay does not ask them to connect a database.
 
 ### UI-S-38 `…/journal` (356)
 - **Primary:** Roll back. **Pressure:** 8.

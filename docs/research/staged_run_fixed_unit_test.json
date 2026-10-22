@@ -3,15 +3,14 @@
   "trace": "step1:entities=1\nstep2:models=1\nstep3:rels=1\nstep4:workflows\nstep5:autos=1\nstep6:views\nrules",
   "warnings": [
     "step1: ambition=thin shape=workspace max_entities=6",
+    "enrich: dropped uncued date field x_support_ticket.x_due_date",
     "added 1 default action(s)",
     "added root + 1 menu(s)",
     "added 3 default view arch(es)",
-    "rules: suggested overdue automation for x_support_ticket",
-    "rules: partner back-ref smart button for x_support_ticket",
     "rules: mail.thread mixin on x_support_ticket",
-    "rules: added 1 model(s) with user (no unlink) + manager access",
-    "rules: root menu restricted to group_simple_task_tracker_user",
-    "completeness gaps: depth_models"
+    "rules: added 1 models with user (no unlink) + manager access",
+    "rules: root menu restricted to group_task_tracker_user",
+    "completeness gaps: has_smart_buttons, depth_models"
   ],
   "model_count": 1,
   "pipeline_mode": "staged",

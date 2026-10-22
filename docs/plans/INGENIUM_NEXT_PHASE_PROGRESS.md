@@ -1111,7 +1111,7 @@ Older "Not done" lines that only name the next card are closed when that card ha
 Execution queue. A line leaves this list only when that item is finished. Items that need a live system or a decision already made stay blocked instead of being faked.
 
 In progress, code that can be finished without a live Odoo or a live model:
-1. Read-only version-drift cells on the Odoo 20 tip: kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations. No writes. No keys in the log.
+1. T4-PROG is claimed. Named stages on generation, Dashboard Studio, Expert, and bulk operations.
 
 Closed this turn:
 - Plan cards use the policy expiry. Production R0 and R1, and staging, expire in 7 days. Production R2 and above expire in 24 hours.
@@ -1161,7 +1161,7 @@ Still to finish in code:
 - The model registry stores no product model ids yet. The outside-file scan passes because that list is empty. An unknown id stays untiered with read-only caps.
 - GATE-P1-04 and GATE-P1-06 are proven with 200 scripted calls, not a live cassette. A recorded live 200-call cassette is still open.
 - GATE-P2-08 and GATE-P2-09 are not fully passed. The seven bridge methods are proven on an in-memory fake. Apply, rollback, a real savepoint, the live kill switch, and staging neutralization have not run on Odoo.
-- Version drift live nightly rows were not run. Unknown cells remain for kanban, `name_get`, company-dependent fields, selection storage, mail template syntax, and translations on 20.
+- Odoo 20 tip reads are recorded in `packages/odoo-client/tests/test_odoo20_drift_cells.py`. Kanban is a view type and the partner arch uses `t-name="card"`. `name_get` is missing and `display_name` is set. Company-dependent fields use a stored boolean, and `ir.property` is absent. Selection is a char plus `selection_ids`. Mail templates use `t-out` and `{{ object. }}`. `ir.translation` is absent and only `en_US` is installed, so a changed translation string was not observed. The fake drift table still says unknown for those cells. Nightly rows on 17, 18, and 19 were not run.
 - Engine suite 1 and suite 2 were not run for the schema family. `model.create`, `model.scaffold`, `field.deprecate`, `selection.update`, and `constraint.sql` still have no inverse in the handler.
 - Simulation staging is an in-memory clone. It is not an operator-owned neutralized database.
 - GATE-P3-06 was not run. Neither mutmut nor cosmic-ray is installed. No mutation score was invented.
@@ -1495,3 +1495,884 @@ Not done: T8-S18. GATE-P1-02 stays open. The inverse gap stays open. T8-P4-TIERA
 Track: T8 T8-S18. Worker [Point the last suite at SSRF and IDOR blocks](f71addde-f92d-4c54-9bf1-ad3d63a9d679). No push. L4 stays off.
 Intent: The suite calls the existing SSRF and cross-connection tests. A link-local URL is rejected before any request. Another connection's card is not found. A fake scrubber secret is absent from the stored text. GATE-P3-01 stays open. Eighteen suite files on disk are not that gate. Re-ran the boundary suite, the gateway phase-1 tests, the inbox tests, and import-boundary tests: 32 passed. The version-branch count stayed 22.
 Not done: the product leftovers that still need a live system or a decision stay open. The inverse gap stays open. T8-P4-TIERA waits on a live model. L4 stays off.
+
+## 2026-10-04 — T1 cards already meeting acceptance
+Track: T1. No new product code. No commit. L4 stays off.
+Intent: Re-ran the named tests. Cards whose acceptance boxes were already true are marked DONE in `14_WORK_CARDS.md`.
+Commands and results: `tests/test_sandbox_test_enable.py` and `tests/test_ai_schema_client.py` — 17 passed. `tests/test_pr_f0_entrypoint.py`, `tests/test_generate_ir_spine.py`, `tests/test_generate_ir_closed_class.py`, `tests/test_invent_leak_closure.py`, `tests/test_invent_outside_admit_wave0.py` — 44 passed. `tests/test_approved_craft_default_off.py` and `tests/test_option_a_prove_bar.py` — 9 passed. `bash apps/api/scripts/dump_maintenance_ir_trace.sh` with `AI_INTENT_LLM=off` exited 0. Stamp `20261004T045007`. `scrub_hits` is empty. Checklist and parts models appear at `admit_and_apply` and remain at the end. `rg` on `ai_generate_ir*.py` finds the words maintenance and service only in comments, not in an `if` branch. `STRUCTURAL_ALLOWLIST` is the named allowlist. `test_uncued_not_allowlisted_not_schema_verified_rejected`, `test_named_rate_line_invent_rejected_without_o2m_cue`, and `test_schema_verified_reuse_rejects_without_cue` are present.
+Gates passed: T1-PF, T1-F0, T1-A1, T1-A2, T1-A3, T1-B1, T1-B2, T1-B3, T1-C1, T1-D1, T1-D2, T1-E2.
+Not done: T1-F2 still needs a test that fails if `if "maintenance" in brief` is added. That card is already claimed. T1-GATE is the next unclaimed card.
+
+CLAIM T1-GATE 2026-10-04T04:52:00Z files: a test that fails if Maintenance is special-cased, plus the progress log. Do not add a display_name denylist. Do not edit apps/api/app/changeset or agent_runtime.
+
+## 2026-10-04 — T1-GATE
+Track: T1 T1-GATE. Worker [Add the Maintenance special-case gate test](53375afe-b8e4-4553-845b-7b7a579e158a). Tester [Re-run the Maintenance special-case test](7edad533-68c3-4161-a154-72ba59386c3e). No commit. L4 stays off.
+Intent: A source scan fails if an if or elif condition mentions maintenance or a service card. Comments may mention those words.
+Files: `apps/api/tests/test_generate_ir_closed_class.py`.
+Commands and results: VERIFIED. pytest `tests/test_generate_ir_closed_class.py` — 10 passed in 0.78s.
+Gates passed: T1-GATE. Stale-catalog deny tests remain in `tests/test_ai_schema_client.py`.
+Negative tests: the AST scan is the negative.
+Not done: none on this card.
+Risks introduced: none. Product code was not edited.
+
+CLAIM T4-PROG 2026-10-04T04:55:00Z files: the four surfaces that still show a generic spinner, plus a shared StageProgress component if it is missing. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit.
+
+## 2026-10-04 — T4-PROG
+Track: T4 T4-PROG. Worker [Replace generic spinners with named stages](b9708403-c91d-4e13-b0c2-95201de45cb6). Tester [Re-run the live-progress acceptance checks](e1e10f5a-48e5-467f-afc4-9cf25fb7df64). No commit. L4 stays off.
+Intent: Named stages on generation, bulk operations, Expert, and Dashboard Studio. Detail is closed until Show details. A tool-call limit waits for Continue or Stop.
+Files: `apps/api/app/progress/`, `apps/api/app/routers/progress.py`, `apps/web/src/components/progress/StageProgress.tsx`, studio, bulk-suite, expert, and `apps/web/src/app/studio/dashboards/page.tsx`.
+Commands and results: VERIFIED. pytest `tests/test_stage_bus.py` and `tests/test_progress_router.py` — 4 passed. vitest `StageProgress.test.tsx` and `IntentRouterPanel.test.tsx` — 5 passed. `rg animate-spin` on the four surface files returned nothing.
+Gates passed: T4-PROG. Unknown stage names fail `test_unknown_stage_is_rejected`.
+Negative tests: that unknown-stage test.
+Not done: saving dashboards and charts stays on T4-DASH. This card is the progress shell.
+Risks introduced: generation, expert, and bulk routes now emit stage events.
+
+CLAIM 5A-02 2026-10-04T05:05:00Z files: dry-run ledger and the write routes in T1, T3, and T4 that are not already covered. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit.
+
+## 2026-10-04 — 5A-02
+Track: T5A 5A-02.
+Intent: A live Odoo write is refused until the same arguments were dry-run, and two workers share that receipt for one hour.
+Model / band: grok-4.7-high. Pressure 14. Worker [Cover every T1 T3 T4 write with a dry-run](6bc75a75-2da1-4e8f-b214-852e0ddb694a). Tester [Re-run the dry-run acceptance checks](b7a18d31-769b-4940-9d53-2025d4b716a2). Reviewer [What could be wrong with the dry-run](d61ecf1d-bf98-4c28-914e-12a7bccbcb02).
+Files: `apps/api/app/dry_run_ledger.py`, `apps/api/app/dry_run_middleware.py`, `apps/api/app/db_models.py`, `apps/api/alembic/versions/t0u1v2w3x4y5_dry_run_seen.py` (untracked, revises `s9t0u1v2w3x4`, not applied), `apps/api/tests/test_dry_run_ledger.py`.
+Commands and results: VERIFIED. `pytest tests/test_dry_run_ledger.py` — 15 passed. The nine-file set named by the tester — 75 passed.
+Gates passed: 5A-2, DoD 22.
+Negative tests: a live write with no prior receipt returns `dry_run_receipt_required`; an omitted `dry_run` key is refused the same way; a receipt written through one store authorizes the matching write through another store on the shared `dry_run_seen` table; TTL is 1 hour.
+Route table (`METHOD:path`, hash is tool plus args minus dry_run):
+- POST `/api/ai/sessions/{session_id}/apply` — gated
+- POST `/api/connections/{connection_id}/module-spec/apply` — gated
+- POST `/api/connections/{connection_id}/module-spec/seed-walkthrough` — gated
+- POST `/api/ai/sessions/{session_id}/generate` — not an Odoo write
+- POST `/api/connections/{connection_id}/modules/install-community` — gated
+- POST `/api/connections/{connection_id}/modules/promote` — gated
+- POST `/api/connections/{connection_id}/modules/uninstall` — gated
+- POST `/api/connections/{connection_id}/sandbox/run` — not an Odoo write
+- POST `/api/bridge/contracts/validate` — not an Odoo write
+- `bridge.queue.enqueue` — not an Odoo write
+- POST `/api/dashboard-studio/preview` — not an Odoo write
+- offline `claim_db` — not an Odoo write
+- GET `/api/connections/{connection_id}/automations/triggers` — read
+- `skills route_skills` / `mcp_call` — not an Odoo write
+Not done: `t0u1v2w3x4y5` is not applied. Hosts with `DB_MIGRATIONS=auto` need that revision before two processes share receipts. The web client must send `dry_run: true` before a live apply, install, promote, or uninstall. No commit.
+Risks introduced: those six gated routes now refuse a body that omits `dry_run`.
+
+CLAIM T4-OFF 2026-10-04T04:32:00Z files: apps/web/src/lib/offline/queue.ts, the API routes that must claim a key through claim_db, and tests for a dropped ack, reload, a second tab, and a queued promote. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not auto-flush a promote.
+
+## 2026-10-04 — T4-OFF
+Track: T4 T4-OFF.
+Intent: A client queue survives reload and a second tab, a dropped ack does not double-apply, and a queued promote waits for a person.
+Model / band: cursor-grok-4.6-high-fast. Pressure 13. Worker [Add the client offline queue](9d1c3125-0c6e-41e8-a90b-f08139078a11). Repair [Fix the offline queue reload order](3289969b-32db-45fe-b369-6ce99d83e085). Tester fail [Re-run the offline-queue acceptance checks](01d988f3-846e-47af-8d4c-02e33e29e952). Tester pass [Re-check the offline queue after the repair](62af82b8-17d0-4f95-b3d7-2f1f5d5fdeec). No reviewer. Pressure is 13.
+Files: `apps/web/src/lib/offline/queue.ts`, `apps/web/src/lib/offline/queue.test.ts`, `apps/api/app/routers/offline.py`, `apps/api/app/offline/flush.py`, `apps/api/app/offline/idempotency.py`, `apps/api/app/main.py`, `apps/api/tests/test_offline_flush.py`.
+Commands and results: VERIFIED. vitest `src/lib/offline/queue.test.ts` — 6 passed. pytest `tests/test_idempotency_store.py` and `tests/test_offline_flush.py` — 9 passed. Line 272 of the queue test is unchanged and passing.
+Gates passed: T4-OFF, master DoD 10.
+Negative tests: two tabs flushing the same item produce one server effect. A promote without the confirm phrase is refused.
+Not done: `:8001` does not reload, so the flush route is not live until that process is restarted. Studio screens are not wired to enqueue. No commit. L4 stays off.
+Risks introduced: `enqueue` assigns a strictly increasing `createdAt` when the clock does not move.
+
+CLAIM T4-ISPEC 2026-10-04T04:40:00Z files: a serializer for the existing ModuleSpec in packages/module-generator, plus a property test over the existing complex fixtures. Do not add a second module IR. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit.
+
+## 2026-10-04 — T4-ISPEC
+Track: T4 T4-ISPEC.
+Intent: ModuleSpec serializes to ISPEC and parses back into the same type, including nested fields.
+Model / band: grok-4.7-high. Pressure 14. Worker [Add a lossless ModuleSpec ISPEC round-trip](42ab15c5-f1cc-4173-aa33-6f907090f219). Tester [Re-run the ISPEC round-trip checks](360e79d3-8082-4071-861b-b71890d2379e). Reviewer [What could be wrong with the ISPEC round-trip](3de2d00b-f16d-4697-9929-a3a85754cd1e): no blocking finding. An earlier tester, [Re-run the ISPEC round-trip checks](710dbe0d-9828-486c-ab9f-8d5f70126d4c), stalled and was not used.
+Files: `packages/module-generator/src/module_generator/ispec.py`, `packages/module-generator/src/module_generator/__init__.py`, `packages/module-generator/tests/test_ispec_roundtrip.py`.
+Commands and results: VERIFIED. `pytest --rootdir=. tests/test_ispec_roundtrip.py -q` — 7 passed.
+Gates passed: compiler DoD 1–2.
+Negative tests: a dropped field and an unknown field are refused. A non-ModuleSpec input is refused. `ispec.py` defines no second spec type.
+Not done: Recompile, Sync, and the browser agent. No commit. L4 stays off.
+Risks introduced: none beyond a new serializer on the existing type.
+
+CLAIM T4-SYNC 2026-10-04T12:40:00Z files: a versioned recompile store next to ModuleSpec, plus drift blocking for Sync. Do not overwrite an artifact in place. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not start the browser agent.
+
+## 2026-10-04 — T4-SYNC
+Track: T4 T4-SYNC.
+Intent: Recompile writes a new version and leaves the previous one. Drift blocks Sync. An identical spec into an existing version path is refused.
+Model / band: grok-4.7-high. Pressure 15. Worker [Add versioned recompile and drift blocking](d82b3b15-b709-4842-b9ba-5d33852af752). Tester [Re-run the recompile and sync checks](8b46cd38-c6ff-4880-88aa-586818a7a47a). Reviewer [What could be wrong with recompile and sync](ff557834-e2ee-4456-9d54-8db496063db3) blocked a failed log append. Repair [Keep a failed recompile log from blocking the next version](9cf2303a-d5e2-47c5-867c-3c521cfbbee1). Tester [Re-check recompile after the log-failure repair](2ea4cc26-06a1-40a8-b199-37c8119baf72). Reviewer [What could be wrong after the log-failure repair](33046df9-b16c-4c66-97f9-9b0d373b5e03) blocked a swallowed removal and a partial log line. Last repair [Close the recompile log and disk mismatch](f053c892-5897-4c59-bb91-15a4ce312e65). Tester [Re-check recompile after the last log repair](ebf3e318-d31b-42a9-84be-b8131e0c6e7c). Reviewer [What could be wrong with the final recompile log](ecba8f05-ce15-45a3-b39d-ea2874692f54): no blocking finding.
+Files: `packages/module-generator/src/module_generator/sync.py`, `packages/module-generator/src/module_generator/__init__.py`, `packages/module-generator/tests/test_recompile_sync.py`.
+Commands and results: VERIFIED. `pytest --rootdir=. tests/test_recompile_sync.py tests/test_ispec_roundtrip.py -q` — 20 passed.
+Gates passed: compiler DoD 3–5, master DoD 11.
+Negative tests: an identical spec into an existing version path is refused. A failed log append does not block a changed spec. A failed removal is not swallowed. A write that persists bytes before raising does not leave a partial line.
+Not done: the browser agent. No commit. L4 stays off. Drift fixtures are not a live Odoo database.
+Risks introduced: the log is published by replacing `recompile.log` with a complete temp file.
+
+CLAIM T4-BROWSER 2026-10-04T13:30:00Z files: the Stage F structural zip gate and a browser-testing check that runs inside it. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not claim the gate without a caught defect.
+
+## 2026-10-04 — T4-BROWSER
+Track: T4 T4-BROWSER.
+Intent: Stage F runs a browser check that catches a view-arch defect the Python syntax and ACL checks miss, and a clean fixture measures the false-positive rate.
+Model / band: cursor-grok-4.6-high-fast. Pressure 11. Worker [Run a browser check inside Stage F](ea7e83ae-de82-4eba-a14d-2529f9d3cc9e). Tester [Re-run the Stage F browser-check acceptance](629f5bb1-4f9f-4c6e-9dfd-f93b298f175d). No reviewer. Pressure is 11.
+Files: `apps/api/app/ai_structural_zip_gate.py`, `apps/api/app/ai_browser_agent.py`, `apps/api/tests/test_ai_structural_zip_gate_browser.py`, `apps/web/src/testing/browserAgent/`.
+Commands and results: VERIFIED. pytest the structural zip gate tests plus `tests/test_ai_structural_zip_gate_browser.py` — 15 passed. vitest `src/testing/browserAgent/inspect.test.ts` — 2 passed.
+Gates passed: compiler DoD 6–7, master DoD 12.
+Negative tests: the clean fixture of `x_ticket_browser` is not reported as `view_arch_unparseable`. False-positive rate is 0 / 1 views = 0.0.
+Not done: this is a static tour of the zip, not a live Odoo browser. No commit. L4 stays off.
+Risks introduced: every `structural_zip_gate` call now also runs the arch tour.
+
+CLAIM T4-WIRE 2026-10-04T13:42:00Z files: the path from a sketch to ModuleSpec, including the clarify step and Stage H. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not call a live model in a test.
+
+## 2026-10-04 — T4-WIRE
+Track: T4 T4-WIRE.
+Intent: A checked-in sketch becomes a ModuleSpec through Stage H. An unlabeled region asks and does not apply.
+Model / band: cursor-grok-4.6-high-fast. Pressure 11. Worker [Turn a sketch into a spec through Stage H](5d204385-6a04-48f1-a019-ffa7e2623f03). Tester [Re-run the wireframe Stage H checks](d5158fad-4542-4469-bedc-5b451312c280). No reviewer. Pressure is 11.
+Files: `apps/api/app/wireframe/`, `apps/api/app/ai_apply_readiness.py`, `apps/api/app/spec_apply_ui.py`, `apps/api/tests/test_wireframe.py`, `apps/api/tests/test_wireframe_stage_h_gate.py`, `apps/web/src/lib/wireframe-stage-h.test.ts`.
+Commands and results: VERIFIED. pytest `tests/test_wireframe.py` and `tests/test_wireframe_stage_h_gate.py` — 9 passed. vitest `src/lib/wireframe-stage-h.test.ts` — 1 passed.
+Gates passed: compiler DoD 12, master DoD 13.
+Negative tests: an unlabeled region and a vision misread do not apply. The wireframe package does not call a live model. There is one sketch-to-spec path and it runs Stage H.
+Not done: no upload screen. Live vision is not wired. No commit. L4 stays off.
+Risks introduced: live apply refuses a wireframe spec that has not passed Stage H.
+
+CLAIM T4-LLM3 2026-10-04T13:56:00Z files: the existing in-house gateway under apps/api/app/llm_gateway. Do not add LiteLLM. Do not change the gateway decision. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not call a live model in a test.
+
+## 2026-10-04 — T4-LLM3
+Track: T4 T4-LLM3.
+Intent: The in-house gateway switches provider without a change above it. The Anthropic adapter stays inactive unless a test opts in.
+Model / band: composer-2.5-fast. Pressure 9. Worker [Prove the gateway can switch providers](1674edb4-930c-45b0-9d19-2b12cd9f5b85). Tester [Re-run the three-tier gateway checks](75d4df4e-e85e-411c-979a-fc5cdc598f8f). No reviewer. Pressure is 9.
+Files: `apps/api/app/llm_gateway/providers.py`, `apps/api/tests/test_llm_gateway_providers.py`.
+Commands and results: VERIFIED. pytest the five gateway test modules — 56 passed.
+Gates passed: master DoD 14.
+Negative tests: the frontier adapter is inactive by default. Registry model-id strings do not leak. LiteLLM was not added. No live model call.
+Not done: ADR-02 was not reopened. No commit. L4 stays off.
+Risks introduced: selecting Anthropic now requires an explicit opt-in.
+
+CLAIM T6-01 2026-10-04T14:05:00Z files: apps/api/app/client_access.py, apps/api/app/workspace_auth.py, and a role-matrix test. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not replace the login stack.
+
+## 2026-10-04 — T6-01
+Track: T6 T6-01.
+Intent: Each role can reach only its route groups. A Client Viewer cannot approve, and another client’s connection stays hidden.
+Model / band: composer-2.5-fast. Pressure 9. Worker [Enforce the four-role route matrix](32f2ed15-074a-4d4f-aabf-78236d968bc9). Tester [Re-run the four-role route matrix](ecbd3382-928b-4c3a-a437-74372804c951). Reviewer [What could be wrong with the role matrix](83101edc-f163-45f3-b9dc-59c989c8ce8c): no blocking finding. Reviewed because the card is access control.
+Files: `apps/api/app/client_access.py`, `apps/api/app/workspace_auth.py`, `apps/api/app/routers/inbox.py`, `apps/api/app/main.py`, `apps/api/tests/test_t6_01_role_matrix.py`.
+Commands and results: VERIFIED. pytest the role matrix plus the existing account and inbox suites — 83 passed. The matrix was 40 passed.
+Gates passed: T6-01.
+Negative tests: Client Viewer `POST /api/inbox/plans/{hash}/decide` returns 403. An out-of-scope connection returns 404.
+Not done: no commit. L4 stays off. The login stack was not replaced.
+Risks introduced: inbox routes now require an authenticated session.
+
+CLAIM T4-WIRE-UPLOAD 2026-10-04T14:16:00Z files: a sketch upload screen on the existing studio look, Gemini as the live vision provider, and a single switch that selects Claude later. Do not change the Gemini default. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not call a live model in a test.
+
+## 2026-10-04 — T4-WIRE-UPLOAD
+Track: T4 wireframe upload.
+Intent: A photographed sketch is read by free Gemini. Claude is one setting later. The screen does not apply.
+Model / band: cursor-grok-4.6-high-fast. Worker [Add a sketch upload that stays on Gemini](2af96fb2-54b9-4dd5-8018-da122467b657). Tester [Re-check the Gemini sketch upload](3f421253-2b38-4503-a81a-a91f991e0481).
+Files: `apps/web/src/app/connections/[id]/wireframe/page.tsx`, `apps/web/src/components/wireframe/WireframeUploadView.tsx`, `apps/api/app/wireframe_live.py`, `apps/api/app/routers/wireframe.py`, `apps/api/app/llm_gateway/providers.py`, `apps/api/app/llm_provider.py`, `apps/api/app/settings.py`.
+Commands and results: VERIFIED. pytest the wireframe, gateway, and vision tests — 23 passed. vitest the upload view, nav, and Stage H helper — 11 passed. Browser: the page at `/connections/d41fa8a5-bcc5-4f30-a46e-0a618fef9894/wireframe` shows Sketch upload, a Photograph file input, Read sketch disabled until a file is chosen, and the line that Claude can be selected later. Live status: provider gemini, connected true. A 1-pixel PNG read returned no regions, spec null, apply_ready false.
+Gates passed: Stage H still required. Gemini remains the default.
+Negative tests: a missing Gemini key does not invent regions or call Claude. The upload view does not apply. AI sidebar ids are unchanged.
+Not done: no commit. L4 stays off. Claude stays off until `AI_VISION_PROVIDER=anthropic`.
+Risks introduced: a real photo now calls Gemini when the key is set.
+
+CLAIM T6-02 2026-10-04T14:38:00Z files: mocked Google and Microsoft account linking, plus email password TOTP enrol and login. Do not call a live provider. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit. Do not replace the login stack.
+
+## 2026-10-04 — T6-02
+Track: T6 T6-02.
+Intent: A verified provider email links with no manual step. An unverified email does not. Microsoft user info with no email_verified claim still links.
+Model / band: cursor-grok-4.6-high-fast. Pressure 11. Worker [Cover Microsoft linking and TOTP enrol](99dff52e-3840-4f9f-add4-db34c4265d75). Tester [Re-run the account-linking checks](2625b41e-5ce5-42f0-b3e5-8ccf825648dd). Reviewer [What could be wrong with account linking](f2992b62-d5e6-4370-ac2f-2a80c0b913c1) blocked the live Microsoft path. Repair [Accept Microsoft mail when the claim is absent](db4a7a65-7ef6-4879-b33b-c75f6ced96e3). Tester [Re-check Microsoft linking after the claim fix](08e516d9-1dbb-4440-8e4c-020614f8ec70). Reviewer [What could be wrong with the Microsoft email claim](b65abfad-2056-4ac4-a820-21e6703667d4): no blocking finding. Reviewed because the card is account linking.
+Files: `apps/api/app/oauth_service.py`, `apps/api/tests/test_oauth.py`.
+Commands and results: VERIFIED. pytest `tests/test_oauth.py` — 15 passed.
+Gates passed: T6-02, gate 6-1 for the mocked paths.
+Negative tests: an unverified provider email does not link. An explicit email_verified false refuses create and link. Google still requires email_verified true.
+Not done: a live sign-in with Google and with Microsoft is still for you. No commit. L4 stays off.
+Risks introduced: a missing email_verified claim is accepted only for Microsoft.
+
+CLAIM T6-03 2026-10-04T14:52:00Z files: typed audit rows for login, logout, grant, revoke, TOTP, and role change on the existing audit chain. Do not add a second audit table. Do not log passwords or tokens. Do not edit apps/api/app/changeset or agent_runtime. Do not enable L4. Do not commit.
+
+## 2026-10-04 — T6-03
+Track: T6 T6-03.
+Intent: Login, logout, grant, revoke, authenticator, and role change each write one typed row on the existing audit chain. A failed login does not keep the password.
+Model / band: cursor-grok-4.6-high-fast. Pressure 11. Worker [Write auth events into the one audit chain](0bfa967b-5115-48fa-8375-722286fe83fd). Tester [Re-run the auth audit-chain checks](9091efc2-7af3-472c-8e01-2c921b8a1390). Reviewer [What could be wrong with the auth audit rows](73e30214-4b57-4f55-be0d-015d36757b3c): no blocking finding. Reviewed because the card writes the audit chain.
+Files: `apps/api/app/auth_audit.py`, `apps/api/app/audit_chain.py`, `apps/api/app/account_service.py`, `apps/api/app/routers/accounts.py`, `apps/api/app/oauth_service.py`, `apps/api/tests/test_t6_03_auth_audit.py`.
+Commands and results: VERIFIED. pytest `tests/test_audit_chain.py`, `tests/test_t6_03_auth_audit.py`, and `tests/test_oauth.py` — 33 passed.
+Gates passed: T6-03, DoD 31 for these events.
+Negative tests: a failed login writes a row without the attempted password. `verify_db` stays green. No second audit table.
+Not done: no commit. L4 stays off.
+Risks introduced: those auth routes now append a chain row on success and on failure.
+
+CLAIM T6-04 2026-10-04T15:04:00Z files: the inbox decide path, plus apps/api/app/changeset/store.py and apps/api/app/changeset/plan_card.py only if the fingerprint check lives there. Do not edit agent_runtime. Do not enable L4. Do not commit. Do not revert the T6-01 inbox scope checks.
+
+## 2026-10-04 — T6-04
+Track: T6 T6-04.
+Intent: A decision carries the plan hash and schema fingerprint. A mismatch, an expiry, a freeze, or a replay onto a changed plan does not apply.
+Model / band: grok-4.7-high. Pressure 14. Worker [Bind inbox decisions to the plan fingerprint](e2028ea3-cc5c-41fb-ac7d-164b0e2c72ad). Tester [Re-run the inbox fingerprint checks](a9a66314-ff4c-4d43-82f1-bb58da7be045). Reviewer [What could be wrong with the inbox fingerprint](b8989cdf-3af8-4788-a3a8-9ca415d12064): no blocking finding.
+Files: `apps/api/app/routers/inbox.py`, `apps/api/app/changeset/plan_card.py`, `apps/api/app/changeset/store.py`, `apps/api/tests/test_t6_04_inbox_binding.py`.
+Commands and results: VERIFIED. pytest `tests/test_changeset_inbox.py`, `tests/test_plan_card_store.py`, `tests/test_t6_04_inbox_binding.py`, and `tests/test_t6_01_role_matrix.py` — 53 passed.
+Gates passed: T6-04, RT-17, RT-19, RT-20.
+Negative tests: a fingerprint mismatch returns 409 `plan_stale`. Replaying an approval on a modified plan is refused. Client Viewer decide stays 403.
+Not done: no commit. L4 stays off. Freeze windows are process-local.
+Risks introduced: decide now requires both fingerprints.
+
+CLAIM T6-05 2026-10-04T15:32:00Z files: the approvals page that renders the nine plan-card sections from the API payload. Do not generate that text in the client. Do not edit agent_runtime. Do not enable L4. Do not commit. Do not revert the T6-04 fingerprint checks.
+
+## 2026-10-04 — T6-05
+Track: T6 T6-05.
+Intent: The approvals page shows the nine plan-card sections the API sends. A changed assumption voids the old card.
+Model / band: cursor-grok-4.6-high-fast. Pressure 10. Worker [Render the nine plan-card sections from the API](bc01c9da-3070-46e5-98ff-607d92a084d1). Tester [Re-run the nine-section plan-card checks](27d393ce-676e-48dd-a417-6ac4d3093358). Repair [Send the nine plan-card sections on the inbox list](3b7866d7-9664-48b8-8e04-4e18aeb792de). Tester [Re-check that listed cards include nine sections](f5a1bf17-e2f9-4545-9efe-db24d2d0c7d0). No reviewer. Pressure is 10.
+Files: `apps/api/app/changeset/plan_card.py`, `apps/api/app/changeset/store.py`, `apps/api/app/changeset/inbox.py`, `apps/web/src/app/approvals/page.tsx`, `apps/api/tests/test_t6_05_plan_card_sections.py`.
+Commands and results: VERIFIED. pytest the inbox, section, fingerprint, and golden tests — 28 passed. vitest `src/app/approvals/page.test.tsx` — 1 passed. Browser: Show plans on connection `d41fa8a5-bcc5-4f30-a46e-0a618fef9894` lists “Add a note” with the nine section headings.
+Gates passed: T6-05, GATE-P3-10 for the section snapshot.
+Negative tests: changing an assumption produces a new hash and voids the old card. A fingerprint mismatch still returns 409.
+Not done: no commit. L4 stays off.
+Risks introduced: listing a card rebuilds the nine section strings from the stored fields.
+
+CLAIM T6-06 2026-10-04T15:50:00Z files: the R3 approval check. Two approvers must be distinct people. A protected target also needs the domain owner, a passed simulation, a backup, and an allowed window. Do not edit agent_runtime. Do not enable L4. Do not commit. Do not revert the T6-04 fingerprint checks.
+
+RETARGET T6-06 2026-10-04T16:10:00Z. Tope: production R3 is one approval and the approver may be the requester. The two-person gate, domain owner, simulation, backup, and window move to heavy R4. Hard stop stays on raw SQL, rpc.write, payment secrets, posted entries, lock dates, and a group-less access rule. L4 still never applies R3 or R4.
+
+## 2026-10-04 — T6-06
+Track: T6 T6-06.
+Intent: Everyday R3 is one approval, and the requester may be that approver. Heavy R4 on production needs two real users. Hard-stop R4 stays denied.
+Model / band: grok-4.7-high. Pressure 14. Worker [Apply the one-approval R3 rule](7eec9226-e587-491b-b92c-f5bbc0dd4bda). Tester [Re-check the one-approval R3 rule](57f25e90-954e-47ca-8a46-703b5e8b4db0). Reviewer [What could be wrong with the new approval gates](7b16f01c-7ce7-4c55-991e-5288c31f68eb) blocked a missing user id. Repair [Bind a heavy approval to the real user](e211dbf4-020d-481c-9f07-8504c8a141f7). Tester [Re-check that a heavy approval needs two real users](d94e5e83-f3ce-4843-a812-888b7fc5447c). Reviewer [What could be wrong with binding a heavy approval to a user](698ebf83-7f30-418a-9cfd-ee17bfe2e7a1): no blocking finding.
+Files: `apps/api/app/changeset/policy.py`, `apps/api/app/changeset/inbox.py`, `apps/api/app/changeset/store.py`, `apps/api/app/routers/inbox.py`, and the policy and inbox tests.
+Commands and results: VERIFIED. pytest the engine, inbox, rollback, T6-04 binding, policy matrix, and RT-18 — 74 passed.
+Gates passed: T6-06. L4 still cannot apply R3 or R4.
+Negative tests: two decide calls with different approver ids and no user id leave heavy R4 pending. Two identities count once. A fingerprint mismatch returns 409. Hard-stop R4 stays denied.
+Not done: no commit. L4 stays off.
+Risks introduced: the requester can approve their own everyday R3 card.
+
+CLAIM T6-07 2026-10-04T17:06:00Z files: the inbox list and decide path for a Client Approver. Another connection's plan returns 404. Do not edit agent_runtime. Do not enable L4. Do not commit. Do not revert the T6-06 approval rule.
+
+## 2026-10-04 — T6-07
+Track: T6 T6-07.
+Intent: A Client Approver sees only their connection’s plans. Another client’s plan is 404 and the body says it was not found.
+Model / band: composer-2.5-fast. Pressure 8. Worker [Hide other clients' plans from a Client Approver](996f7517-eaa7-4c09-bc58-382188557ac0). Tester [Re-run the client inbox scope checks](322c453b-830b-4317-b78e-74875c4e7a5d). Reviewer [What could be wrong with hiding other clients' plans](b78a6b13-b7e3-4eac-aac3-2f1f63d29c9b): no blocking finding. Reviewed because the card is access control.
+Files: `apps/api/tests/test_t6_07_client_inbox_scope.py`, `apps/api/tests/test_client_approver_isolation.py`. The inbox routes already enforced the scope.
+Commands and results: VERIFIED. pytest the four named tests — 4 passed.
+Gates passed: T6-07, gate 6-2 on inbox list, submit, and decide.
+Negative tests: a Client Viewer decide is 403. A Client Approver cannot submit. A cross-connection decide is 404, not 403.
+Not done: no commit. L4 stays off.
+Risks introduced: none beyond the tests locking the existing 404 behavior.
+
+CLAIM T6-10 2026-10-04T17:13:00Z files: a grant and revoke screen on the existing access surface, calling POST and DELETE /api/accounts/connection-grants. Do not add a second grant API. Do not edit agent_runtime. Do not enable L4. Do not commit. Meet the UI bar in AGENTS.md.
+
+## 2026-10-04 — T6-10
+Track: T6 T6-10.
+Intent: An admin grants and revokes client access on the Access page. The list stays inside that connection.
+Model / band: composer-2.5-fast. Pressure 7. Worker [Add grant and revoke on the access screen](e7dd27c1-3118-45e6-80f0-50ef8042a48d). Tester fail [Re-run the grant and revoke checks](d4f698ce-eb9d-4eb7-87d7-66dc016c7f20). Repair [Cover a failed revoke and a private grant list](df79c3d0-e41c-4138-84c6-79f796b046e2). Tester [Re-check the failed revoke and the grant list](b702cfb8-27cd-4a1e-8676-3edb1ea8b4f3). Reviewer [What could be wrong with the grant screen](ab123f12-b57e-4e46-90f1-30c49cf0c7f5): no blocking finding. Reviewed because the card grants access.
+Files: `apps/web/src/components/access/ConnectionTeamGrantsPanel.tsx`, `apps/web/src/app/connections/[id]/access/page.tsx`, `apps/api/app/routers/accounts.py` (read-only list), `apps/api/tests/test_connection_grants_list.py`.
+Commands and results: VERIFIED. vitest the grants panel and nav — 11 passed. pytest the audit row and the grant list — 4 passed. Browser: Client access grants on the Granted client Access page shows email, Client approver or Client viewer, and Grant access disabled until an email is entered.
+Gates passed: T6-10.
+Negative tests: a failed revoke shows an error. A non-admin is refused. Another workspace’s connection is not found. A list for connection A does not include connection B’s grant. Revoke does not use window.confirm.
+Not done: no commit. L4 stays off. A live grant against a real account was not submitted in the browser.
+Risks introduced: workspace admins can list grants for a connection in their workspace.
+
+CLAIM DEV-CS 2026-10-04T17:24:00Z files: Code Studio server-action bind and the Option A zip path, plus the Code Studio screen. Do not auto-promote. Do not edit agent_runtime. Do not enable L4. Do not commit. Meet the UI bar in AGENTS.md.
+
+## 2026-10-04 — DEV-CS
+Track: Developer modes DEV-CS.
+Intent: A customer with the developer role can bind a live server action only after the probe, the confirm phrase, and a snapshot, or download an Option A zip that this screen does not install.
+Model / band: grok-4.7-high. Pressure 15. Worker [Keep the Code Studio toast to one sentence](16b8e2e7-7971-4d38-9467-ee327d451a40). Testers [Re-check the Code Studio toast sentence](0140a4a0-5306-42ef-9ddf-c58e254ea8b2) and [Re-check Code Studio toast test](78e2d3bf-ac58-4201-ae5f-6f3322357b18). Reviewers [What could be wrong with the Code Studio gates](2a1f3f5a-fd34-4b2f-852c-5bae89c9da0b) and [Review Code Studio toast slice](f4970aea-2e20-4187-ab01-24e43a45cefa): no blocking finding.
+Files: `apps/api/app/code_studio_service.py`, `apps/api/app/routers/code_studio.py`, `apps/web/src/app/connections/[id]/code-studio/page.tsx`, `apps/web/src/app/connections/[id]/code-studio/page.test.tsx`, `apps/web/src/app/connections/[id]/code-studio/present-error.ts`, `apps/web/src/components/code-studio/PythonLineEditor.tsx`.
+Commands and results: VERIFIED. pytest `tests/test_code_studio_gating.py`, `tests/test_code_studio_live.py`, `tests/test_code_studio_probe.py` — 25 passed. vitest `src/app/connections/[id]/code-studio/page.test.tsx` — 5 passed, twice. Browser on connection `d41fa8a5-bcc5-4f30-a46e-0a618fef9894`: both limit cards are on the page; the notice and the toast say “The connection database is not reachable.”; Show details is closed until opened.
+Gates passed: DEV-CS.
+Negative tests: an import, sudo, unlink, a missing confirm phrase, an observer connection, a failed probe, and a failed test each refuse the bind. Option A returns a zip and does not install it. The toast does not contain the traceback.
+Not done: no commit. L4 stays off. Promote stays a person. The Granted client database does not exist, so a live bind was not executed in the browser.
+Risks introduced: after the probe, the confirm phrase, and a snapshot, a developer can write a live `state=code` server action.
+
+CLAIM DEV-SR 2026-10-04T18:05:00Z files: `apps/api/app/script_runner/`, `apps/api/app/routers/script_runner.py`, and `apps/web/src/app/connections/[id]/script-runner/`. Do not edit Code Studio, `agent_runtime`, or `changeset`. Do not auto-promote. Do not enable L4. Do not commit. Meet the UI bar in AGENTS.md.
+
+STOP DEV-SR 2026-10-04T19:10:00Z. Two repairs used. Do not start a third. [Review the globals escape repair](b076ebf2-6828-4a4a-b1c6-0738d37f1b32) blocked: `_guarded_import` and `_blocked_open` still point at `child_main`, so a script can walk `execute_kw.__func__.__globals__["__builtins__"]["__import__"].__globals__["os"]`. Pytest 15 passed does not cover that walk. Logged in `ERRORS.md`. DEV-PO stays unstarted.
+
+CLAIM T4-SKT 2026-10-04T19:40:00Z files: a trigger runner outside `apps/api/app/changeset` and `agent_runtime`. Each firing creates a new plan card through existing functions. Do not edit those two trees. Do not enable L4. Do not commit. Do not treat an existing trigger as approval.
+
+## 2026-10-04 — T4-SKT
+Track: T4 T4-SKT.
+Intent: A Community trigger firing opens its own plan card. The trigger existing is not approval.
+Model / band: grok-4.7-high. Pressure 16. Worker [Gate every trigger firing](bffe7b03-ac9b-488a-b4ff-6d2d5e53c0dd). Tester [Re-run the trigger gate checks](fefc5223-7ae7-4fea-b855-8fd6b25b54b3). Reviewer [Review the trigger approval gate](d8cd53d0-ceaa-4477-830c-bbad58d59073): no blocking finding.
+Files: `apps/api/app/triggers/__init__.py`, `apps/api/app/triggers/runner.py`, `apps/api/tests/test_t4_skt_triggers.py`.
+Commands and results: VERIFIED. pytest `tests/test_mcp_guard.py` and `tests/test_t4_skt_triggers.py` — 11 passed in 28.36s.
+Gates passed: T4-SKT, compiler DoD 15–18.
+Negative tests: two firings create two plan cards and need two approvals. The runner does not call `executor.apply` without that firing’s approval id. Protected models raise before a card exists.
+Not done: no commit. L4 stays off. `apps/api/app/changeset` was not edited.
+Risks introduced: a firing now writes a pending plan card and a `note` audit row.
+
+CLAIM T4-GROUND 2026-10-04T20:06:00Z files: dynamic tool targets through the existing schema client, the existing RAG index, and generated views that keep a named Odoo widget. Do not add a second corpus. Do not edit changeset or agent_runtime. Do not enable L4. Do not commit. No live LLM in a test.
+
+## 2026-10-04 — T4-GROUND
+Track: T4 T4-GROUND.
+Intent: Tool targets go through the existing schema client, retrieval uses the existing RAG index, and a named Odoo widget stays on the generated view.
+Model / band: cursor-grok-4.6-high-fast. Pressure 8. Worker [Ground tools, RAG, and widgets](b7ba2380-3289-4bfb-8b9e-3088d2a5001e). Tester [Re-run the grounding checks](98b9d9fb-128b-445d-8563-a655d1323392). No reviewer. Pressure is 8.
+Files: `apps/api/app/ai_schema_client.py`, `apps/api/app/grounding/__init__.py`, `apps/api/app/grounding/tools.py`, `apps/api/app/grounding/rag.py`, `apps/api/tests/test_t4_ground.py`, `packages/module-generator/src/module_generator/__init__.py`, `packages/module-generator/tests/test_named_odoo_widget.py`.
+Commands and results: VERIFIED. pytest `tests/test_t4_ground.py` and `tests/test_ai_schema_client.py` — 18 passed. pytest `packages/module-generator/tests/test_named_odoo_widget.py` — 3 passed.
+Gates passed: T4-GROUND, compiler DoD 11, 13, 14.
+Negative tests: an unknown model never becomes a tool. No second RAG root. A generic stand-in does not replace a named widget.
+Not done: no commit. L4 stays off. No live LLM.
+Risks introduced: tool offers now depend on the schema client admitting the target.
+
+## 2026-10-05 — 5A-06
+Track: T5A 5A-06.
+Intent: A production destructive or billable apply needs a snapshot taken immediately before, on this connection.
+Model / band: no model. The tests were already in the tree. Orchestrator re-ran them.
+Files: `apps/api/app/snapshot_gate.py`, `apps/api/tests/test_snapshot_gate.py`. No new edit.
+Commands and results: VERIFIED. pytest `tests/test_snapshot_gate.py` — 28 passed.
+Gates passed: 5A-06, DoD 28.
+Negative tests: a 2-hour-old snapshot is refused. A snapshot from another connection is refused. BILLABLE without a snapshot is refused.
+Not done: no commit. L4 stays off.
+Risks introduced: none. The gate was already in the tree.
+
+CLAIM 5A-11 2026-10-05T06:36:00Z files: a compensating-plan builder that calls the existing change-set pipeline. Do not edit `apps/api/app/changeset/rollback.py` (it is already dirty). Do not edit `agent_runtime`. Do not enable L4. Do not commit. Do not undo a module install or a posted entry by this tier.
+
+## 2026-10-05 — 5A-11
+Track: T5A 5A-11.
+Intent: A compensating plan comes from audit change rows and waits for the existing approval pipeline. A module install and a posted entry are not undone.
+Model / band: cursor-grok-4.6-high-fast. Pressure 13. Worker [Build compensating rollback plans](5be7f4ea-76eb-4352-8fd7-edc1153518da). Tester [Re-run compensating rollback checks](86a55da4-c12a-455f-b682-ab3d6fd1e610). Reviewer [Review compensating rollback plans](0ffc0be8-32ef-4837-8ab0-0fa4de477caa): no blocking finding. Reviewed because the plan can unlink records.
+Files: `apps/api/app/rollback_tiers.py`, `apps/api/tests/test_rollback_tiers.py`.
+Commands and results: VERIFIED. pytest `tests/test_rollback_tiers.py` — 6 passed.
+Gates passed: 5A-11.
+Negative tests: a created `res.users` row is refused before any unlink is added. A posted `account.move` and a module install are listed as not reversible by this tier. `applied` stays false.
+Not done: no commit. L4 stays off. No live database restore.
+Risks introduced: an approved compensating plan can later unlink ordinary records. It does not apply itself.
+
+CLAIM 5A-12 2026-10-05T06:50:00Z files: `apps/api/tests/test_production_budgets.py` only. The pointer test looks for phrases the T6-06 retarget no longer uses. Point it at the current card text. Do not change budget numbers. Do not reintroduce two-person R3. Do not edit agent_runtime or changeset. Do not enable L4. Do not commit.
+
+## 2026-10-05 — 5A-12
+Track: T5A 5A-12.
+Intent: Production budgets stay at 40 steps, 120 tool calls, and 200 records. Everyday R3 stays one approval.
+Model / band: composer-2.5-fast. Pressure 7. Worker [Point budgets at the current window](3a3680e5-a679-405d-80d1-ea7f2d4a6555). Tester [Re-run the production budget tests](c58bf300-0572-4522-bf9f-0bd0da8e54cd). No reviewer. Pressure is 7.
+Files: `apps/api/tests/test_production_budgets.py`.
+Commands and results: VERIFIED. pytest `tests/test_production_budgets.py` — 6 passed.
+Gates passed: 5A-12.
+Negative tests: the 41st step and the 121st tool call raise BudgetExceeded. 201 records on production raise BlastRadiusExceeded. L4 still cannot be constructed. R4 self-approval stays false.
+Not done: no commit. L4 stays off. Change windows and the kill switch are pointers to T6-04, T6-06, and the existing bridge tests.
+Risks introduced: none. The test now matches the current window wording.
+
+CLAIM 5C-02 2026-10-05T06:52:00Z files: the L2 pause path and a property test over every catalog op. Do not enable L4. Do not edit agent_runtime unless the pause lives there. Do not start 5C-01. Do not commit.
+
+## 2026-10-05 — 5C-02
+Track: T5C 5C-02.
+Intent: At L2, every catalog write pauses and none of them apply.
+Model / band: composer-2.5-fast. Pressure 6. Worker [Pause every L2 write](0694a82f-2cdf-406a-ae39-0cadfba1691f). Tester [Re-run the L2 pause catalog](61d4b8e3-273c-4bbc-adb8-20d099feee70). No reviewer. Pressure is 6.
+Files: `apps/api/tests/test_worker_bot_l2_catalog.py`.
+Commands and results: VERIFIED. pytest `tests/test_worker_bot.py` and `tests/test_worker_bot_l2_catalog.py` — 72 passed. Catalog coverage 63 of 63.
+Gates passed: 5C-02.
+Negative tests: `module.uninstall` and `data.delete` are denied and still do not apply. The executor journal stays empty.
+Not done: no commit. L4 stays off. 5C-01 stays unstarted because it depends on T8-EXEC.
+Risks introduced: none. The test locks the pause that was already in the runtime.
+
+CLAIM 5C-03 2026-10-05T06:56:00Z files: the L3 staging path and a property test over the catalog. Do not enable L4. Do not start 5C-01. Do not edit agent_runtime unless the pause lives there. Do not commit.
+
+## 2026-10-05 — 5C-03
+Track: T5C 5C-03.
+Intent: L3 may apply a reversible change on staging only. Destructive and billable work still pauses. Production does not apply.
+Model / band: composer-2.5-fast. Pressure 8. Worker [Prove L3 staging pauses](a229dfbe-96f0-4270-88d9-2c6c398cd346). Tester [Re-run the L3 staging catalog](e75c585c-97ca-49a0-8813-bb24f0b6332e). Reviewer [Review the L3 staging apply rule](8e2b1f67-aad3-4c36-9571-32e6ff04afa0): no blocking finding. Reviewed because staging can apply without a person.
+Files: `apps/api/app/worker_bot/l3_policy.py`, `apps/api/app/worker_bot/runtime.py`, `apps/api/tests/test_worker_bot_l3_catalog.py`.
+Commands and results: VERIFIED. pytest `tests/test_worker_bot.py`, `tests/test_worker_bot_l2_catalog.py`, and `tests/test_worker_bot_l3_catalog.py` — 201 passed.
+Gates passed: 5C-03.
+Negative tests: production L3 never calls apply. Destructive and billable catalog ops do not auto-apply on staging. L4 is not a valid level.
+Not done: no commit. L4 stays off. 5C-01 and 5C-04 stay blocked on T8-EXEC.
+Risks introduced: 22 reversible ops can apply on staging at L3 without a separate approval.
+
+CLAIM 5C-05 2026-10-05T07:06:00Z files: the bot apply path when the fingerprint changed between plan and apply. Do not enable L4. Do not start 5C-01. Do not edit agent_runtime. Do not commit.
+
+## 2026-10-05 — 5C-05
+Track: T5C 5C-05.
+Intent: A schema change between plan and apply aborts the bot. The apply does not run.
+Model / band: composer-2.5-fast. Pressure 9. Worker [Abort the bot when the plan is stale](7d3aa920-a93b-4ce8-b7e1-5f670f921594). Tester [Re-run the stale-plan abort](61ab249d-39ae-429d-b2dd-e2366285bafb). No reviewer. Pressure is 9.
+Files: `apps/api/app/worker_bot/runtime.py`, `apps/api/tests/test_worker_bot_drift.py`.
+Commands and results: VERIFIED. pytest `tests/test_worker_bot.py`, `tests/test_worker_bot_l2_catalog.py`, `tests/test_worker_bot_l3_catalog.py`, and `tests/test_worker_bot_drift.py` — 202 passed.
+Gates passed: 5C-05.
+Negative tests: the drifted schema returns STALE, applied is false, and the journal stays empty. L2 still pauses all 63 ops. Production L3 still never applies.
+Not done: no commit. L4 stays off.
+Risks introduced: a matching fingerprint still proceeds to the existing apply path.
+
+CLAIM 5C-06 2026-10-05T07:14:00Z files: a test that an instruction buried in a product description causes no destructive action at L2 and at L3. Do not enable L4. Do not edit agent_runtime. Do not commit.
+
+## 2026-10-05 — 5C-06
+Track: T5C 5C-06.
+Intent: A product note that tells the bot to unlink records or grant admin does not cause that action at L2 or L3.
+Model / band: composer-2.5-fast. Pressure 8. Worker [Block injected instructions at L3](c0070888-45c8-447b-87a3-4114cbc71070). Tester [Re-run the injection tests](57dfee49-6b63-47ec-ad7f-65346e6fa54f). Reviewer [Review the buried-instruction tests](49ba6a75-0e9d-4200-9329-1107b21ee273): no blocking finding. Reviewed because the note tries to cause a destructive action.
+Files: `apps/api/tests/test_worker_bot_adversarial_embedded_5c06.py`.
+Commands and results: VERIFIED. pytest the new file, the L2 record-text test, the RT-01 admin test, and the injected-instruction test — 5 passed.
+Gates passed: 5C-06.
+Negative tests: L2 journal is empty. L3 journal is only `mail_template.create`. A changeset that already includes `data.unlink` stays paused.
+Not done: no commit. L4 stays off.
+Risks introduced: none. The tests lock the existing refusal.
+
+## 2026-10-05 — R3 self-approval test
+Track: T6-06 follow-up. Not a new card.
+Intent: The agent-runtime test matches the current rule. The same person may approve an everyday R3 plan. Heavy R4 stays refused.
+Model / band: composer-2.5-fast. Worker [Align the R3 self-approval test](1052aab9-cbd6-424a-9c00-63828e576269). Tester [Re-check everyday R3 self-approval](31e59f11-b5cb-43b0-a529-4d3f0b261790).
+Files: `apps/api/tests/test_agent_runtime.py`. The test is now `test_r3_self_approval_is_allowed`.
+Commands and results: VERIFIED. pytest that test — 1 passed. `test_r4_is_refused_even_with_a_matching_hash` was not changed.
+Not done: no commit. L4 stays off.
+Risks introduced: none. The assertion now matches the policy that was already in force.
+
+CLAIM 5C-07 2026-10-05T07:26:00Z files: a test that an L4 allow-list of every op still cannot unlink res.users, touch res.users.apikeys, or write a protected parameter. Do not enable L4 in any default. Do not edit agent_runtime. Do not commit.
+
+## 2026-10-05 — 5C-07 and L4-11
+Track: T5C 5C-07. Same tests close GATE-L4-11.
+Intent: Even a full allow-list cannot unlink a user, touch API keys, or write a protected parameter. L4 stays off as a runtime level.
+Model / band: cursor-grok-4.6-high-fast. Pressure 12. Worker [Keep never-allowed closed at L4](fcbd251a-67c6-427b-8252-40df317193e3). Tester [Re-run the L4 never-allowed checks](eddba123-b6da-4730-8aa8-cfaf7e748434). Reviewer [Review the L4 never-allowed gate](4518169f-bf53-4b70-8929-bf71b04ca2e7): no blocking finding. Reviewed because never-allowed is in the frontier family.
+Files: `apps/api/app/worker_bot/l4_policy.py`, `apps/api/tests/test_l4_never_allowed.py`.
+Commands and results: VERIFIED. pytest `tests/test_l4_policy.py`, `tests/test_l4_never_allowed.py`, and `test_invalid_level_l4_raises` — 9 passed.
+Gates passed: 5C-07, GATE-L4-11.
+Negative tests: unlink `res.users`, any method on `res.users.apikeys`, and `database.secret` are refused before the allow-list can return true. `WorkerBot("L4")` still raises.
+Not done: no commit. L4 stays off. GATE-L4-08 evidence does not exist.
+Risks introduced: none. The check runs before the only allow return.
+
+CLAIM 5C-09 2026-10-05T07:34:00Z files: a repeat test that 50 billable or destructive requests at L3 all pause. Do not enable L4. Do not edit agent_runtime. Do not commit.
+
+## 2026-10-05 — 5C-09
+Track: T5C 5C-09.
+Intent: Fifty billable or destructive requests at L3 all pause. None apply.
+Model / band: cursor-grok-4.6-high-fast. Pressure 10. Worker [Pause fifty risky L3 repeats](5e9e13b4-40bb-4e9e-b760-0550265c1b78). Tester [Re-run the fifty L3 pauses](373320df-3718-4b66-9ca3-9246f43c16d5). No reviewer. Pressure is 10.
+Files: `apps/api/tests/test_worker_bot_l3_repeat_pause_5c09.py`.
+Commands and results: VERIFIED. pytest that file and the existing destructive/billable L3 catalog test — 2 passed.
+Gates passed: 5C-09.
+Negative tests: the loop is 50. Each response is paused and not applied. R4 denials are excluded from the count.
+Not done: no commit. L4 stays off.
+Risks introduced: none. The test locks the existing pause.
+
+CLAIM L4-12 2026-10-05T07:39:00Z files: a check that a bot cannot widen its own allow-list. Do not enable L4 in any default. Do not edit agent_runtime. Do not stub GATE-L4-08. Do not commit.
+
+## 2026-10-05 — L4-12
+Track: T5C L4-12. GATE-L4-12.
+Intent: Only a human admin can change the allow-list. A bot call is refused and audited. Secrets and long opaque tokens are not written into that note. L4 stays off.
+Model / band: grok-4.7-high. Pressure 16. Worker [Stop a bot editing its allow-list](d6c37ee0-a357-473e-b277-fe29853e9120). Repairs [Keep secrets out of the allow-list note](67c7f9a9-0270-418d-af11-f8fe0196d6d8) and [Stop opaque tokens in the audit note](bd80c23e-51b6-4518-863f-9b20a95c308b). Testers [Re-run the allow-list grant checks](31528f9b-785f-4342-820e-81e5f7be4156), [Re-check the allow-list secret note](7d6f6fbe-23be-413d-bee4-6c5a38c2474e), and [Re-check the opaque tenant note](09e4f946-87ac-4f57-a2e6-f4642a996b23). Reviewers [Review the allow-list grant check](b7c6ee91-e8df-499a-88ff-d43dbde1e989) and [Review the secret-shaped tenant note](b805feec-5fef-4647-8abf-19ceb9adea94) blocked secret values in the note. Final reviewer [Review the opaque tenant note](7d978438-05e9-465a-939d-a176f7f6b513): no blocking finding.
+Files: `apps/api/app/worker_bot/l4_policy.py`, `apps/api/tests/test_l4_allow_list_grant.py`.
+Commands and results: VERIFIED. pytest `tests/test_l4_allow_list_grant.py`, `tests/test_l4_never_allowed.py`, and `test_invalid_level_l4_raises` — 23 passed.
+Gates passed: L4-12, GATE-L4-12.
+Negative tests: a bot tool call is refused. A template is not auto-applied. `sk-test-l412-do-not-log` and `0123456789abcdef0123456789abcdef` are absent from the note. A short slug is still stored. `WorkerBot("L4")` still raises.
+Not done: no commit. L4 stays off. The check is not called from the runtime, because L4 is not a level yet. GATE-L4-08 evidence does not exist.
+Risks introduced: a human admin can record an allow-list op in this policy object. Nothing applies it.
+
+CLAIM L4-01 2026-10-05T08:26:00Z files: the allow-list content check. An op outside the list is refused. An R2 DDL op is refused. An outbound email action is refused. Do not enable L4. Do not edit agent_runtime. Do not stub GATE-L4-08. Do not commit.
+
+## 2026-10-05 — L4-01
+Track: T5C L4-01. GATE-L4-01.
+Intent: An op is refused when it is off the allow-list, when it is an R2 schema change, or when it sends email. L4 stays off.
+Model / band: grok-4.7-high. Pressure 16. Worker [Refuse ops outside the allow-list](9709879d-e882-41ab-8afb-ce5e8ef9fbcc). Repair [Refuse the real email action shape](d1734666-4a98-4402-869c-40fa52540d94). Testers [Re-run the allow-list content checks](98cada07-d220-429a-99ab-8c778a921f05) and [Re-check the real email refusals](9421a8cb-8e97-4b5f-8ca4-975f83ec3405). Reviewer [Review the allow-list content gate](fa874941-6cdb-4d15-979a-7f351b7d185f) blocked the first email walk. Final reviewer [Review the real email refusals](b7c79dc7-e3c4-44d2-924a-c88e1bd8a011): no blocking finding.
+Files: `apps/api/app/worker_bot/l4_policy.py`, `apps/api/tests/test_l4_gates.py`.
+Commands and results: VERIFIED. pytest the L4 policy, never-allowed, grant, gates, and invalid-level tests — 40 passed.
+Gates passed: L4-01, GATE-L4-01.
+Negative tests: an off-list op is refused. An R2 DDL op is refused. `safe_actions` `mail_post` and `action_server_ids` `mail_post` are refused. A non-email field write under `safe_actions` is not treated as outbound. `WorkerBot("L4")` still raises.
+Not done: no commit. L4 stays off. GATE-L4-08 evidence does not exist.
+Risks introduced: none. The check still does not run inside `WorkerBot`, because L4 is not a level.
+
+CLAIM L4-02 2026-10-05T08:54:00Z files: one refusal test each for R3, R4, protected elevate, module install or upgrade, and promote. Do not enable L4. Do not edit agent_runtime. Do not stub GATE-L4-08. Do not commit.
+
+## 2026-10-05 — L4-02
+Track: T5C L4-02. GATE-L4-02.
+Intent: An allow-list cannot unlock everyday approvals, heavy work, protected elevation, module changes, or promote. L4 stays off.
+Model / band: grok-4.7-high. Pressure 16. Worker [Refuse R3 R4 modules and promote](d3412ef5-07d7-4985-a02a-b83ce0fd061e). Tester [Re-run the five L4 refusals](43b78648-58f3-4bed-bd53-d6b3fd0474e7). Reviewer [Review the five L4 refusals](a2edb55e-34f2-44df-abd1-124a63b21c6c): no blocking finding.
+Files: `apps/api/app/worker_bot/l4_policy.py`, `apps/api/tests/test_l4_gate_02.py`.
+Commands and results: VERIFIED. pytest the L4 gate, policy, gates, never-allowed, grant, and invalid-level tests — 45 passed.
+Gates passed: L4-02, GATE-L4-02.
+Negative tests: R3, R4, protected elevate, module install/upgrade/uninstall, and promote are each refused while allow-listed. An R1 field update on an elevate model is refused before the allow return. `WorkerBot("L4")` still raises.
+Not done: no commit. L4 stays off. GATE-L4-08 evidence does not exist.
+Risks introduced: none. The check still does not run inside `WorkerBot`.
+
+CLAIM L4-03 2026-10-05T09:12:00Z files: the Mode T and verified-staging check on the L4 decision. Do not enable L4. Do not edit agent_runtime. Do not edit changeset/executor.py unless the flags cannot be seen from l4_policy. Do not stub GATE-L4-08. Do not commit.
+
+## 2026-10-05 — L4-03
+Track: T5C L4-03. GATE-L4-03.
+Intent: A production decision is allowed only with Mode T and a verified staging apply of the same plan hash. Caller-supplied flags are not that record.
+Model / band: grok-4.7-high. Pressure 16. Worker [Require a verified staging apply](ea713e8a-62ef-421d-9dd8-9ae9f88dacdb). Repair [Require a real verified staging record](622d88dd-68c4-486b-93d4-d3c9b100b29f). Testers [Re-run the verified staging check](d1d20602-8ae9-4673-9bb5-20948fcfb02f) and [Re-check the staging record requirement](61636839-bb5c-4162-a5d9-16e6341ace3f). Reviewer [Review the verified staging gate](18466dc8-0c5b-48f4-ac2b-8dcaf1e7eeb5) blocked the flags-only path. Final reviewer [Review the real staging record](93f1c245-9d70-422c-bd22-8ca5aa56f80c): no blocking finding.
+Files: `apps/api/app/worker_bot/l4_policy.py`, `apps/api/tests/test_l4_gate_03.py`, and the L4 tests that now supply a real verified record on allow paths.
+Commands and results: VERIFIED. pytest the L4 gate, policy, never-allowed, grant, and invalid-level tests — 53 passed.
+Gates passed: L4-03, GATE-L4-03.
+Negative tests: Mode C is refused. A failed verification is refused. A different hash is refused. Flags alone return false. `res.users` unlink stays refused with a verified record present. `WorkerBot("L4")` still raises.
+Not done: no commit. L4 stays off. The executor was not edited. GATE-L4-08 evidence does not exist.
+Risks introduced: none. The allow path now requires a real staging record.
+
+CLAIM L4-04 2026-10-05T09:43:00Z files: a standing rule that becomes active only after two distinct admins, one of them the owner. Do not enable L4. Do not edit agent_runtime. Do not stub GATE-L4-08. Do not commit.
+
+## 2026-10-05 — L4-04
+Track: T5C L4-04. GATE-L4-04.
+Intent: A standing rule is active only after two different admin user ids, and one of them is the owner. An active rule does not turn L4 on.
+Model / band: grok-4.7-high. Pressure 16. Worker [Require two admins for a standing rule](321730b0-8d06-4a78-8b68-1af610b34428). Tester [Re-run the standing-rule checks](c7e65277-05ee-4f7b-adf4-0310c8942bda). Reviewer [Review the two-admin standing rule](920ab4c9-6b9c-4511-bb0b-fe7b005e42d2): no blocking finding.
+Files: `apps/api/app/worker_bot/standing_rule.py`, `apps/api/tests/test_l4_gate_04.py`.
+Commands and results: VERIFIED. pytest `tests/test_l4_gate_04.py`, `test_invalid_level_l4_raises`, `tests/test_l4_gate_03.py`, and `tests/test_l4_gate_02.py` — 27 passed.
+Gates passed: L4-04, GATE-L4-04.
+Negative tests: the same user id twice counts once. A missing user id does not count. Two admins who are not the owner do not activate the rule. `WorkerBot("L4")` still raises.
+Not done: no commit. L4 stays off. No migration was applied. GATE-L4-08 evidence does not exist.
+Risks introduced: none. The book is in memory.
+
+CLAIM L4-05 2026-10-05T09:56:00Z files: standing-rule expiry, at most 30 days, checked at create and at apply. Do not enable L4. Do not edit agent_runtime. Do not stub GATE-L4-08. Do not commit.
+
+PAUSE L4 sequence 2026-10-05T10:00:00Z. Tope: build missing or partial features before more audit and security cards. L4-05 was stopped before any edit. L4-06 through L4-10 stay open. L4 stays off. Do not resume this sequence until the feature cards ahead of it are built.
+
+CLAIM T6-08 2026-10-05T10:01:00Z files: the command center at apps/web/src/app/command. Live counts for clients, pending approvals, failed jobs, and drift. Each tile has its own skeleton. A Client Approver is sent to their inbox. Do not enable L4. Do not edit agent_runtime or changeset. Do not commit.
+
+## 2026-10-05 — T6-08
+Track: T6 T6-08.
+Intent: The command center shows live counts. A slow tile does not blank the page. A client approver is sent to their inbox.
+Model / band: composer-2.5-fast. Pressure 8. Worker [Build the command center counts](f6dbae00-d050-4c25-acc0-894ace20854f). Tester [Re-run the command center tests](f28ce35e-d129-4e74-946f-aacd0adb8b99). No reviewer.
+Files: `apps/api/app/routers/command_center.py`, `apps/api/app/main.py`, `apps/api/tests/test_command_center_tiles.py`, `apps/web/src/components/command/CommandCenterTile.tsx`, `apps/web/src/app/command/page.tsx`, `apps/web/src/app/command/page.test.tsx`, `apps/web/src/app/approvals/page.tsx`, `apps/web/src/app/approvals/page.test.tsx`.
+Commands and results: VERIFIED. vitest the command page and the approvals page — 4 passed. pytest `tests/test_command_center_tiles.py` — 2 passed.
+Gates passed: T6-08.
+Negative tests: a client approver is redirected to `/approvals`. A client grant reading the clients tile gets 403.
+Not done: no commit. L4 stays off. The API on :8001 does not reload, so the live page will not show the new counts until that process is restarted.
+Risks introduced: consultants can read four fleet counts. Clients cannot.
+
+CLAIM T6-09 2026-10-05T10:10:00Z files: one page for a single connection showing the connection, open change-sets, and the last snapshot. If there is no bot roster yet, say so. Do not invent bots. Do not enable L4. Do not edit agent_runtime or changeset. Do not commit.
+
+## 2026-10-05 — T6-09
+Track: T6 T6-09.
+Intent: One page shows a connection, its open change-sets, and the last snapshot. The bot roster is not invented.
+Model / band: composer-2.5-fast. Pressure 7. Worker [Build the per-client page](1231c317-7dbb-4452-ad37-ed0b5fdbfe8c). Tester [Re-run the per-client page test](45154080-a5ca-49ab-8731-60ceae888c1d). No reviewer.
+Files: `apps/web/src/app/connections/[id]/client/page.tsx`, `apps/web/src/app/connections/[id]/client/page.test.tsx`, `apps/web/src/components/connection-client/ConnectionClientPanel.tsx`, `apps/web/src/components/connection-client/ClientSectionCard.tsx`, `apps/web/src/components/connection-client/useConnectionClientSections.ts`, `apps/web/src/lib/api/inbox.ts`, `apps/web/src/lib/api.ts`, `apps/web/src/lib/nav.ts`, `apps/web/src/components/overview/OverviewHomeChrome.tsx`.
+Commands and results: VERIFIED. vitest `src/app/connections/[id]/client/page.test.tsx` — 2 passed.
+Gates passed: T6-09.
+Negative tests: a failed connection section does not hide the change-set and snapshot sections. The bot roster says it is not available yet.
+Not done: no commit. L4 stays off. No live browser pass on this page.
+Risks introduced: none. The page reads existing connection, inbox, and snapshot APIs.
+
+CLAIM GND-PKT 2026-10-05T10:15:00Z files: apps/api/app/live_schema_context.py and a fixture test. Packet for sale.order lists partner_id and form siblings in arch order. A missing field or method is absent. A stale catalog yields an empty packet. No connection does not guess. Do not edit agent_runtime or changeset. Do not call a live model. Do not commit.
+
+## 2026-10-05 — GND-PKT
+Track: T1 GND-PKT.
+Intent: Generation can read a packet of the connected schema. A missing field, a missing method, and a stale catalog do not become a yes.
+Model / band: cursor-grok-4.6-high-fast. Pressure 10. Worker [Build the live schema packet](2def2823-a8da-4253-b58d-ff9257e6f42f). Tester [Re-run the schema packet tests](49d789cd-57f4-4661-9012-9d7ce0fb1dfa). No reviewer.
+Files: `apps/api/app/live_schema_context.py`, `apps/api/tests/test_live_schema_context.py`.
+Commands and results: VERIFIED. pytest `tests/test_live_schema_context.py` — 5 passed.
+Gates passed: GND-PKT.
+Negative tests: no connection raises. The packet does not guess Community defaults. `formatted_read_group` is absent on major 17.
+Not done: no commit. Later cards still have to consume the packet. No live model call.
+Risks introduced: none. The packet is built from the existing schema client.
+
+CLAIM GND-GEN 2026-10-05T10:23:00Z files: Draft Studio generation reads the schema packet before the model reply is admitted. A field the packet does not contain is discarded. Do not call a live model. Do not edit agent_runtime or changeset. Do not commit.
+
+## 2026-10-05 — GND-GEN
+Track: T1 GND-GEN.
+Intent: Draft Studio sees the connected schema packet. A field or app the packet does not contain is dropped.
+Model / band: cursor-grok-4.6-high-fast. Pressure 12. Worker [Feed the schema packet into Draft Studio](44d41baa-6065-4fb3-bbb3-2754a39d06ef). Tester [Re-run the Draft Studio packet tests](c65026ee-ceae-46a5-8cc9-255251a1fe95). No reviewer.
+Files: `apps/api/app/live_schema_context.py`, `apps/api/app/ai_conversation/intent_llm.py`, `apps/api/app/ai_conversation/understand.py`, `apps/api/app/ai_conversation/refine.py`, `apps/api/app/routers/ai_studio.py`, `apps/api/tests/test_gnd_gen_live_schema.py`.
+Commands and results: VERIFIED. pytest `tests/test_gnd_gen_live_schema.py` and `tests/test_live_schema_context.py` — 9 passed.
+Gates passed: GND-GEN.
+Negative tests: `x_po_ref` is absent from the result. An intent host `project.task` outside the packet is discarded and is not a new app.
+Not done: no commit. No live model. Expert, demo, and autopilot do not consume the packet yet.
+Risks introduced: generation prompts now include the schema slice for that connection.
+
+CLAIM GND-EXPERT 2026-10-05T10:45:00Z files: expert/ask.py cites the schema packet when a connection exists. A second read happens only when the first slice lacks the field. Do not call a live model. Do not edit agent_runtime or changeset. Do not commit.
+
+## 2026-10-05 — GND-EXPERT
+Track: T1 GND-EXPERT.
+Intent: When a connection exists, Expert cites the schema packet. A second read happens before it says a field is missing.
+Model / band: composer-2.5-fast. Pressure 9. Worker [Make Expert cite the schema packet](9b1319c3-b9c4-4ddc-b9b1-e8ed1732ac9d). Tester [Re-run the Expert packet tests](a70eeebb-ff3e-4f1d-a726-568bcc841282). No reviewer.
+Files: `apps/api/app/expert/live_schema_ask.py`, `apps/api/app/expert/ask.py`, `apps/api/tests/test_gnd_expert_live_schema.py`.
+Commands and results: VERIFIED. pytest `tests/test_gnd_expert_live_schema.py` and `tests/test_expert_ask.py` — 25 passed.
+Gates passed: GND-EXPERT.
+Negative tests: retrieval notes cannot introduce a field the packet does not contain. Decline happens only after the second read shows no field and no host to add one on.
+Not done: no commit. No live model. Demo and autopilot do not consume the packet yet.
+Risks introduced: Expert field answers for a connected database now come from the packet before the model reply.
+
+CLAIM GND-AUTO 2026-10-05T10:52:00Z files: job autopilot planner, ingest classify, and workflow drop a model or method the schema packet does not contain, before sandbox apply. Do not call a live model. Do not edit agent_runtime or changeset. Do not commit.
+
+## 2026-10-05 — GND-AUTO
+Track: T1 GND-AUTO.
+Intent: Job Autopilot, ingest, and workflow drop a model or method the connected schema does not contain, before apply.
+Model / band: cursor-grok-4.6-high-fast. Pressure 10. Worker [Drop unknown names before autopilot apply](89cfd8b5-6e45-48ce-9934-840135af0a1f). Repair [Bind the schema packet on autopilot](360af10c-b5f4-4d20-a7ec-c52950a7462a). Testers [Re-run the autopilot packet tests](1ec2db5a-022e-4185-9542-97f227ade538) and [Re-check autopilot builds the packet](5d158b07-e46c-4548-a335-60a34577c1cc). No reviewer.
+Files: `apps/api/app/job_autopilot/planner.py`, `apps/api/app/job_autopilot/executor.py`, `apps/api/app/routers/job_autopilot.py`, `apps/api/app/ingest/classify.py`, `apps/api/app/ingest/pipeline.py`, `apps/api/app/ai_workflow.py`, `apps/api/app/live_schema_context.py`, `apps/api/app/routers/ai_studio.py`, `apps/api/tests/test_gnd_auto_live_schema.py`.
+Commands and results: VERIFIED. pytest `tests/test_gnd_auto_live_schema.py` — 8 passed. `build_job_packet_for_connection` drops `project.task` without the test passing a packet in.
+Gates passed: GND-AUTO.
+Negative tests: `formatted_read_group` does not leave the planner on major 17. Ingest and workflow drop models outside the packet.
+Not done: no commit. No live model.
+Risks introduced: an autopilot run with a connection now builds a schema packet before it plans.
+
+CLAIM GND-DEMO 2026-10-05T11:15:00Z files: live demo answers for "Can Odoo do this?" with no client database. Do not call a live model. Do not ask the user to connect a database. Do not edit agent_runtime or changeset. Do not commit.
+
+## 2026-10-05 — GND-DEMO
+Track: T1 GND-DEMO.
+Intent: An open demo question gets one model verdict. The version and edition table checks it. A failed check becomes not sure. Bullets are cut from that verdict.
+Model / band: cursor-grok-4.6-high-fast. Pressure 10. Worker [Answer Can Odoo do this](5a0650c1-a8fb-4d9c-ae6a-bd9b46fe4b05) first shipped a table-only answer and removed the model. Repair [Restore one model call on the demo answer](8e1cd714-5b04-4f33-9dbd-2f1f58511737). Tester [Confirm the demo uses one model call](6693f631-a512-4f4e-8ec9-812f4ec7d189) read the code, not only the count.
+Files: `apps/api/app/live_demo_copilot/stage2_answer.py`, `apps/api/tests/test_gnd_demo.py`.
+Commands and results: VERIFIED. pytest `tests/test_gnd_demo.py` — 14 passed. The tester confirmed one `generate_json`, a failed check becomes not sure, and bullets are not rewritten by a second call.
+Gates passed: GND-DEMO.
+Negative tests: Helpdesk claimed as Community stock becomes not sure. A bank API claimed as stock becomes not sure. A not-sure model answer on quotations is not upgraded to Sales stock. Major 16 is not a demo target.
+Not done: no commit. No live model. The pipeline still defaults the picker to major 20 and Community when the caller does not pass a target.
+Risks introduced: a demo answer now depends on one scripted or live model call, then the table.
+
+CLAIM T8-OP-SCHEMA 2026-10-05T11:43:00Z files: the schema operations model.create, model.scaffold, field.create, field.update, field.deprecate, field.delete, selection.update, and constraint.sql, using the existing executor. Do not enable L4. Do not edit agent_runtime. Do not commit.
+
+## 2026-10-05 — T8-OP-SCHEMA
+Track: T8 T8-OP-SCHEMA.
+Intent: Creating and changing models and fields goes through the existing executor. Cascade stays off. A compute is R3. A type change is refused. Deleting a non-empty financial, HR, or stock field is R4.
+Model / band: cursor-grok-4.6-high-fast. Pressure 12. Worker [Build the schema change operations](b97b941a-be4d-4261-b1fd-1d6f15daee01). Tester [Re-run the schema operation tests](93530952-85dc-48a1-b283-96a63c2c7ef9). No reviewer.
+Files: `apps/api/app/changeset/schema_ops.py`, `apps/api/app/changeset/handlers.py`, `apps/api/app/changeset/dispatch.py`, `apps/api/app/changeset/meta_snapshot.py`, `apps/api/tests/test_schema_ops.py`, `apps/api/tests/engine/test_suite_01_op_conformance.py`.
+Commands and results: VERIFIED. pytest `tests/test_schema_ops.py` and `tests/engine/test_suite_01_op_conformance.py` — 21 passed.
+Gates passed: T8-OP-SCHEMA.
+Negative tests: cascade is forbidden. A type change is unsupported. `constraint.sql` is refused off `x_` models. Scaffolding into a protected model is refused.
+Not done: no commit. No live Odoo. L4 stays off.
+Risks introduced: seven schema ops now apply through the executor, not only `field.create`.
+
+CLAIM T8-OP-UI 2026-10-05T12:00:00Z files: view, action, menu, filter, and report operations on the existing executor. One anchor per inherit. Replacing the root or a large subtree is refused. Reports are R2. Do not enable L4. Do not edit agent_runtime. Do not commit.
+
+CLAIM T8-OP-LOGIC 2026-10-05T12:15:00Z files: server action, automation, cron, sequence, mail template, activity type, stage, and config record ops on the existing executor. Code/email/SMS/webhook, outbound or mass automation, and cron are R3. Accounting/journal/legal sequences are R4. safe_eval AST rejects RT-25. Do not enable L4. Do not edit agent_runtime. Do not commit.
+
+CLAIM T8-OP-SET 2026-10-05T12:20:00Z files: setting, config param, company, and module install/upgrade/uninstall ops on the existing executor. module_* is R3 and may be BILLABLE; protected keys forbidden; lock dates, fiscal year, currency, and chart are R4; uninstall is R4 and prohibited in v1. Do not enable L4. Do not edit agent_runtime. Do not commit.
+
+CLAIM T6-11 2026-10-05T12:25:00Z owner: Grok bot (external). files: a new read-only five-track dashboard API router plus its include in main.py, and a new web route with its test. Not changeset/, agent_runtime/, worker_bot/, or l4_policy. Do not commit.
+
+CLAIM T8-CLI 2026-10-05T12:50:00Z files: `changeset/cli.py`, `tests/test_changeset_cli.py`. plan|validate|simulate|apply|rollback on a two-op change-set against a fake port, no LLM import. Do not commit.
+
+## 2026-10-05 — Heavy R4 gap: T8-OP-LOGIC and T8-OP-SET back to SEEDED, T8-OP-DATA held OPEN
+`02_APPROVAL_FLOW.md` line 47–50: R4 heavy (data delete, accounting/legal sequences, fiscal year, currency, chart of accounts, admin grants, module uninstall) applies with 2 distinct people + domain owner when elevated + simulation + backup + allowed window. R4 hard stop (raw SQL, rpc.write, payment secrets, posted entries, lock dates, group-less ACL) is denied. `policy.py` already classifies both. The op families refuse every heavy op outright after the gate passes, which is narrower than the cards. Correction: the T8-OP-LOGIC entry's note "refused outright ... matches R4, which is denied everywhere" is wrong. Exception kept: `module.uninstall` stays prohibited (T8-OP-SET card says "prohibited in v1").
+T8-OP-DATA (Grok bot, 2026-10-05T12:58Z): all other boxes pass; re-run `pytest tests/test_data_ops.py ... tests/test_red_team_engine.py` → 435 passed, 1 skipped, 32 errors (all Postgres 5433 down in conftest). Open: `data.delete` never applies.
+Fix card T8-HEAVY-R4 (Grok bot): heavy ops apply only when the heavy gate passed; hard stops stay denied; without the gate they stay refused.
+
+CLAIM T8-HEAVY-R4 2026-10-05T13:05:00Z owner: Grok bot (external). files: heavy-R4 branches in `changeset/logic_ops.py`, `setting_ops.py`, `data_ops.py`, `handlers.py`, `dispatch.py`, and their tests. Not `module.install`, not `cli.py`, not `meta_snapshot.py`. Do not commit.
+
+## 2026-10-05 — 5C-04 returned to Grok bot (not DONE)
+Grok changed `recovery.py` and `executor.py` (queue/wait lock, 5 s heartbeat, `reclaim_stale`, release in `finally`), added `test_multi_client_lock.py`, and rewrote `database_busy` assertions in `test_suite_13_lock.py` and `test_executor_wal.py`. The card requires a second apply to queue, so those rewrites are required, and the new ones are stronger (no interleave). `odoo_addons/` untouched.
+Orchestrator re-run: 180 passed, 1 skipped, **1 failed**: `test_executor_wal.py::test_one_apply_per_odoo_database` fails 3/3. `timed_out["status"]` is VERIFIED, not NEEDS_HUMAN. Likely cause: run-1 is acquired at the fixed `_NOW` (2026-10-03) with `stale_after=30s`, so the waiting acquire reclaims it as stale and the apply proceeds.
+Open notes for DONE:
+- `recover_stale_applying` (which calls `reclaim_stale`) has no scheduler or caller. Stale locks are reclaimed only when another apply waits on them.
+- The lock is in-process only. Separate API processes are not covered until the `apply_database_lock` table (alembic `s9t0u1v2w3x4`, not applied) is used.
+- `depends_on` T8-EXEC is still OPEN.
+
+## 2026-10-05 — GND-G-MAP and GND-G-TEXT DONE
+`live_schema_context.py` gains `technical_names` and `unknown_technical_names` (same regex as `drop_unknown_technical_names`; no second cache).
+- `ingest/map_columns._llm_map_columns`: the caller's `schema_packet` (or one built via `LiveSchemaClient`, fields only) goes in the prompt, and only fields on the packet model are kept. A dropped column stays unmapped with the warning "LLM proposed 'y', which is not a field on M". With no packet or no fields, the LLM is never called.
+- `expert/narrative.generate_finding_narratives`: the packet (argument, or the bound packet) goes in the prompt. A paragraph naming something outside the packet and outside its own finding text falls back to `_fallback_paragraph`.
+- `routers/ai_studio.refine_session_route` via `_grounded_refine_reply`: the packet goes in the prompt. A reply naming something outside the packet, the changed fields, or `patch_summary` is replaced by `patch_summary`.
+The gate test moves the 3 entries to `live_packet`. New tests: `test_gnd_g_map_live_schema.py` (6), `test_gnd_g_text_live_schema.py` (6).
+Commands, re-run by orchestrator: gate + new + `test_expert_upgrade` + `test_live_schema_context` + GND-GEN/AUTO/EXPERT tests → 51 passed in 4 of 5 runs. One run had 1 failure that didn't recur, probably shared DB state while the Grok bot was running tests.
+Three wider failures are outside the files this pass changed:
+- `test_build_draft_job_kwargs_includes_run_body_fields`: `build_draft_job_kwargs` lacks `ai_session_id`, from committed `ai_draft_jobs.py` (`807a62e`).
+- `test_sync_job_loads_background_job_into_review`: a leftover `job-sync-test-1` row in the app DB.
+- `test_expert_repairs_live_apply_activity_mixin`: the `apply_fixes` branch has no narratives.
+Decisions accepted:
+- A narrative may repeat names from its own finding text, so it can explain the bad name the finding is about.
+- A refine reply may use only the packet, the changed fields, and `patch_summary`.
+Follow-up: `review_draft` doesn't pass the connection packet into narratives yet.
+
+## 2026-10-06 — GND-G-PIPE DONE
+The worker hit the monthly usage limit before it reported. The orchestrator verified what it left on disk.
+- `live_schema_context.py` gains the shared helpers `stock_field_allowed`, `_drop_unknown_stock_field_refs`, `_ground_value`, and `draft_grounding`.
+- The 8 sites put `schema_packet` in the prompt and filter the output: `ai_pipeline._llm_json`, `ai_depth.llm_expand_depth`, `ai_critique.llm_critique`, `ai_model_quality.llm_deepen_model_fields` / `llm_emit_missing_scaffold_models`, `ai_domain_briefing._enrich_briefing_with_llm`, `ai_ollama.draft_module_from_prompt` / `call_ollama_generate`. `call_ollama_generate` is grounded, not deleted.
+- The gate test lists all 8 as `live_packet`. New `test_gnd_g_pipe_live_schema.py` has 9 tests: one per site plus a no-connection prompt rule, with 13 assertions that an invented stock field is dropped and an `x_*` field is kept.
+Commands, orchestrator:
+- gate + `test_gnd_g_pipe_live_schema` + `test_gnd_gen_live_schema` → 27 passed.
+- Known-failing suites (`test_ai_stock_first`, `test_ai_honesty_ir_independent`, `test_ai_conversation_integrations`): 10 failed / 51 passed, the same set before and after (baseline `/tmp/gnd_pipe_before_known.txt`).
+- Touched-module suites (44 files, `/tmp/gnd_pipe_suites.txt`): 55 failed / 753 passed / 1 skipped, the same 55 ids before and after (`diff` empty).
+GND-GATE now waits only on GND-G-OPTA (Grok bot; `ai_option_a_packet_ground.py` and the gate entries are already on disk, unverified) and GND-AGENT. files: the 8 pipeline sites, one shared helper, tests/test_gnd_gate_llm_call_sites.py (pipeline entries only), new tests. Not changeset/, agent_runtime/, ai_option_a_*, web. Do not commit. files: ingest/map_columns.py, expert/narrative.py, routers/ai_studio.py (refine reply only), tests/test_gnd_gate_llm_call_sites.py, new tests. Not changeset/, agent_runtime/, web. Do not commit.
+CLAIM GND-G-OPTA 2026-10-05T14:40:00Z owner: Grok bot (external), after 5C-04. Files: ai_option_a_author.py, ai_option_a_feedback.py, a new static reference checker, tests/test_gnd_gate_llm_call_sites.py (Option A entries only).
+
+## 2026-10-05 — UI-F11 DONE
+Already in `49bcefb`: react-virtuoso above 50 rows (`DEFAULT_VIRTUALIZE_THRESHOLD`), a plain table at 50 or fewer, a sticky header, ArrowUp/Down with scroll-into-view, `BulkResultTable` via DataTable, and the 5,000-row sort/filter timing test (0.2–1.5 ms against 100 ms).
+This pass, in `DataTable.tsx`:
+- `aria-rowcount` counts the header row and is left off while loading or empty.
+- Every row has an `aria-rowindex`, and sortable headers have `aria-sort`.
+- The scroll frame shows a `ring-accent` focus ring.
+- The active row gets an accent tint and bar while the table has focus.
+- `fixedItemHeight` is removed so virtuoso measures wrapped rows.
+Files: `DataTable.tsx`, `DataTable.test.tsx` (+6, existing unchanged), `app/e2e/data-table/page.tsx` (new harness), `e2e/a11y-ui-f11.spec.ts` (new), `docs/vision-verify/UI-F11/` (AUDIT.md, axe-results.jsonl, 4 shots).
+Commands, re-run by orchestrator: vitest `src/components/ui` → 85 passed; `a11y-ui-f11.spec.ts` → 4 passed (axe 0 on the tables and the whole page, desktop and 390). Worker: tsc 18 → 18; `a11y-primary` + `a11y-ui-f05` 44/44; 40 ArrowDowns reach row 41 of 5,000.
+Follow-ups that predate this card:
+- eslint `react/display-name` on `TableHead`/`TableBody` (from `49bcefb`).
+- Hand-built unbounded tables outside the card's Change list: housekeeping, `CronJobsList`, `BulkResultsSection`.
+- The active row uses `aria-selected`, which overlaps checkbox selection in selectable tables.
+
+UX audit (notes in `docs/vision-verify/UI-F11/AUDIT.md`):
+
+| Area | Result |
+|---|---|
+| Hierarchy, Interaction, Feedback, Accessibility, Cognitive load, Trust, Performance, Business goal | Pass |
+| IA, Errors, Copy, Forms | Not observable (nothing changed) | files: components/ui/DataTable.tsx and table callers as the card names. Not API. Do not commit.
+
+## 2026-10-05 — GND-GATE SEEDED (gate built; not DONE)
+`apps/api/tests/test_gnd_gate_llm_call_sites.py` (new, 11 tests) reads every `generate_json` / `generate_text` call site under `apps/api/app` without importing it, plus the callers of the two wrappers (`generate_json_with_timeout_retry`, `llm_json_with_budget`). Sites are keyed by file, function, and call count. It fails on any site not on the allowlist and on stale entries. A `live_packet` claim must reference `schema_packet` in its own function. `version_table` and `refuses_invent` claims need a marker in their module, and every grounded entry must point at an existing test. Mutant tests cover a new method call, a new bare call, a new wrapper caller, an extra call in a listed function, a stale entry, and a false `live_packet` claim. CI already runs the full api pytest (`ci.yml:61`), so no hook was needed.
+Command, re-run by orchestrator: `pytest tests/test_gnd_gate_llm_call_sites.py tests/test_live_schema_context.py` → 16 passed.
+Why not DONE: the card is "No ungrounded LLM surface left" and depends on GND-AGENT (OPEN). 30 sites total:
+- 9 grounded: GND-GEN `intent_llm`/`understand`/`refine`, GND-EXPERT `ask_expert`, GND-AUTO `planner`/`classify`/`ai_workflow`, GND-DEMO `stage2_answer`, and `wireframe_live`, which refuses to invent.
+- 5 can't name Odoo structure.
+- 3 are provider plumbing.
+- **13 ungrounded**, each listed as `ungrounded` in the test, not as grounded:
+  - `ai_pipeline._llm_json`, `ai_depth.llm_expand_depth`, `ai_critique.llm_critique`
+  - `ai_model_quality.llm_deepen_model_fields` / `llm_emit_missing_scaffold_models`
+  - `ai_domain_briefing._enrich_briefing_with_llm`
+  - `ai_ollama.draft_module_from_prompt` / `call_ollama_generate` (the latter has no callers)
+  - `ai_option_a_author._default_generate_blocks`, `ai_option_a_feedback._default_repair_blocks`
+  - `ingest/map_columns._llm_map_columns` (field list in the prompt, output not filtered)
+  - `expert/narrative.generate_finding_narratives`
+  - `routers/ai_studio.refine_session_route` (display-only paraphrase)
+
+Each needs grounding, or a recorded out-of-scope decision, before DONE. When GND-AGENT lands, extend the scanned names to cover the gateway `complete()`. files as the card names (allowlist plus its test/CI hook). Not changeset/, agent_runtime/, web. Do not commit.
+
+## 2026-10-05 — UI-F05 DONE
+The Base UI swap, Radix removal, and `Tabs.test.tsx` were already in `65fbcbd`. Base UI already provides the roles, `aria-selected`, roving tabindex, `aria-controls`/`aria-labelledby`, arrow keys, and Home/End. This pass adds to `components/ui/Tabs.tsx`: a `ring-accent` focus-visible ring on tabs and panel; a Base UI `Tabs.Indicator` 2 px accent underline that moves only by `translate` plus `scaleX` (UI-F09 constants, 200 ms; opacity only under reduced motion); and an exported `tabsIndicatorMotionStyle`. Public API unchanged, 5 callers untouched.
+Files: `Tabs.tsx`, `Tabs.a11y.test.tsx` (new, 11), `e2e/a11y-ui-f05.spec.ts` (new, 5), `docs/vision-verify/UI-F05/` (AUDIT.md, axe-results.jsonl, 4 shots).
+Commands, re-run by orchestrator: vitest `src/components/ui` → 78 passed; `a11y-ui-f05.spec.ts` → 5 passed. Worker: tsc 18, none new. axe: the tabs subtree on `/e2e/kit` is 0 at desktop and 390. The whole page has 5 serious color-contrast failures outside the component this card touched: 4 `CodeBlock` syntax tokens and 1 `.text-success` in the bulk table. Those belong to UI-F12, which requires axe on every route.
+Follow-ups that predate this card:
+- Kit page contrast failures listed above.
+- `/e2e/kit` scrolls sideways at 390 px (CodeBlock, DataTable, button row).
+- `ProjectDiffPanel.test.tsx` "elevates a trustworthy change review…" expects "Promote stays human"; the committed copy says "Apply/Promote stay human". Not touched.
+- The T7 card header says the typecheck baseline is 13; the measured baseline is 18.
+
+UX audit (notes in `docs/vision-verify/UI-F05/AUDIT.md`):
+
+| Area | Result |
+|---|---|
+| Hierarchy, Interaction, Feedback, Accessibility, Cognitive load, Trust, Performance, Business goal | Pass |
+| IA, Errors, Copy, Forms | Not observable (nothing changed) | files: Tabs primitive to Base UI and its callers as the card names. Not API, Button, Tooltip. Do not commit.
+
+## 2026-10-05 — UI-F06 DONE
+The Base UI swap and Radix removal were already in `ba38ac9`. This pass adds to `components/ui/Tooltip.tsx`: the trigger points at the open popup with `aria-describedby` (Base UI 1.8.0 doesn't set it; a describedby the child already had is kept), and `tooltipMotionStyle` animates transform/opacity with the UI-F09 constants (200 ms enter, 150 ms exit; opacity only under reduced motion). Public API unchanged, 9 callers untouched.
+Files: `Tooltip.tsx`, `Tooltip.a11y.test.tsx` (new, 7), `e2e/a11y-ui-f06.spec.ts` (new, 5), `docs/vision-verify/UI-F06/` (AUDIT.md, axe-results.jsonl, 4 shots).
+Commands, re-run by orchestrator: vitest `src/components/ui` → 67 passed; `a11y-ui-f06.spec.ts` → 5 passed (axe 0 violations while open, desktop and 390). Worker: tsc 18, none new. Close delay is 0 ms; the card names no close timing.
+Follow-ups that predate this card:
+- `shell-expert.spec.ts` "expert panel opens from harness" fails because the `FirstWriteInterstitial` modal (last changed `bbc7111`) covers Ask Expert.
+- Hydration id mismatch on `/e2e/expert`, above Tooltip.
+- `Sidebar.tsx` (sr-only span) and `ExpertSources.tsx` (`<sup>`) tooltip triggers can't take focus, so keyboard users never see them.
+
+UX audit (notes in `docs/vision-verify/UI-F06/AUDIT.md`):
+
+| Area | Result |
+|---|---|
+| Hierarchy, Interaction, Feedback, Accessibility, Cognitive load, Trust, Performance, Business goal | Pass |
+| IA, Errors, Copy, Forms | Not observable (nothing changed) |
+
+## 2026-10-05 — UI-F07 DONE files: Tooltip primitive to Base UI and its callers as the card names. Not app/command, not API. Do not commit.
+
+## 2026-10-05 — UI-F07 DONE
+`components/ui/Button.tsx` `asChild` now uses Base UI `useRender` (`@base-ui/react` 1.8.0, nothing installed): merged className, chained onClick, forwarded + child refs kept; disabled/loading + asChild → `aria-disabled`, `tabIndex=-1`, navigation cancelled. Not the `@base-ui/react/button` primitive (adds `role="button"` to anchors and defaults `type="button"`, which would stop untyped form submits); the card allows `render`. Radix already gone (`rg -l "@radix-ui" src` → 0). Visible change: `ModuleSpecApplyBar` asChild span now dims while working.
+Files: `Button.tsx`, `Button.asChild.test.tsx` (+6; existing 4 unchanged).
+Commands: vitest `src/components/ui` → 60 passed (re-run by orchestrator); tsc 18 (baseline 19, none new); web restarted with `NEXT_PUBLIC_E2E=1`, `e2e/a11y-primary.spec.ts` → 38 passed, 1 failed; shots `docs/vision-verify/UI-F07/kit-desktop.png`, `kit-390.png`. No copy change.
+The one failure is Automations `color-contrast`: `text-ui-meta text-muted` (`--muted` → `--n8`, #838388 on #fff = 3.77:1 at 11 px) on a `<p>` and `<span>`, not Button; styles unchanged in the working tree, so it predates this card. Follow-up for the token/colour work: `--n8` at 11 px fails AA wherever `text-ui-meta text-muted` sits on white.
+Note: the web server on :3002 now runs with `NEXT_PUBLIC_E2E=1`.
+
+CLAIM UI-F07 2026-10-05T14:10:00Z files: `components/ui/Button.tsx` asChild / Slot and its callers as the card names. Not app/command, not API. Do not commit.
+
+## 2026-10-05 — UI-F10 DONE
+One shared `components/auth/TotpCodeInput.tsx` (input-otp, already installed): 6 digit-only slots, numeric inputmode, `autocomplete="one-time-code"`, paste fills all (spaces/dashes stripped), linked label/description/error, `aria-busy` while verifying, opacity-only caret off under reduced motion. Logic in `lib/auth/totp.ts`. Login is the only code entry (no enrol page yet). Login screen brought to the UI bar on review: padded card, full-width primary Sign in / Complete sign-in, footer split into "New here? Create an account" and "Forgot your password?", hidden during the OAuth 2FA step.
+Files: `lib/auth/totp.ts`, `components/auth/TotpCodeInput.tsx` + test (9), `app/login/page.tsx` + test (6), `e2e/ui-f10-totp.spec.ts`, `docs/vision-verify/UI-F10/` (4 shots + AUDIT.md).
+Commands: vitest → 15 passed; Playwright with axe (WCAG 2.2 AA, no rules disabled) → 4 passed; tsc 19 (unchanged).
+Acceptance: paste a 6-digit code, password-manager fill, WCAG 3.3.8 — met. Not auto-submit (card does not ask). Follow-up card candidate: recovery-code entry (API accepts `recovery_code`, web has no field).
+
+CLAIM UI-F10 2026-10-05T14:00:00Z files: TOTP code entry on the web (input-otp), its test. Not API files, not app/command. Do not commit.
+
+## 2026-10-05 — UI-F03 DONE
+Evidence: `e2e/a11y-ui-f03.spec.ts` (axe, same rule set as `a11y-primary`, mocked API for loading/empty/populated states, desktop and 390 px) → 26 passed after the fix below; shots and `axe-results.jsonl` in `docs/vision-verify/UI-F03/`; 12-row UX audit and copy critique in `docs/vision-verify/UI-F03/AUDIT.md` (its one Issue row, the table grid, is now fixed).
+Also fixed: the real connection loading screen (`components/shell/AppShell.tsx`, bare "Loading connection…") is now a shaped skeleton (`AppShell.test.tsx`); billing empty copy no longer says "seats". Orchestrator fix: `components/ui/DataTable.tsx` moved `role="grid"`, `aria-rowcount`, `aria-activedescendant`, focus, and arrow-key handling from the scroll wrapper onto the `<table>` in both the plain and virtualized branches (axe critical: a grid wrapping a native table).
+Commands: vitest `DataTable.test.tsx kit.test.tsx settings/page.test.tsx` → 26 passed; UI-F03 vitest set 17 passed; tsc 19 (unchanged); Playwright needs `PLAYWRIGHT_BROWSERS_PATH=$HOME/Library/Caches/ms-playwright` when run from the agent shell.
+Follow-ups closed the same day: (1) billing now shows "We couldn't load your plan." plus Try again on a failed request, and the sign-in empty state only for 401/403 or 400 "Workspace context required" (`lib/api/client.ts` attaches `status` to thrown errors; `useEntitlements` returns `signedOut`; 2 new tests). (2) Telemetry: `ga_evidence_summary` returns one row per workspace with zeros, so empty means no workspaces. Copy is now "No workspaces to report on" / "Each workspace appears here with its bulk runs, refusals, aborts, and restores, starting at zero." (AUDIT.md row updated). Vitest admin + billing 7 passed; axe spec 26 passed. The `layout.tsx` fallback is a safety net only reachable in tests; the real loading screen is `AppShell.tsx`.
+
+## 2026-10-05 — T8-SIM DONE (Grok bot)
+`changeset/simulate.py`: `plan_hash()` on reports; a recorded success is bound to that plan hash; optional fake `staging_port`; a failed simulation returns the phase to `PLAN` and clears the record. Modes: static always, Bridge in-place dry-run for non-DDL, staging for DDL and R≥3, synthetic. The executor already calls `guard_production_apply` before apply (`executor.py:277`), so production apply without a matching recorded simulation is refused (R1 direct only where policy allows). No existing assertion touched.
+Files: `changeset/simulate.py`, `tests/test_simulation_modes.py` (8).
+Command (re-run by the orchestrator with the database up): `pytest tests/test_simulation_modes.py tests/engine tests/test_changeset_cli.py tests/test_data_ops.py tests/test_setting_ops.py tests/test_logic_ops.py tests/test_bridge_protocol.py tests/test_executor_bridge.py` → 362 passed, 1 skipped, 1 xfailed.
+
+CLAIM 5C-04 2026-10-05T13:45:00Z owner: Grok bot (external). files: a per-database apply lock with heartbeat and recovery, its use in `changeset/executor.py`, `tests/test_multi_client_lock.py`. Not `odoo_addons/`. Do not commit.
+
+## 2026-10-05 — GND-MOD DONE
+Docker Desktop restarted (stale backend force-stopped); app Postgres :5433 and Odoo 19 :8069 up.
+Real e2e `/tmp/gnd_mod_e2e.py` on a fresh base-only sandbox database `gndmod_e2e_1791207113`: proposal "Your request edits quotations, which come from the Sales app. Install Sales to continue?" with reason; `module.install` → `sale` installed in 9.2 s; facts after `model_present=True, module_state='installed'`; re-read packet contains `sale.order`. Output ended `E2E OK`.
+`pytest tests/test_gnd_mod_stock_app.py tests/test_gnd_mod_autopilot_map.py` with the database up → 40 passed (includes the strict continuation test: same session resumes to the locked diagnosis with host `sale.order`).
+All four boxes met. Autopilot: plan approval is the confirm (founder decision). Left: Autopilot bootstrap installs outside the `module.install` op.
+
+CLAIM T8-SIM 2026-10-05T13:20:00Z owner: Grok bot (external). files: `changeset/simulate.py`, the simulation check in the executor/policy path, `tests/test_simulation_modes.py`. Not `odoo_addons/`, not existing bridge assertions. Do not commit.
+
+## 2026-10-05 — T8-HEAVY-R4 (Grok bot): LOGIC and SET back to DONE, DATA stays SEEDED
+Heavy ops now apply only with the full heavy gate (`policy.heavy_gate_refusal` reusing `policy_decision(..., heavy=True)`): journal/kind/purpose sequences, company fiscal year/currency/chart. Hard stops stay denied with the full gate: lock dates, posted entries, and accounting/legal sequences on protected accounting targets (protected registry `deny` wins over heavy, per `r4_gate`). `module.uninstall` unchanged (prohibited). Admin grants are T8-OP-SEC.
+Orchestrator corrections: the bot removed `data.delete` from `odoo_addons/ingenium_bridge/protocol.py` PROHIBITED_OPS and changed two existing assertions (`test_bridge_protocol.py`, `test_executor_bridge.py`) from `prohibited_op` to `max_risk`. Reverted all three: the addon only compares caller-supplied `risk` to caller-supplied `max_risk` and cannot verify the two-person approval, so it keeps refusing deletes. The bot's new `test_heavy_data_delete_applies_with_full_heavy_gate` is now `xfail(strict=True)` with that reason.
+Command: the change-set + bridge pytest set → 478 passed, 1 skipped, 1 xfailed, 53 errors (Postgres :5433 down).
+Open for T8-OP-DATA: `data.delete` needs the addon (BR-14 / T8-OD-BRIDGE) to verify a heavy-gate approval it can trust, such as a server-signed approval token. Unverified live: sequence create fields, company fiscal/currency/chart writes, unlink on allow-listed models 17–20; `data.merge` is `res.partner` wizard only.
+
+## 2026-10-05 — GND-MOD: Autopilot uses the shared stock-app map
+Founder decision: approving the Autopilot plan counts as the GND-MOD confirm. Planner vocabulary now names models and resolves modules through `stock_app_for_model`; each planned stock-app install adds the shared "why" line to `decision_record`; Enterprise-only apps (Helpdesk, Planning, Field Service) are never planned and get the shared explanation. The worker's extra pass that added every shared-map match on the inferred path was removed by the orchestrator (generic words like "transfer" would add apps); regression test `test_generic_shared_map_words_do_not_widen_inferred_apps`. "pipeline" → CRM predates today (present at HEAD).
+Files: `stock_app_install.py` (`match_stock_apps`, `is_community`), `job_autopilot/planner.py`, `tests/test_gnd_mod_autopilot_map.py` (6).
+Tests: `pytest tests/test_gnd_mod_autopilot_map.py tests/test_gnd_auto_live_schema.py -m 'not app_db'` → 14 passed. Autopilot suites with `--noconftest` → 80 passed, 1 skipped, 5 failed (router tests needing Postgres). The 10 failures in `test_ai_stock_first` / `test_ai_honesty_ir_independent` / `test_ai_conversation_integrations` are identical at HEAD (checked via `git archive HEAD`), so they predate this work.
+Left: `job_autopilot/bootstrap.py` installs via `install_module_by_name`, not the `module.install` op (not small: busy-retry, module-list refresh, l10n).
+
+## 2026-10-05 — UI-F03 batch H (card stays OPEN)
+Kit Skeleton and EmptyState now on the remaining operate routes: `connections/[id]/layout.tsx` (shell fallback), `settings/page.tsx` (API status, keys, audit log), `settings/billing/page.tsx`, `settings/trust-safety/page.tsx` (also no longer stuck on loading after an error), `admin/page.tsx` (users, workspaces, telemetry no longer say "No … loaded" while fetching), `pipelines/page.tsx`. Loading blocks are status regions with screen-reader text; reduced motion via the `base.css` rule.
+Tests: 7 vitest files → 16 passed (re-run by the orchestrator); `kit.test.tsx` 16 passed; tsc 19 errors before and after, identical list (baseline is now 19, not 13); eslint 0.
+Met: kit on every operate route that can be empty; no `Loading...` in `src/app`; skeletons with no spinner flash; one sentence plus one action. Not met: axe on touched routes, desktop + 390 px shots in `docs/vision-verify/UI-F03/`, the 12-row UX audit and copy critique. All three need web :3002 and API :8001, which needs app Postgres :5433 (Docker unhealthy). Skipped as not operate pages: `reset-password`, `verify`.
+
+## 2026-10-05 — GND-MOD SEEDED (built; two boxes open)
+Built: `app/stock_app_install.py` (stock-app map for 10 Community apps; Enterprise-only apps explained, never offered; one confirm step; install only via the `module.install` change-set op), App Studio gate on session create and generate, `POST /ai/sessions/{id}/stock-app` (install → model check → schema packet re-read → intent + diagnosis re-run on the same session; decline → `stopped` with one line), Expert reuses the same map and wording, web `StockAppInstallCard` plus `resolveStockApp`.
+Files: `stock_app_install.py`, `routers/ai_studio.py`, `expert/live_schema_ask.py`, `tests/test_gnd_mod_stock_app.py` (34), web `StockAppInstallCard.tsx` and test (5), `use-studio-brief.ts`, `StudioPageView.tsx`, `lib/api/studio-draft.ts`, `lib/studio-session.ts`.
+Tests: `pytest tests/test_gnd_mod_stock_app.py` → 28 passed, 6 errors (app Postgres :5433 down); 34 passed earlier on a looser continuation assertion. Vitest 10 passed.
+Open: (1) box 2 (Sales installed for real, schema re-read, request continues) only proven on a fake port. `/tmp/gnd_mod_e2e.py` (import fixed to `odoo_client.models`) got a connection reset from :8069 on `create_database`; Docker Desktop is unhealthy. Re-run the script and the 6 database tests after a Docker restart. (2) "one confirm step used by every GND consumer": Job Autopilot still installs stock apps its own way. (3) :8001 not restarted, so no browser check yet.
+
+CLAIM UI-F03 2026-10-05T13:10:00Z files: operate pages adopting EmptyState and Skeleton. Not App Studio / Draft Studio pages (GND-MOD), not app/command or components/command (T6-11). Do not commit.
+
+## 2026-10-05 — T8-META DONE
+Order-independent equality (`snapshots_match`) and all 15 export categories already existed. Added `capture(port, config_allowlist=...)` (read-only `fields_get` + `search_read`; config params queried only by allowlisted key, so secrets are never read; xmlids only for `ingenium`; models missing from `ir.model` skipped), `MetaSnapshot.diff`, and a suite 2 port round trip (apply via executor → inverse → snapshot equality → engine undo check).
+Files: `changeset/meta_snapshot.py`, `tests/test_meta_snapshot.py` (7 new), `tests/engine/test_suite_02_round_trip.py` (6 new).
+Command: `pytest tests/test_meta_snapshot.py tests/engine tests/test_schema_ops.py tests/test_changeset_cli.py` → 212 passed, 1 skipped (re-run by the orchestrator).
+Round trip restores `menu.create`, `view.create_base`, `automation.create`, `cron.create`. Gaps recorded by tests, for T8-ROLLBACK / T8-S02: `field.create` inverse only relabels, `config_param.set` has no inverse, and engine undo still applies inverses to its in-memory store, not the port. Capture uses default `active_test`, so archived rows are excluded; this matches soft inverses (archive) counting as restored. Unverified: field names on 16–20, and the cost of reading all of `ir.model.fields` / `ir.ui.view`.
+
+CLAIM T8-META 2026-10-05T13:00:00Z files: `changeset/meta_snapshot.py`, suite 2 round-trip test, `tests/test_meta_snapshot.py`. Do not commit.
+
+## 2026-10-05 — T8-CLI DONE (GATE-P3-09)
+`python -m app.changeset.cli plan|validate|simulate|apply|rollback <file.json>` runs the two-op fixture `tests/fixtures/changeset_cli_two_ops.json` (`field.create` + `view.inherit.create`) against `FakePort`, exit 0, and a subprocess check shows no `app.llm_gateway`/google/anthropic/openai/litellm module loaded. CLI and the five subcommands already existed; added the fixture, a one-line `error:` on stderr for rejected files, and 11 tests.
+Files: `changeset/cli.py`, `tests/fixtures/changeset_cli_two_ops.json`, `tests/test_changeset_cli.py`.
+Command: `pytest tests/test_changeset_cli.py tests/engine` → 172 passed, 1 skipped (re-run by the orchestrator). `tests/test_changeset_engine.py` needs the app Postgres on 5433 (Docker) and was not run.
+Notes: CLI rollback runs the existing `undo()` on an in-memory store and then clears the fake port, so it does not send inverse calls through the port. `plan` (and sometimes `simulate`) exits 0 on invalid ops while validate/apply/rollback exit 1; existing engine behaviour, left alone.
+
+CLAIM T8-OP-DATA 2026-10-05T12:35:00Z owner: Grok bot (external), starts after T6-11. files: data ops on the existing change-set executor (`changeset/data_ops.py` or the existing data module, the data branch in `dispatch.py`, `tests/test_data_ops.py`). Do not enable L4. Do not commit.
+
+CLAIM GND-MOD 2026-10-05T12:30:00Z files: stock-app map, one install-confirm step shared by GND consumers (Draft Studio/App Studio first), module.install through the executor, then schema re-read and continue. Not main.py, not app/command, not five-track files (T6-11 is the Grok bot's). Do not enable L4. Do not commit.
+
+## 2026-10-05 — T8-OP-SET DONE
+Settings and module ops apply through the existing executor with public model methods: `setting.set` = `res.config.settings` create + `execute`; `config_param.set` = `set_param` (None/False refused because they delete); `company.update` = `res.company` write; `module.install` / `module.upgrade` = `search_read` by name + `button_immediate_install` / `button_immediate_upgrade`. Method calls go through an optional port `execute_kw`; a port without it refuses before any write. `module.uninstall` never applies (`prohibited_op`). Already existed and kept: `module_*` R3, protected keys refused, lock dates/fiscal year/currency/chart R4 and refused, install warning. Added: the billable flag and warning on the plan card.
+Files: `changeset/setting_ops.py`, `changeset/dispatch.py`, `changeset/plan_card.py`, `tests/test_setting_ops.py` (8 → 35 tests; one install assertion made stricter).
+Command: the 17-file change-set pytest set in the worker report → 647 passed, 1 skipped (re-run by the orchestrator).
+Follow-ups: the plan-card golden uses `setting.set` with dotted key `x_delivery.default_note`, which still renders but would now be refused at dispatch (belongs under `config_param.set`). `button_immediate_upgrade` over RPC on 17–20 and every method on Odoo 20 are unverified. No live port exists yet; it must provide `execute_kw`.
+
+## 2026-10-05 — T8-OP-LOGIC DONE
+All 18 logic ops apply through the existing executor (`apply` → `dispatch_op`); before this only `mail_template.create` and `config_record.upsert` dispatched. Risk raises (`logic_base_raise`) and the RT-25 safe_eval AST check already existed and were kept. Payloads copy an allowlist of public fields; stage ops accept only stage models; creates without a model and updates without an id are refused. Code-carrying ops stay behind the R3 gate (Option A unchanged).
+Files: `changeset/logic_ops.py`, `changeset/dispatch.py`, `tests/test_logic_ops.py`, `tests/engine/test_suite_03_idempotency.py` (not-applied example is now `data.create_batch`; still a real dispatch failure).
+Command: `pytest tests/test_logic_ops.py tests/test_ui_ops.py tests/test_schema_ops.py tests/engine tests/test_handlers_grants_skills.py` → 380 passed, 1 skipped (re-run by the orchestrator).
+Notes: accounting/journal/legal sequences are refused outright. That matches R4, which is denied everywhere. Through the executor, RT-25 code is refused by the protected registry before dispatch; a direct dispatch test checks the named RT-25 reason. Payloads send the model name in `model_id`, the same convention as `ir.model.access`; the live `OdooPort` (not built yet) must resolve it to an `ir.model` id. Unverified on an instance: `action_server_ids` is 17+ only, and some stage models may have no `active` field.
+
+## 2026-10-05 — T8-OP-UI DONE
+All 14 view/action/menu/filter/report ops apply through the existing change-set executor (`apply` → `dispatch_op`); no second apply path. Files: `changeset/ui_ops.py`, `changeset/dispatch.py`, `tests/test_ui_ops.py`, `tests/engine/test_suite_03_idempotency.py` (not-applied example is now `server_action.create`).
+Acceptance: R1 except reports R2 (`test_ui_family_risk_is_r1_except_reports_r2`, `test_reports_are_r2_through_the_executor`); one anchor (`test_view_inherit_requires_exactly_one_anchor` in `test_handlers_grants_skills.py`, plus the executor variant); RT-22 (`test_xpath_that_replaces_root_or_large_subtree_is_refused` and the executor variant).
+Commands: `pytest tests/test_ui_ops.py tests/engine/test_suite_03_idempotency.py tests/engine/test_suite_01_op_conformance.py tests/test_schema_ops.py` → 150 passed; `pytest tests/test_handlers_grants_skills.py` → 13 passed. Tests run by the orchestrator (the tester agent ran out of usage).
+Follow-up: suite 01 still lists params_schema and some inverses as known gaps for this family. Those belong to T8-S01, not this card.
+
+## 2026-10-04 — Developer modes queued
+Cards DEV-CS, DEV-SR, DEV-PO in `docs/plans/next-phase/cards/DEV_MODES_PRODUCTION.md`. Code Studio, Script Runner, and Power Ops become safe for a customer to use without the founder. When they are built, the screens have to meet the UI bar in `AGENTS.md`: taste, motion, copy, accessibility, empty/loading/error/success, and a real code surface in Code Studio. They start after T6-06. No product code in this entry.
+
+## 2026-10-03 — PDF Studio queued
+Cards PDF-01–06 in docs/plans/next-phase/cards/T7_PDF_STUDIO.md. Extends ReportDesigner. No product code.
+
+## 2026-10-03 — Harness queued
+Cards H1–H8 in docs/plans/next-phase/cards/HARNESS.md. PR eval stays cassette/property. No product code.
+
+## 2026-10-04 — Live schema context queued
+GND-PKT through GND-GATE. GenerateIR already rejects uncued invent. Other LLM surfaces do not yet see the live view order.
+
+CLAIM T8-OP-LOGIC 2026-10-05T12:13:31Z files: apps/api/app/changeset/logic_ops.py, apps/api/app/changeset/dispatch.py, apps/api/tests/test_logic_ops.py
+
+## 2026-10-05 — PDF-05 Unsafe template gate (built; card stays OPEN)
+
+Track: T7 PDF Studio
+Intent: Centralize a QWeb unsafe-arch gate so pasted/compiled report templates containing `t-raw`, `<script`, XXE (DOCTYPE/ENTITY), or `t-call` outside the stock-layout allowlist are refused **before** save/preview persist. Block text that looks like QWeb is refused with a clear human error. RT-22 root-replace refusal (PDF-03) stays intact.
+Model / band: Grok high (executor). Card status left OPEN (do not mark DONE).
+Files:
+- `apps/api/app/qweb_unsafe_gate.py` (new) — allowlist + refuse_unsafe_qweb_arch / refuse_unsafe_block_text
+- `apps/api/app/report_design.py` — compile gates block text then resulting arch
+- `apps/api/app/routers/reports.py` — create/update/preview gate before ir.ui.view write
+- `apps/api/app/live_schema_context.py` — XXE parse skip uses shared `arch_has_xxe`
+- `apps/api/tests/test_pdf05_unsafe_template_gate.py` (new)
+- `apps/web/src/components/reports/reportUnsafeGate.ts` + `.test.ts`
+- `apps/web/src/components/reports/ReportDesigner.tsx` — client refuse on save/preview
+- `apps/web/src/app/connections/[id]/reports/page.tsx` — Code-tab / emit-save refuse
+Allowlist (t-call): `web.external_layout`, `web.html_container`, `web.basic_layout`, `web.minimal_layout`, `web.internal_layout`
+Commands and results: VERIFIED
+- `pnpm --filter @odoo-custom/web test -- src/components/reports` → 5 files, **51 passed**
+- `cd apps/api && ../../.venv/bin/python -m pytest -q -p no:cacheprovider tests/test_pdf05_unsafe_template_gate.py tests/test_cmp4_report_design.py tests/test_pdf04_report_grounding.py` → **35 passed**
+Gates / tests named:
+- `test_pdf05_refuses_t_raw_before_save`
+- `test_pdf05_refuses_t_out`
+- `test_pdf05_refuses_script_any_case`
+- `test_pdf05_refuses_doctype_and_entity_xxe`
+- `test_pdf05_refuses_non_allowlisted_t_call`
+- `test_pdf05_rt22_root_replace_still_refused`
+- `test_pdf05_block_text_qweb_injection_refused`
+- `test_pdf05_compile_gates_block_text_and_emits_safe_arch`
+- `test_pdf05_update_route_refuses_pasted_unsafe_arch`
+- `test_pdf05_update_route_refuses_bad_t_call`
+- `test_pdf05_create_route_gates_pasted_arch`
+- vitest `reportUnsafeGate.test.ts` (7)
+Negative: RT-22 root replace; XXE; block text interpreted as QWeb — covered above.
+Not done / gaps: card acceptance checkboxes and Status remain OPEN (orchestrator/reviewer). No live Odoo paste e2e. `t-out` refused wholesale (designer never emits it). No second editor; agent_runtime / odoo_addons / L4 untouched.
+Risks introduced: allowlist is explicit — a legitimate stock `t-call` outside the five keys needs an allowlist addition. Benign block text containing substrings like `t-if` is refused by design (prefer refuse).
+
+## 2026-10-05 — UI-S-30 Bulk Suite elite UI pass (not DONE)
+Track: T7 UI-S-30. Worker elite UI/UX on `/connections/[id]/bulk-suite`. No push. No DONE. L4 stays off.
+Intent: Elevate Bulk Suite to Studio-cluster craft (playbook + ingenium-v2 Basalt/teal). Primary **Run bulk action**. Blast radius before write. What/why/next empty and error. Honesty for batch writes. Harness + vision under `docs/vision-verify/UI-S-30/`.
+Files: `apps/web/src/lib/bulkSuiteScreen.ts` (+test), `apps/web/src/components/bulk/bulk-operate.css`, `BulkStateGuide`, `BulkOpRail`, `BulkBlastRadius`, `BulkErrorNotice`, `BulkResultCounts` (+tests), chrome/transition/edit/access/results/recipe rewires, `apps/web/src/app/connections/[id]/bulk-suite/page.tsx`, `apps/web/src/app/e2e/bulk-suite/page.tsx`, `docs/vision-verify/UI-S-30/*`.
+Tests: `pnpm exec vitest run src/lib/bulkSuiteScreen.test.ts src/components/bulk src/lib/uif-regression.test.ts` → 15 passed. tsc: no new errors in bulk files (repo still has 19 pre-existing elsewhere).
+Vision: 12 after shots (empty/select/dry-run/partial/progress/error × desktop/narrow), all overflowX=0. Canonical desktop=empty, narrow=dry-run.
+Not done: mark UI-S-30 DONE; real-route axe re-sweep; mirror craft onto other ops screens.
