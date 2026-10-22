@@ -18,6 +18,8 @@ IDOR_GET_PROBES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/connections/{connection_id}/projects/{project_id}"),
     ("GET", "/api/connections/{connection_id}/modules"),
     ("GET", "/api/connections/{connection_id}/modules/installed"),
+    ("GET", "/api/connections/{connection_id}/scans/{run_id}"),
+    ("GET", "/api/connections/{connection_id}/scans/{run_id}/findings"),
 )
 
 
@@ -40,3 +42,23 @@ def idor_probe_paths(openapi_paths: dict) -> list[tuple[str, str]]:
         if template not in scoped:
             missing.append((method, template))
     return missing
+
+
+# NF SCAN-01: every scan route. Each resolves the connection through the caller's
+# workspace scope first, so another workspace's ids answer 404 (B5 envelope).
+NF_SCAN_ROUTES: tuple[tuple[str, str], ...] = (
+    ("POST", "/api/connections/{connection_id}/scans"),
+    ("GET", "/api/connections/{connection_id}/scans/{run_id}"),
+    ("GET", "/api/connections/{connection_id}/scans/{run_id}/findings"),
+    ("POST", "/api/connections/{connection_id}/scans/{run_id}/cancel"),
+    ("POST", "/api/connections/{connection_id}/findings/{fid}/plan"),
+)
+
+
+def missing_registered_routes(
+    openapi_paths: dict, routes: tuple[tuple[str, str], ...]
+) -> list[tuple[str, str]]:
+    """Registered (method, path) pairs that no longer exist in OpenAPI."""
+    return [
+        (m, p) for m, p in routes if m.lower() not in (openapi_paths.get(p) or {})
+    ]

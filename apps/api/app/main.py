@@ -70,6 +70,7 @@ from app.routers import (
     suite_records,
     suite_upkeep,
     suite_insights,
+    scans,
     views,
     view_engine,
     view_engine_2c,
@@ -222,6 +223,7 @@ app.include_router(suite_change.router, prefix="/api", dependencies=_protected +
 app.include_router(suite_records.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(suite_upkeep.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(suite_insights.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
+app.include_router(scans.router, prefix="/api", dependencies=_protected)
 app.include_router(suite_insights.playbooks, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(views.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
 app.include_router(actions.router, prefix="/api", dependencies=_protected)

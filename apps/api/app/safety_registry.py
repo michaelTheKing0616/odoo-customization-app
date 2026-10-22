@@ -40,6 +40,17 @@ EXEMPT_ROUTE_KEYS: frozenset[str] = frozenset(
 )
 
 ROUTE_OVERRIDES: dict[str, SafetySpec] = {
+    # NF SCAN-01 (AC4): no route writes Odoo. Start reads Odoo and writes only scan rows,
+    # so it bypasses writes-paused; cancel honours it; plan mirrors POST:/api/inbox/plans.
+    "POST:/api/connections/{connection_id}/scans": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none", bypass_writes_paused=True
+    ),
+    "POST:/api/connections/{connection_id}/scans/{run_id}/cancel": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/findings/{fid}/plan": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
