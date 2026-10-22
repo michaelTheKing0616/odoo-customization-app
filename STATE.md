@@ -46,3 +46,10 @@ Optional JSON-2: Preferences → API key on tip/Online; open `/doc` if present; 
 - **JSON-2 shipped (client):** transport, mapper, production probe (a67877a, 603523c). Majors: 19 Online + 20 → JSON-2; 17, 18, self-hosted 19 → XML-RPC or JSON-RPC. Probes use `search_read` + `fields_get` only (no row insert); JSON-2 create uses `vals_list`, legacy create uses positional `vals`.
 - **Verified live (docs):** aonb + aonb-mirror Online probes in `docs/verified-facts.md`. T2-J2 local install timing (f626a00). T2-J3 direct-transport grep (1cf4417).
 - **Operator / open:** T2-J1 `/doc` match is not verified, so the JSON-2 track stays open. T2-SMOKE method record is met in `docs/verified-facts.md`. Sandbox default xmlrpc. Promote human.
+
+## Retro — new-features planning (22 Oct, planning architect)
+- Shipped: `docs/build-plan/NEW_FEATURES_INDEX.md`, `docs/build-plan/new-features/` (baseline + 8 epic docs), 269 cards under `docs/build-plan/cards/phase-4..6/`, 296 ledger rows, DEC-050..074 in `09_DECISIONS_FOR_TOPE.md`, 27 `phase_map` prefixes, 13 umbrella-card edits.
+- Lint: `plan_lint.py all` reports 1,490 rows, 0 uncovered, 0 errors. Existing ledger rows are byte-identical.
+- Failed and fixed: four guessed card IDs did not exist; one cross-phase dependency was inverted (FA-A28); engine cards had an empty Test plan (`{T}` path filter); the index linked to slug anchors instead of the docs' code anchors.
+- Rule: generated cross-references (IDs, anchors, test paths) get a checker run against the real files before the first write.
+- Next: Tope answers DEC-050 (scope) and DEC-051 (phases). The Orchestrator does not dispatch NF cards before DEC-050.

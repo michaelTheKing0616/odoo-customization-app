@@ -21,6 +21,22 @@ Other docs (`06_TEST_STRATEGY.md`, `07_UI_EXCELLENCE_PROTOCOL.md`, `app-studio/0
 - **One worker per file set.** Before dispatching, add a lock row for the card's allow-list; release it on close or stop.
 - **Oracle tests are locked.** A Worker never edits them; disagreement means `ESCALATE`.
 - **Separation:** Oracle, Worker, Tester and Reviewer are four different sessions. Give each only the card path plus the previous packet, never another session's reasoning.
+- **New-features (`NF-*`) cards** (`NEW_FEATURES_INDEX.md`): scope approved 22 Oct (DEC-050, DEC-051). `Owner: UI` NF cards are released with their phase (4–6) at that phase's G2. `Owner: backend-safe` NF cards may run earlier, only in the NF worktree stream below. Cards still carrying the `NF:` marker line are generated: change them by editing `tools/nf_data.py` and rerunning `python3 docs/build-plan/tools/build_nf.py`, then `plan_lint all`. A Prep edit must delete the marker line first; the generator then never overwrites the card.
+
+## Parallel worktree: NF backend stream (binding; Tope, 22 Oct)
+
+Two streams run at once. The **main stream** is the existing orchestrator in the main tree: phases 0–7 in order, plus every `Owner: UI` NF card when its phase releases. The **NF stream** is a second Grok orchestrator in a separate git worktree. It runs only NF cards tagged `Owner: backend-safe`, never a phase 0–7 card and never a UI card. Both streams obey every rule in this prompt. The conditions below guarantee they never clash. If one cannot be met, the NF stream waits; it never works around it.
+
+1. **Start and release.** The NF stream may start now. It takes a backend-safe NF card only when `next_cards.py` shows it eligible (every dependency `done`). Cards whose dependencies sit in the main plan (for example `L2-HARNESS` for LIVE cards) wait for them. Before dispatching, it runs a one-card Prep (paths, symbols, examples, clarity; never drop or weaken an AC). This is DEC-049 applied per card instead of per phase.
+2. **Git stays Tope's.** Tope commits the plan, creates the worktree after his explicit yes, merges it back, and syncs it from main. No session commits, rebases, merges or pushes.
+3. **One lock table.** Both streams lock in the main tree's `docs/build-plan/STATE.md` § File locks, by its absolute path. The worktree's own copy of `STATE.md` is never read or written. NF lock rows are named `L-NF-<card>`, with `NF-WT <role>` as the holder. Before locking, a stream re-reads the table. If any of its allow-list paths matches any open row (prefix match on directories, either stream), it does not start. Both streams edit `STATE.md` only by adding or removing their own rows, never by rewriting the file or another stream's rows.
+4. **NF locks are held until merged.** An NF lock is released only after Tope has merged that card's diff into the main tree, not at CLOSE. So the main stream can never edit a file that holds an unmerged NF change. The NF stream reports "ready to merge: <card>, <files>" in its Tope report and keeps the lock until he confirms.
+5. **Same file version before locking.** Before locking a path that exists in both trees, the NF stream runs `cmp <main tree path> <worktree path>`. If they differ, it asks Tope to sync the worktree from main and waits.
+6. **Shared hot files.** `apps/api/app/main.py`, `apps/api/app/security/idor_registry.py`, `apps/api/app/db_models.py` and `apps/api/alembic/versions/` are locked as whole paths by whichever stream needs them, one card at a time. A new Alembic revision's `down_revision` is the main tree's current head at lock time.
+7. **Separate records.** The NF stream keeps its queue, in-flight, token ledger and retro in the main tree's `docs/build-plan/STATE_NF.md` (it creates the file on first run). It appends `PROGRESS.md` and `FACTS.md` lines in the main tree only after Tope merges the card.
+8. **Roles and isolation.** The NF stream dispatches Workers. Oracle, Tester and Reviewer are separate sessions, as in the loop below, and it never builds itself. It uses `ingenium_wt_*` databases, a web port of 3110 or higher (main e2e uses 3100) with its own `distDir`, and its own `uv` environment. Reserved ports stay untouched.
+
+Before its first card, the NF stream sends Tope a 5-line plan (worktree branch, first 5 cards, their lock rows, hot files touched) and waits for his OK.
 
 ## Start-up (once)
 

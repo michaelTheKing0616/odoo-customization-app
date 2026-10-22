@@ -8,9 +8,10 @@ Priority: P2
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: M (caps in budget.json). Stop at 80%.
 Ledger IDs: ELR-NEXT
-Depends on: EL-BAR-IMP
+Depends on: EL-BAR-IMP, MIG-07
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: L2 separate session · Reviewer: L3 separate session · Score: 6 (C1 U1 F2 K1 V1 I0)
 Context pack:
+- docs/build-plan/new-features/INTEGRATE.md §MIG: reuse the reconciliation engine from MIG-07.
 - handover §3.8
 - apps/api/app/suite_import.py
 File allow-list:

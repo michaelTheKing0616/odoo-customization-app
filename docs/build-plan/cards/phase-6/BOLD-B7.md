@@ -9,9 +9,10 @@ Priority: P3
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: L (caps in budget.json). Stop at 80%.
 Ledger IDs: FA-B7
-Depends on: none (phase order applies)
+Depends on: MANUAL-VIS
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L3 separate session · Score: 7 (C0 U2 F1 K2 V0 I2)
 Context pack:
+- docs/build-plan/new-features/DELIVERY.md §MANUAL delivers this card in parts (MANUAL-*); videos wait for DEC-057.
 - apps/api/app/migration_assist.py
 - apps/web/src/components/
 - docs/build-plan/FACTS.md

@@ -9,9 +9,10 @@ Priority: P3
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: L (caps in budget.json). Stop at 80%.
 Ledger IDs: FA-B8
-Depends on: none (phase order applies)
+Depends on: NG-VIS, STAT-VIS
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L3 separate session · Score: 9 (C2 U2 F1 K2 V0 I2)
 Context pack:
+- docs/build-plan/new-features/LOCALIZATION.md §NG and §STAT deliver the Nigeria part of this card; EU/GDPR stays here.
 - apps/api/app/migration_assist.py
 - apps/web/src/components/
 - docs/build-plan/FACTS.md

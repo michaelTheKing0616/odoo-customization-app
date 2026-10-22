@@ -20,5 +20,6 @@ Status: **G0 + G1B approved (21 Oct 2026). Stage 2 and every phase's card pack d
 | `04_PHASES.md` (order, graph, why), `phase_map.json`, `05_MODEL_ROUTING.md` (roster, rubric, pilot), `05_PACKETS.md`, `06_TEST_STRATEGY.md`, `07_UI_EXCELLENCE_PROTOCOL.md`, `REFERENCE_NOTES.md` (skeleton; UI-REF-STUDY fills it), `08_GATES.md` (incl. G2 Prep check), `STATE.md` (orchestrator board: queue, locks, token ledger) | plan skeleton | 2 ✓ |
 | `cards/phase-0..7/` (847), `coverage/phases.md` (counts, tiers, caps), `tools/build_cards.py` (generator, verbatim ACs), `tools/next_cards.py` (dispatch queue) | card packs; each phase released after its G2 Prep check | 3 ✓ |
 | `ORCHESTRATOR_PROMPT.md` | the prompt for the Grok orchestrator session | 3 ✓ |
+| `NEW_FEATURES_INDEX.md`, `new-features/` (baseline + 8 design docs), `tools/build_nf.py` + `tools/nf_data.py` | New-features brief (22 Oct): 27 epics, 269 cards in phases 4–6, 296 `NF-*` ledger rows, DEC-050..074. Scope approved 22 Oct (DEC-050, DEC-051); released per phase at G2 | NF ✓ (scope) |
 
 UI quality bar: `docs/design/references/ingenium-ui/` (`MANIFEST.md`, `motion/MOTION_NOTES.md`, `_contact/`) + `UI_REFERENCE_MAP.md`.

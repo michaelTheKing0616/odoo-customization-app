@@ -94,8 +94,8 @@ Each row blocks only the cards named. DEC-050 is the scope approval every NF car
 
 | ID | Decision | Default (recommended) | Blocks |
 |---|---|---|---|
-| DEC-050 | Approve the 27 NF epics (the brief's 26 ideas + the SCAN foundation) as build scope (INV-06) | Approve all; they enter phases 4–6 per the index and are released per phase at G2 | all NF cards (at G2) |
-| DEC-051 | Phase placement | Fold into phases 4, 5 and 6 per the index; no Phase 8 | phase_map NF prefixes |
+| DEC-050 | Approve the 27 NF epics (the brief's 26 ideas + the SCAN foundation) as build scope (INV-06) | **Resolved 22 Oct (Tope: 'approve all').** Approve all; they enter phases 4–6 per the index and are released per phase at G2 | all NF cards (at G2) |
+| DEC-051 | Phase placement | **Resolved 22 Oct (Tope: 'approve').** Fold into phases 4, 5 and 6 per the index; no Phase 8 | phase_map NF prefixes |
 | DEC-052 | What scans store and for how long | Counts, record ids and masked samples only; no field values; 90-day retention | SCAN-02, all scan epics |
 | DEC-053 | Usage signal source | Records created/changed and log-ins only; no click-tracking addon in client Odoo | USAGE-* |
 | DEC-054 | Upgrade rehearsal data source | No customer DB clone (AGENTS). Fresh target sandboxes with customisation replay, or an owner-supplied upgraded Test copy. OpenUpgrade (AGPL-3.0) is not bundled or run | UPG-* |

@@ -12,6 +12,7 @@ Ledger IDs: T318-JOB;FA-S13
 Depends on: none (phase order applies)
 Routing: Worker: L1 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L1 separate session · Score: 0 (C0 U0 F0 K0 V0 I0)
 Context pack:
+- docs/build-plan/NEW_FEATURES_INDEX.md §Overlaps: FA 13+.6/7/8 map to FITGAP/SOW, UAT and GOLIVE cards; itemise without duplicating them.
 - `sed -n '426p' docs/specs/INGENIUM_MASTER_HANDOVER.md`
 - docs/build-plan/ledger.csv
 - docs/build-plan/phase_map.json

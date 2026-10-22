@@ -12,6 +12,7 @@ Ledger IDs: FA-S08
 Depends on: none (phase order applies)
 Routing: Worker: L1 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L1 separate session · Score: 0 (C0 U0 F0 K0 V0 I0)
 Context pack:
+- docs/build-plan/NEW_FEATURES_INDEX.md §Overlaps: FA 8.4 migration mode is covered by MIG-*; itemise without duplicating it.
 - docs/build-plan/ledger.csv
 - docs/build-plan/phase_map.json
 - docs/build-plan/cards/phase-5/ (new cards only)

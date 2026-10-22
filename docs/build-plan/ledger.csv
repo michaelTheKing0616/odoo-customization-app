@@ -1193,3 +1193,299 @@ ELR-SEC,Tope 21 Oct; elevate §2,"every API route declares an access dependency 
 ELR-REL,Tope 21 Oct; elevate §2,"one error shape, resilience (retry/autosave/offline), observability with SLOs, impact gate before destructive schema changes",build,P1,Missing,EL-X-ERRORS;EL-X-RESILIENT;EL-X-IMPACT-GATE,DEC-045
 ELR-FID,Tope 21 Oct; elevate §2,shared Odoo fidelity harness and edge-case records for every preview,build,P1,Missing,EL-X-FIDELITY;EL-X-EDGE-RECORDS,DEC-045
 ELR-NEXT,Tope 21 Oct; elevate §3,next-level features per feature beyond spec (proposals approved in principle; Tope may strike any),build,P2,Missing,EL-HOME-SINCE;EL-HOME-HEALTHX;EL-CONN-LEASTPRIV;EL-CONN-DOCTOR;EL-VD-WHO-ELSE;EL-VD-EDGE;EL-VD-GROUNDED-AI;EL-RPT-EDGE;EL-RPT-DELIVER;EL-SUITE-BASELINE;EL-IMP-RECONCILE;EL-BR-REPLAY;EL-BR-EGRESS;EL-CR-EXPLAIN;EL-BOT-EVAL;EL-BOT-HANDOFF;EL-LDC-REPLAY;EL-LDC-SHOWME;EL-WF-ROUNDTRIP;EL-APR-RISK;EL-HIST-WHY;EL-CMDK-FRECENCY;EL-AUTO-BACKTEST;EL-JOB-GOLIVE;EL-SET-SIGNIN,DEC-045
+NF-EPIC-SCAN,user brief 22 Oct; new-features/UNDERSTAND.md#scan,"Epic Scan foundation: budgeted read-only scan runner, findings store, fix-to-plan and the shared FindingsList UI",build,P1,Missing,SCAN-01;SCAN-02;SCAN-03;SCAN-04;SCAN-05;SCAN-LIVE;SCAN-SPEC;SCAN-UI;SCAN-E2E;SCAN-VIS,DEC-050
+NF-SCAN-01,user brief 22 Oct; new-features/UNDERSTAND.md#scan,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,SCAN-01,DEC-050
+NF-SCAN-02,user brief 22 Oct; new-features/UNDERSTAND.md#scan,"App DB tables scan_runs, scan_findings (Alembic, additive)",build,P1,Missing,SCAN-02,DEC-050
+NF-SCAN-03,user brief 22 Oct; new-features/UNDERSTAND.md#scan,"Budgeted read-only Odoo reader (retries, timeouts, token bucket, sampling, cancel)",build,P1,Missing,SCAN-03,DEC-050
+NF-SCAN-04,user brief 22 Oct; new-features/UNDERSTAND.md#scan,"Scan runner, registry and job (idempotency, one scan per connection, per-area results)",build,P1,Missing,SCAN-04,DEC-050
+NF-SCAN-05,user brief 22 Oct; new-features/UNDERSTAND.md#scan,Finding → change-plan draft (no write; money guard refusal),build,P1,Missing,SCAN-05,DEC-050
+NF-SCAN-LIVE,user brief 22 Oct; new-features/UNDERSTAND.md#scan,Live proof on Odoo 17–20 (disposable `ingenium_nf_scans_*` DBs),prove-live,P1,Missing,SCAN-LIVE,DEC-050
+NF-SCAN-SPEC,user brief 22 Oct; new-features/UNDERSTAND.md#scan,Screen spec: FindingsList and ScanStatus components (harness page),ui-spec,P1,Missing,SCAN-SPEC,DEC-050
+NF-SCAN-UI,user brief 22 Oct; new-features/UNDERSTAND.md#scan,Build FindingsList and ScanStatus components (harness page),ui-build,P1,Missing,SCAN-UI,DEC-050
+NF-SCAN-E2E,user brief 22 Oct; new-features/UNDERSTAND.md#scan,End-to-end and accessibility: FindingsList and ScanStatus components (harness page),test,P1,Missing,SCAN-E2E,DEC-050
+NF-SCAN-VIS,user brief 22 Oct; new-features/UNDERSTAND.md#scan,Visual check and contact sheet: FindingsList and ScanStatus components (harness page),test,P1,Missing,SCAN-VIS,DEC-050
+NF-EPIC-XRAY,user brief 22 Oct; new-features/UNDERSTAND.md#xray,"Epic Database X-ray: 10-minute read-only inventory of apps, customisations, people, integrations and top risks; Markdown export feeds SUITE-11 PDF",build,P1,Partial,XRAY-01;XRAY-02;XRAY-03;XRAY-LIVE;XRAY-SPEC;XRAY-UI;XRAY-E2E;XRAY-VIS,DEC-050
+NF-XRAY-01,user brief 22 Oct; new-features/UNDERSTAND.md#xray,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,XRAY-01,DEC-050
+NF-XRAY-02,user brief 22 Oct; new-features/UNDERSTAND.md#xray,X-ray engine: 9 areas registered as scan `xray`,build,P1,Missing,XRAY-02,DEC-050
+NF-XRAY-03,user brief 22 Oct; new-features/UNDERSTAND.md#xray,"X-ray Markdown export (deterministic, no record values)",build,P1,Missing,XRAY-03,DEC-050
+NF-XRAY-LIVE,user brief 22 Oct; new-features/UNDERSTAND.md#xray,Live proof on Odoo 17–20 (disposable `ingenium_nf_xray_*` DBs),prove-live,P1,Missing,XRAY-LIVE,DEC-050
+NF-XRAY-SPEC,user brief 22 Oct; new-features/UNDERSTAND.md#xray,Screen spec: Explore → X-ray,ui-spec,P1,Missing,XRAY-SPEC,DEC-050
+NF-XRAY-UI,user brief 22 Oct; new-features/UNDERSTAND.md#xray,Build Explore → X-ray,ui-build,P1,Missing,XRAY-UI,DEC-050
+NF-XRAY-E2E,user brief 22 Oct; new-features/UNDERSTAND.md#xray,End-to-end and accessibility: Explore → X-ray,test,P1,Missing,XRAY-E2E,DEC-050
+NF-XRAY-VIS,user brief 22 Oct; new-features/UNDERSTAND.md#xray,Visual check and contact sheet: Explore → X-ray,test,P1,Missing,XRAY-VIS,DEC-050
+NF-EPIC-USAGE,user brief 22 Oct; new-features/UNDERSTAND.md#usage,"Epic Usage heatmap: activity per app × week, log-ins per user, fill rate per custom field, with hide-menu and hide-field plans",build,P2,Partial,USAGE-01;USAGE-02;USAGE-03;USAGE-LIVE;USAGE-SPEC;USAGE-UI;USAGE-E2E;USAGE-VIS,DEC-050;DEC-053
+NF-USAGE-01,user brief 22 Oct; new-features/UNDERSTAND.md#usage,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,USAGE-01,DEC-050
+NF-USAGE-02,user brief 22 Oct; new-features/UNDERSTAND.md#usage,"Usage engine: weekly activity, log-ins, field fill rate (scan `usage`)",build,P2,Missing,USAGE-02,DEC-050
+NF-USAGE-03,user brief 22 Oct; new-features/UNDERSTAND.md#usage,Usage actions: hide unused menu and hide field on forms as plans,build,P2,Missing,USAGE-03,DEC-050
+NF-USAGE-LIVE,user brief 22 Oct; new-features/UNDERSTAND.md#usage,Live proof on Odoo 17–20 (disposable `ingenium_nf_usage_*` DBs),prove-live,P2,Missing,USAGE-LIVE,DEC-050
+NF-USAGE-SPEC,user brief 22 Oct; new-features/UNDERSTAND.md#usage,Screen spec: Explore → Usage,ui-spec,P2,Missing,USAGE-SPEC,DEC-050
+NF-USAGE-UI,user brief 22 Oct; new-features/UNDERSTAND.md#usage,Build Explore → Usage,ui-build,P2,Missing,USAGE-UI,DEC-050
+NF-USAGE-E2E,user brief 22 Oct; new-features/UNDERSTAND.md#usage,End-to-end and accessibility: Explore → Usage,test,P2,Missing,USAGE-E2E,DEC-050
+NF-USAGE-VIS,user brief 22 Oct; new-features/UNDERSTAND.md#usage,Visual check and contact sheet: Explore → Usage,test,P2,Missing,USAGE-VIS,DEC-050
+NF-EPIC-DEBT,user brief 22 Oct; new-features/UNDERSTAND.md#debt,Epic Tech-debt score and cleanup: deterministic 0–100 score with reasons and a one-plan cleanup that excludes non-undoable steps (decomposes BOLD-B3),build,P2,Partial,DEBT-01;DEBT-02;DEBT-03;DEBT-04;DEBT-LIVE;DEBT-SPEC;DEBT-UI;DEBT-E2E;DEBT-VIS,DEC-050;DEC-059
+NF-DEBT-01,user brief 22 Oct; new-features/UNDERSTAND.md#debt,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,DEBT-01,DEC-050
+NF-DEBT-02,user brief 22 Oct; new-features/UNDERSTAND.md#debt,Debt detectors (8) with 'used by' check (scan `debt`),build,P2,Missing,DEBT-02,DEC-050
+NF-DEBT-03,user brief 22 Oct; new-features/UNDERSTAND.md#debt,"Debt score: versioned weights, deterministic",build,P2,Missing,DEBT-03,DEC-050
+NF-DEBT-04,user brief 22 Oct; new-features/UNDERSTAND.md#debt,"Cleanup plan builder (undoable steps only, ≤ 50 objects per chunk, stock refused)",build,P2,Missing,DEBT-04,DEC-050
+NF-DEBT-LIVE,user brief 22 Oct; new-features/UNDERSTAND.md#debt,Live proof on Odoo 17–20 (disposable `ingenium_nf_tech_debt_*` DBs),prove-live,P2,Missing,DEBT-LIVE,DEC-050
+NF-DEBT-SPEC,user brief 22 Oct; new-features/UNDERSTAND.md#debt,Screen spec: Housekeeping → Tech-debt,ui-spec,P2,Missing,DEBT-SPEC,DEC-050
+NF-DEBT-UI,user brief 22 Oct; new-features/UNDERSTAND.md#debt,Build Housekeeping → Tech-debt,ui-build,P2,Missing,DEBT-UI,DEC-050
+NF-DEBT-E2E,user brief 22 Oct; new-features/UNDERSTAND.md#debt,End-to-end and accessibility: Housekeeping → Tech-debt,test,P2,Missing,DEBT-E2E,DEC-050
+NF-DEBT-VIS,user brief 22 Oct; new-features/UNDERSTAND.md#debt,Visual check and contact sheet: Housekeeping → Tech-debt,test,P2,Missing,DEBT-VIS,DEC-050
+NF-EPIC-DHEALTH,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,"Epic Data health: duplicates, orphans, UoM mismatches, missing taxes and accounts; counts match live search_count; feeds Go-live",build,P1,Partial,DHEALTH-01;DHEALTH-02;DHEALTH-03;DHEALTH-LIVE;DHEALTH-SPEC;DHEALTH-UI;DHEALTH-E2E;DHEALTH-VIS,DEC-050
+NF-DHEALTH-01,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,DHEALTH-01,DEC-050
+NF-DHEALTH-02,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,Contacts and orphans detectors (normalised duplicates),build,P1,Missing,DHEALTH-02,DEC-050
+NF-DHEALTH-03,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,"Products, UoM, taxes and accounts detectors (report-only)",build,P1,Missing,DHEALTH-03,DEC-050
+NF-DHEALTH-LIVE,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,Live proof on Odoo 17–20 (disposable `ingenium_nf_data_health_*` DBs),prove-live,P1,Missing,DHEALTH-LIVE,DEC-050
+NF-DHEALTH-SPEC,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,Screen spec: Explore → Data health,ui-spec,P1,Missing,DHEALTH-SPEC,DEC-050
+NF-DHEALTH-UI,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,Build Explore → Data health,ui-build,P1,Missing,DHEALTH-UI,DEC-050
+NF-DHEALTH-E2E,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,End-to-end and accessibility: Explore → Data health,test,P1,Missing,DHEALTH-E2E,DEC-050
+NF-DHEALTH-VIS,user brief 22 Oct; new-features/UNDERSTAND.md#dhealth,Visual check and contact sheet: Explore → Data health,test,P1,Missing,DHEALTH-VIS,DEC-050
+NF-EPIC-VDIFF,user brief 22 Oct; new-features/UPGRADE.md#vdiff,"Epic Version diff explainer: per-customisation unchanged / adapted / needs a person between two versions, every reason cites a compat fact or catalog diff",build,P2,Partial,VDIFF-01;VDIFF-02;VDIFF-03;VDIFF-LIVE;VDIFF-SPEC;VDIFF-UI;VDIFF-E2E;VDIFF-VIS,DEC-050
+NF-VDIFF-01,user brief 22 Oct; new-features/UPGRADE.md#vdiff,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,VDIFF-01,DEC-050
+NF-VDIFF-02,user brief 22 Oct; new-features/UPGRADE.md#vdiff,Reference catalog builder (stock sandboxes → versioned gz JSON),build,P2,Missing,VDIFF-02,DEC-050
+NF-VDIFF-03,user brief 22 Oct; new-features/UPGRADE.md#vdiff,Diff engine: owner customisations × catalogs × compat facts,build,P2,Missing,VDIFF-03,DEC-050
+NF-VDIFF-LIVE,user brief 22 Oct; new-features/UPGRADE.md#vdiff,Live proof on Odoo 17–20 (disposable `ingenium_nf_version_diff_*` DBs),prove-live,P2,Missing,VDIFF-LIVE,DEC-050
+NF-VDIFF-SPEC,user brief 22 Oct; new-features/UPGRADE.md#vdiff,Screen spec: Safety → Upgrade → What changes,ui-spec,P2,Missing,VDIFF-SPEC,DEC-050
+NF-VDIFF-UI,user brief 22 Oct; new-features/UPGRADE.md#vdiff,Build Safety → Upgrade → What changes,ui-build,P2,Missing,VDIFF-UI,DEC-050
+NF-VDIFF-E2E,user brief 22 Oct; new-features/UPGRADE.md#vdiff,End-to-end and accessibility: Safety → Upgrade → What changes,test,P2,Missing,VDIFF-E2E,DEC-050
+NF-VDIFF-VIS,user brief 22 Oct; new-features/UPGRADE.md#vdiff,Visual check and contact sheet: Safety → Upgrade → What changes,test,P2,Missing,VDIFF-VIS,DEC-050
+NF-EPIC-UPG,user brief 22 Oct; new-features/UPGRADE.md#upg,"Epic Upgrade rehearsal: rehearse customisations hop by hop (17→18→19→20) on fresh sandboxes or an owner-supplied Test copy; breakage report, sandbox auto-fixes, plan (decomposes BOLD-B1; no clone, DEC-054)",build,P2,Partial,UPG-01;UPG-02;UPG-03;UPG-04;UPG-05;UPG-LIVE;UPG-SPEC;UPG-UI;UPG-E2E;UPG-VIS,DEC-050;DEC-054
+NF-UPG-01,user brief 22 Oct; new-features/UPGRADE.md#upg,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,UPG-01,DEC-050
+NF-UPG-02,user brief 22 Oct; new-features/UPGRADE.md#upg,"App DB tables upgrade_rehearsals (Alembic, additive)",build,P2,Missing,UPG-02,DEC-050
+NF-UPG-03,user brief 22 Oct; new-features/UPGRADE.md#upg,"Rehearsal sandbox orchestrator (create, replay spec, drop; 2 h cap)",build,P2,Missing,UPG-03,DEC-050
+NF-UPG-04,user brief 22 Oct; new-features/UPGRADE.md#upg,Breakage classifier and sandbox auto-fixes,build,P2,Missing,UPG-04,DEC-050
+NF-UPG-05,user brief 22 Oct; new-features/UPGRADE.md#upg,Rehearsal report and upgrade plan with estimate,build,P2,Missing,UPG-05,DEC-050
+NF-UPG-LIVE,user brief 22 Oct; new-features/UPGRADE.md#upg,Live proof on Odoo 17–20 (disposable `ingenium_nf_upgrade_rehearsal_*` DBs),prove-live,P2,Missing,UPG-LIVE,DEC-050
+NF-UPG-SPEC,user brief 22 Oct; new-features/UPGRADE.md#upg,Screen spec: Safety → Upgrade → Rehearse,ui-spec,P2,Missing,UPG-SPEC,DEC-050
+NF-UPG-UI,user brief 22 Oct; new-features/UPGRADE.md#upg,Build Safety → Upgrade → Rehearse,ui-build,P2,Missing,UPG-UI,DEC-050
+NF-UPG-E2E,user brief 22 Oct; new-features/UPGRADE.md#upg,End-to-end and accessibility: Safety → Upgrade → Rehearse,test,P2,Missing,UPG-E2E,DEC-050
+NF-UPG-VIS,user brief 22 Oct; new-features/UPGRADE.md#upg,Visual check and contact sheet: Safety → Upgrade → Rehearse,test,P2,Missing,UPG-VIS,DEC-050
+NF-EPIC-S2C,user brief 22 Oct; new-features/UPGRADE.md#s2c,Epic Studio-to-code converter: read manual customisations via public ORM metadata and generate an installable module proven in a sandbox (no Studio source read),build,P2,Missing,S2C-01;S2C-02;S2C-03;S2C-04;S2C-LIVE;S2C-SPEC;S2C-UI;S2C-E2E;S2C-VIS,DEC-050;DEC-055
+NF-S2C-01,user brief 22 Oct; new-features/UPGRADE.md#s2c,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,S2C-01,DEC-050
+NF-S2C-02,user brief 22 Oct; new-features/UPGRADE.md#s2c,"Inventory reader (manual fields, inherited views, menus, actions, automations)",build,P2,Missing,S2C-02,DEC-050
+NF-S2C-03,user brief 22 Oct; new-features/UPGRADE.md#s2c,"Module generator (XML, manifest, name-anchor rewrite; deterministic)",build,P2,Missing,S2C-03,DEC-050
+NF-S2C-04,user brief 22 Oct; new-features/UPGRADE.md#s2c,Sandbox install proof and object diff,build,P2,Missing,S2C-04,DEC-050
+NF-S2C-LIVE,user brief 22 Oct; new-features/UPGRADE.md#s2c,Live proof on Odoo 17–20 (disposable `ingenium_nf_studio_to_code_*` DBs),prove-live,P2,Missing,S2C-LIVE,DEC-050
+NF-S2C-SPEC,user brief 22 Oct; new-features/UPGRADE.md#s2c,Screen spec: Projects → Turn Studio changes into a module,ui-spec,P2,Missing,S2C-SPEC,DEC-050
+NF-S2C-UI,user brief 22 Oct; new-features/UPGRADE.md#s2c,Build Projects → Turn Studio changes into a module,ui-build,P2,Missing,S2C-UI,DEC-050
+NF-S2C-E2E,user brief 22 Oct; new-features/UPGRADE.md#s2c,End-to-end and accessibility: Projects → Turn Studio changes into a module,test,P2,Missing,S2C-E2E,DEC-050
+NF-S2C-VIS,user brief 22 Oct; new-features/UPGRADE.md#s2c,Visual check and contact sheet: Projects → Turn Studio changes into a module,test,P2,Missing,S2C-VIS,DEC-050
+NF-EPIC-FITGAP,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Epic Fit-gap analysis: BRD lines classified standard / config / custom / impossible with catalog evidence and effort ranges; overrides kept,build,P1,Missing,FITGAP-01;FITGAP-02;FITGAP-03;FITGAP-04;FITGAP-05;FITGAP-06;FITGAP-07;FITGAP-LIVE;FITGAP-SPEC;FITGAP-UI;FITGAP-E2E;FITGAP-VIS,DEC-050;DEC-056;DEC-074
+NF-FITGAP-01,user brief 22 Oct; new-features/DELIVERY.md#fitgap,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,FITGAP-01,DEC-050
+NF-FITGAP-02,user brief 22 Oct; new-features/DELIVERY.md#fitgap,"App DB tables fitgap_docs, fitgap_lines (Alembic, additive)",build,P1,Missing,FITGAP-02,DEC-050
+NF-FITGAP-03,user brief 22 Oct; new-features/DELIVERY.md#fitgap,"Requirements parser (ingest uploads → lines with source quotes, fenced)",build,P1,Missing,FITGAP-03,DEC-050
+NF-FITGAP-04,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Classifier with deterministic validator (catalog evidence or downgrade),build,P1,Missing,FITGAP-04,DEC-050
+NF-FITGAP-05,user brief 22 Oct; new-features/DELIVERY.md#fitgap,"Community limits facts file (sourced, human-written)",build,P1,Missing,FITGAP-05,DEC-050
+NF-FITGAP-06,user brief 22 Oct; new-features/DELIVERY.md#fitgap,"Fit-gap export (XLSX via openpyxl, CSV)",build,P1,Missing,FITGAP-06,DEC-050
+NF-FITGAP-07,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Labelled fit-gap eval set (120 lines) and agreement harness,test,P1,Missing,FITGAP-07,DEC-050;DEC-074
+NF-FITGAP-LIVE,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Live proof on Odoo 17–20 (disposable `ingenium_nf_fit_gap_*` DBs),prove-live,P1,Missing,FITGAP-LIVE,DEC-050
+NF-FITGAP-SPEC,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Screen spec: Delivery → Fit-gap,ui-spec,P1,Missing,FITGAP-SPEC,DEC-050
+NF-FITGAP-UI,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Build Delivery → Fit-gap,ui-build,P1,Missing,FITGAP-UI,DEC-050
+NF-FITGAP-E2E,user brief 22 Oct; new-features/DELIVERY.md#fitgap,End-to-end and accessibility: Delivery → Fit-gap,test,P1,Missing,FITGAP-E2E,DEC-050
+NF-FITGAP-VIS,user brief 22 Oct; new-features/DELIVERY.md#fitgap,Visual check and contact sheet: Delivery → Fit-gap,test,P1,Missing,FITGAP-VIS,DEC-050
+NF-EPIC-SOW,user brief 22 Oct; new-features/DELIVERY.md#sow,"Epic BRD/SOW → costed plan → applied config: fit-gap lines priced from the workspace rate card, SOW export, config lines built in a sandbox by Job Autopilot",build,P2,Partial,SOW-01;SOW-02;SOW-03;SOW-04;SOW-05;SOW-LIVE;SOW-SPEC;SOW-UI;SOW-E2E;SOW-VIS,DEC-050;DEC-056
+NF-SOW-01,user brief 22 Oct; new-features/DELIVERY.md#sow,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,SOW-01,DEC-050
+NF-SOW-02,user brief 22 Oct; new-features/DELIVERY.md#sow,"App DB tables rate_cards, sow_plans (Alembic, additive)",build,P2,Missing,SOW-02,DEC-050
+NF-SOW-03,user brief 22 Oct; new-features/DELIVERY.md#sow,"Estimator (Decimal, rate card, contingency, ranges)",build,P2,Missing,SOW-03,DEC-050
+NF-SOW-04,user brief 22 Oct; new-features/DELIVERY.md#sow,"SOW export (PDF and DOCX; scope, exclusions, assumptions)",build,P2,Missing,SOW-04,DEC-050
+NF-SOW-05,user brief 22 Oct; new-features/DELIVERY.md#sow,Build handoff to Job Autopilot (sandbox only),build,P2,Missing,SOW-05,DEC-050
+NF-SOW-LIVE,user brief 22 Oct; new-features/DELIVERY.md#sow,Live proof on Odoo 17–20 (disposable `ingenium_nf_sow_plan_*` DBs),prove-live,P2,Missing,SOW-LIVE,DEC-050
+NF-SOW-SPEC,user brief 22 Oct; new-features/DELIVERY.md#sow,Screen spec: Delivery → Plan,ui-spec,P2,Missing,SOW-SPEC,DEC-050
+NF-SOW-UI,user brief 22 Oct; new-features/DELIVERY.md#sow,Build Delivery → Plan,ui-build,P2,Missing,SOW-UI,DEC-050
+NF-SOW-E2E,user brief 22 Oct; new-features/DELIVERY.md#sow,End-to-end and accessibility: Delivery → Plan,test,P2,Missing,SOW-E2E,DEC-050
+NF-SOW-VIS,user brief 22 Oct; new-features/DELIVERY.md#sow,Visual check and contact sheet: Delivery → Plan,test,P2,Missing,SOW-VIS,DEC-050
+NF-EPIC-MANUAL,user brief 22 Oct; new-features/DELIVERY.md#manual,"Epic Auto user manuals per role: per-role manuals from visible menus and view arch, sandbox Example screenshots, PDF/Markdown; video later (decomposes BOLD-B7)",build,P3,Missing,MANUAL-01;MANUAL-02;MANUAL-03;MANUAL-04;MANUAL-05;MANUAL-LIVE;MANUAL-SPEC;MANUAL-UI;MANUAL-E2E;MANUAL-VIS,DEC-050;DEC-057
+NF-MANUAL-01,user brief 22 Oct; new-features/DELIVERY.md#manual,"API contract: types, router, error envelope, tenancy, TS mirror",build,P3,Missing,MANUAL-01,DEC-050
+NF-MANUAL-02,user brief 22 Oct; new-features/DELIVERY.md#manual,"App DB tables manuals (Alembic, additive)",build,P3,Missing,MANUAL-02,DEC-050
+NF-MANUAL-03,user brief 22 Oct; new-features/DELIVERY.md#manual,Role walker: groups → visible menus → actions → view fields,build,P3,Missing,MANUAL-03,DEC-050
+NF-MANUAL-04,user brief 22 Oct; new-features/DELIVERY.md#manual,Page writer (fenced AI; validator removes fields not in the view),build,P3,Missing,MANUAL-04,DEC-050
+NF-MANUAL-05,user brief 22 Oct; new-features/DELIVERY.md#manual,Sandbox Example screenshots and PDF/Markdown export,build,P3,Missing,MANUAL-05,DEC-050
+NF-MANUAL-LIVE,user brief 22 Oct; new-features/DELIVERY.md#manual,Live proof on Odoo 17–20 (disposable `ingenium_nf_manuals_*` DBs),prove-live,P3,Missing,MANUAL-LIVE,DEC-050
+NF-MANUAL-SPEC,user brief 22 Oct; new-features/DELIVERY.md#manual,Screen spec: Delivery → Manuals,ui-spec,P3,Missing,MANUAL-SPEC,DEC-050
+NF-MANUAL-UI,user brief 22 Oct; new-features/DELIVERY.md#manual,Build Delivery → Manuals,ui-build,P3,Missing,MANUAL-UI,DEC-050
+NF-MANUAL-E2E,user brief 22 Oct; new-features/DELIVERY.md#manual,End-to-end and accessibility: Delivery → Manuals,test,P3,Missing,MANUAL-E2E,DEC-050
+NF-MANUAL-VIS,user brief 22 Oct; new-features/DELIVERY.md#manual,Visual check and contact sheet: Delivery → Manuals,test,P3,Missing,MANUAL-VIS,DEC-050
+NF-EPIC-UAT,user brief 22 Oct; new-features/DELIVERY.md#uat,"Epic UAT scripts, runs and sign-off pack: scripts generated per SOW line, automated runs on test copy/sandbox only, manual results by key users, signed pack in the audit chain",build,P2,Partial,UAT-01;UAT-02;UAT-03;UAT-04;UAT-05;UAT-LIVE;UAT-SPEC;UAT-UI;UAT-E2E;UAT-VIS,DEC-050;DEC-058
+NF-UAT-01,user brief 22 Oct; new-features/DELIVERY.md#uat,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,UAT-01,DEC-050
+NF-UAT-02,user brief 22 Oct; new-features/DELIVERY.md#uat,"App DB tables uat_scripts, uat_runs (Alembic, additive)",build,P2,Missing,UAT-02,DEC-050
+NF-UAT-03,user brief 22 Oct; new-features/DELIVERY.md#uat,"Script generator (automated via smoke recipes, else manual)",build,P2,Missing,UAT-03,DEC-050
+NF-UAT-04,user brief 22 Oct; new-features/DELIVERY.md#uat,"Runner on test copy or sandbox only (tagged records, archived after)",build,P2,Missing,UAT-04,DEC-050
+NF-UAT-05,user brief 22 Oct; new-features/DELIVERY.md#uat,"Sign-off pack (PDF, sha256 in the audit chain)",build,P2,Missing,UAT-05,DEC-050
+NF-UAT-LIVE,user brief 22 Oct; new-features/DELIVERY.md#uat,Live proof on Odoo 17–20 (disposable `ingenium_nf_uat_*` DBs),prove-live,P2,Missing,UAT-LIVE,DEC-050
+NF-UAT-SPEC,user brief 22 Oct; new-features/DELIVERY.md#uat,Screen spec: Delivery → UAT,ui-spec,P2,Missing,UAT-SPEC,DEC-050
+NF-UAT-UI,user brief 22 Oct; new-features/DELIVERY.md#uat,Build Delivery → UAT,ui-build,P2,Missing,UAT-UI,DEC-050
+NF-UAT-E2E,user brief 22 Oct; new-features/DELIVERY.md#uat,End-to-end and accessibility: Delivery → UAT,test,P2,Missing,UAT-E2E,DEC-050
+NF-UAT-VIS,user brief 22 Oct; new-features/DELIVERY.md#uat,Visual check and contact sheet: Delivery → UAT,test,P2,Missing,UAT-VIS,DEC-050
+NF-EPIC-GOLIVE,user brief 22 Oct; new-features/DELIVERY.md#golive,"Epic Go-live readiness check: one verdict from data health, access, statutory, UAT, mail, numbering, backups and users; accepted risks named; 14-day watch",build,P1,Partial,GOLIVE-01;GOLIVE-02;GOLIVE-03;GOLIVE-04;GOLIVE-LIVE;GOLIVE-SPEC;GOLIVE-UI;GOLIVE-E2E;GOLIVE-VIS,DEC-050
+NF-GOLIVE-01,user brief 22 Oct; new-features/DELIVERY.md#golive,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,GOLIVE-01,DEC-050
+NF-GOLIVE-02,user brief 22 Oct; new-features/DELIVERY.md#golive,"App DB tables golive_reviews (Alembic, additive)",build,P1,Missing,GOLIVE-02,DEC-050
+NF-GOLIVE-03,user brief 22 Oct; new-features/DELIVERY.md#golive,Verdict engine (latest runs ≤ 24 h; missing = not checked),build,P1,Missing,GOLIVE-03,DEC-050
+NF-GOLIVE-04,user brief 22 Oct; new-features/DELIVERY.md#golive,Accept-risk (audit chain) and 14-day watch scheduler,build,P1,Missing,GOLIVE-04,DEC-050
+NF-GOLIVE-LIVE,user brief 22 Oct; new-features/DELIVERY.md#golive,Live proof on Odoo 17–20 (disposable `ingenium_nf_go_live_*` DBs),prove-live,P1,Missing,GOLIVE-LIVE,DEC-050
+NF-GOLIVE-SPEC,user brief 22 Oct; new-features/DELIVERY.md#golive,Screen spec: Delivery → Go-live,ui-spec,P1,Missing,GOLIVE-SPEC,DEC-050
+NF-GOLIVE-UI,user brief 22 Oct; new-features/DELIVERY.md#golive,Build Delivery → Go-live,ui-build,P1,Missing,GOLIVE-UI,DEC-050
+NF-GOLIVE-E2E,user brief 22 Oct; new-features/DELIVERY.md#golive,End-to-end and accessibility: Delivery → Go-live,test,P1,Missing,GOLIVE-E2E,DEC-050
+NF-GOLIVE-VIS,user brief 22 Oct; new-features/DELIVERY.md#golive,Visual check and contact sheet: Delivery → Go-live,test,P1,Missing,GOLIVE-VIS,DEC-050
+NF-EPIC-DRIFT,user brief 22 Oct; new-features/OPERATE.md#drift,"Epic Drift watch: detect out-of-band production changes to watched metadata, diff against the last snapshot, accept or restore via plan",build,P1,Partial,DRIFT-01;DRIFT-02;DRIFT-03;DRIFT-04;DRIFT-05;DRIFT-LIVE;DRIFT-SPEC;DRIFT-UI;DRIFT-E2E;DRIFT-VIS,DEC-050;DEC-059
+NF-DRIFT-01,user brief 22 Oct; new-features/OPERATE.md#drift,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,DRIFT-01,DEC-050
+NF-DRIFT-02,user brief 22 Oct; new-features/OPERATE.md#drift,"App DB tables drift_events (Alembic, additive)",build,P1,Missing,DRIFT-02,DEC-050
+NF-DRIFT-03,user brief 22 Oct; new-features/OPERATE.md#drift,Fingerprints and detector (scan `drift`),build,P1,Missing,DRIFT-03,DEC-050
+NF-DRIFT-04,user brief 22 Oct; new-features/OPERATE.md#drift,Restore plan from snapshot (restorable types only),build,P1,Missing,DRIFT-04,DEC-050
+NF-DRIFT-05,user brief 22 Oct; new-features/OPERATE.md#drift,"Drift schedule (daily default, hourly option) and Home item",build,P1,Missing,DRIFT-05,DEC-050
+NF-DRIFT-LIVE,user brief 22 Oct; new-features/OPERATE.md#drift,Live proof on Odoo 17–20 (disposable `ingenium_nf_drift_*` DBs),prove-live,P1,Missing,DRIFT-LIVE,DEC-050
+NF-DRIFT-SPEC,user brief 22 Oct; new-features/OPERATE.md#drift,Screen spec: Operate → Drift,ui-spec,P1,Missing,DRIFT-SPEC,DEC-050
+NF-DRIFT-UI,user brief 22 Oct; new-features/OPERATE.md#drift,Build Operate → Drift,ui-build,P1,Missing,DRIFT-UI,DEC-050
+NF-DRIFT-E2E,user brief 22 Oct; new-features/OPERATE.md#drift,End-to-end and accessibility: Operate → Drift,test,P1,Missing,DRIFT-E2E,DEC-050
+NF-DRIFT-VIS,user brief 22 Oct; new-features/OPERATE.md#drift,Visual check and contact sheet: Operate → Drift,test,P1,Missing,DRIFT-VIS,DEC-050
+NF-EPIC-PROMO,user brief 22 Oct; new-features/OPERATE.md#promo,"Epic Staging→prod promotion as one reviewed change set: pick objects from the staging diff, auto-drafted release notes, second-approver review, ordered apply with snapshot and whole-set Undo",build,P2,Partial,PROMO-01;PROMO-02;PROMO-03;PROMO-04;PROMO-05;PROMO-06;PROMO-LIVE;PROMO-SPEC;PROMO-UI;PROMO-E2E;PROMO-VIS,DEC-050
+NF-PROMO-01,user brief 22 Oct; new-features/OPERATE.md#promo,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,PROMO-01,DEC-050
+NF-PROMO-02,user brief 22 Oct; new-features/OPERATE.md#promo,"App DB tables releases (Alembic, additive)",build,P2,Missing,PROMO-02,DEC-050
+NF-PROMO-03,user brief 22 Oct; new-features/OPERATE.md#promo,Release diff: journals plus metadata diff → ordered content-addressed ops,build,P2,Missing,PROMO-03,DEC-050
+NF-PROMO-04,user brief 22 Oct; new-features/OPERATE.md#promo,Release notes drafter (template; optional fenced AI phrasing),build,P2,Missing,PROMO-04,DEC-050
+NF-PROMO-05,user brief 22 Oct; new-features/OPERATE.md#promo,Review and approval (two-person rule for Live targets),build,P2,Missing,PROMO-05,DEC-050
+NF-PROMO-06,user brief 22 Oct; new-features/OPERATE.md#promo,"Promote and whole-set Undo (dry run, ordered apply, snapshot, rollback)",build,P2,Missing,PROMO-06,DEC-050
+NF-PROMO-LIVE,user brief 22 Oct; new-features/OPERATE.md#promo,Live proof on Odoo 17–20 (disposable `ingenium_nf_releases_*` DBs),prove-live,P2,Missing,PROMO-LIVE,DEC-050
+NF-PROMO-SPEC,user brief 22 Oct; new-features/OPERATE.md#promo,Screen spec: Pipelines → Releases,ui-spec,P2,Missing,PROMO-SPEC,DEC-050
+NF-PROMO-UI,user brief 22 Oct; new-features/OPERATE.md#promo,Build Pipelines → Releases,ui-build,P2,Missing,PROMO-UI,DEC-050
+NF-PROMO-E2E,user brief 22 Oct; new-features/OPERATE.md#promo,End-to-end and accessibility: Pipelines → Releases,test,P2,Missing,PROMO-E2E,DEC-050
+NF-PROMO-VIS,user brief 22 Oct; new-features/OPERATE.md#promo,Visual check and contact sheet: Pipelines → Releases,test,P2,Missing,PROMO-VIS,DEC-050
+NF-EPIC-SOD,user brief 22 Oct; new-features/OPERATE.md#sod,"Epic Access and segregation-of-duties audit: conflict rules over group closure and model access, privileged and dormant users, fixes as plans, signed auditor report",build,P1,Partial,SOD-01;SOD-02;SOD-03;SOD-04;SOD-05;SOD-LIVE;SOD-SPEC;SOD-UI;SOD-E2E;SOD-VIS,DEC-050;DEC-060
+NF-SOD-01,user brief 22 Oct; new-features/OPERATE.md#sod,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,SOD-01,DEC-050
+NF-SOD-02,user brief 22 Oct; new-features/OPERATE.md#sod,Capability closure (implied groups × model access; 20 via ir.access),build,P1,Missing,SOD-02,DEC-050
+NF-SOD-03,user brief 22 Oct; new-features/OPERATE.md#sod,"Rules file and evaluator (conflicts, privileged, dormant)",build,P1,Missing,SOD-03,DEC-050
+NF-SOD-04,user brief 22 Oct; new-features/OPERATE.md#sod,Fixes: remove from group as plan; accept with reason,build,P1,Missing,SOD-04,DEC-050
+NF-SOD-05,user brief 22 Oct; new-features/OPERATE.md#sod,"Auditor report (PDF, hash anchored like HIST-EXPORT)",build,P1,Missing,SOD-05,DEC-050
+NF-SOD-LIVE,user brief 22 Oct; new-features/OPERATE.md#sod,Live proof on Odoo 17–20 (disposable `ingenium_nf_access_audit_*` DBs),prove-live,P1,Missing,SOD-LIVE,DEC-050
+NF-SOD-SPEC,user brief 22 Oct; new-features/OPERATE.md#sod,Screen spec: Operate → Access audit,ui-spec,P1,Missing,SOD-SPEC,DEC-050
+NF-SOD-UI,user brief 22 Oct; new-features/OPERATE.md#sod,Build Operate → Access audit,ui-build,P1,Missing,SOD-UI,DEC-050
+NF-SOD-E2E,user brief 22 Oct; new-features/OPERATE.md#sod,End-to-end and accessibility: Operate → Access audit,test,P1,Missing,SOD-E2E,DEC-050
+NF-SOD-VIS,user brief 22 Oct; new-features/OPERATE.md#sod,Visual check and contact sheet: Operate → Access audit,test,P1,Missing,SOD-VIS,DEC-050
+NF-EPIC-PERF,user brief 22 Oct; new-features/OPERATE.md#perf,"Epic Performance doctor: timed read probes and configuration causes (cron backlog, mail queue, attachments, unindexed x_ fields, automations) with safe fixes",build,P3,Missing,PERF-01;PERF-02;PERF-03;PERF-04;PERF-LIVE;PERF-SPEC;PERF-UI;PERF-E2E;PERF-VIS,DEC-050;DEC-073
+NF-PERF-01,user brief 22 Oct; new-features/OPERATE.md#perf,"API contract: types, router, error envelope, tenancy, TS mirror",build,P3,Missing,PERF-01,DEC-050
+NF-PERF-02,user brief 22 Oct; new-features/OPERATE.md#perf,"Timed probes (median of 5, spaced, capped, stop on 429/503)",build,P3,Missing,PERF-02,DEC-050
+NF-PERF-03,user brief 22 Oct; new-features/OPERATE.md#perf,Configuration causes detector,build,P3,Missing,PERF-03,DEC-050
+NF-PERF-04,user brief 22 Oct; new-features/OPERATE.md#perf,"Fix plans: index flag on x_ fields (if provable), deactivate automation",build,P3,Missing,PERF-04,DEC-050
+NF-PERF-LIVE,user brief 22 Oct; new-features/OPERATE.md#perf,Live proof on Odoo 17–20 (disposable `ingenium_nf_performance_*` DBs),prove-live,P3,Missing,PERF-LIVE,DEC-050
+NF-PERF-SPEC,user brief 22 Oct; new-features/OPERATE.md#perf,Screen spec: Operate → Performance,ui-spec,P3,Missing,PERF-SPEC,DEC-050
+NF-PERF-UI,user brief 22 Oct; new-features/OPERATE.md#perf,Build Operate → Performance,ui-build,P3,Missing,PERF-UI,DEC-050
+NF-PERF-E2E,user brief 22 Oct; new-features/OPERATE.md#perf,End-to-end and accessibility: Operate → Performance,test,P3,Missing,PERF-E2E,DEC-050
+NF-PERF-VIS,user brief 22 Oct; new-features/OPERATE.md#perf,Visual check and contact sheet: Operate → Performance,test,P3,Missing,PERF-VIS,DEC-050
+NF-EPIC-NG,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"Epic Nigeria pack: rules-as-data (VAT, WHT, PAYE, pension), tax setup plan, e-invoicing readiness export, payroll deductions compute, bank statement conversion (decomposes BOLD-B8)",build,P1,Partial,NG-01;NG-02;NG-03;NG-04;NG-05;NG-06;NG-07;NG-08;NG-09;NG-LIVE;NG-SPEC;NG-UI;NG-E2E;NG-VIS,DEC-050;DEC-061;DEC-062;DEC-063;DEC-064
+NF-NG-01,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,NG-01,DEC-050
+NF-NG-02,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"App DB tables ng_rule_versions, bank_jobs (Alembic, additive)",build,P1,Missing,NG-02,DEC-050
+NF-NG-03,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"Rules loader (effective dates, source, reviewer; Example until reviewed)",build,P1,Missing,NG-03,DEC-050
+NF-NG-04,user brief 22 Oct; new-features/LOCALIZATION.md#ng,Reviewed Nigeria rules table (data only),build,P1,Missing,NG-04,DEC-050;DEC-061
+NF-NG-05,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"Tax setup plan (adopt l10n_ng, taxes, fiscal positions, WHT, TIN; new records only)",build,P1,Missing,NG-05,DEC-050
+NF-NG-06,user brief 22 Oct; new-features/LOCALIZATION.md#ng,E-invoice sample payload export (mapping per DEC-062; no transmission),build,P1,Missing,NG-06,DEC-050;DEC-062
+NF-NG-07,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"PAYE and pension compute (Decimal; compute-only, no journal entries)",build,P1,Missing,NG-07,DEC-050;DEC-064
+NF-NG-08,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"Bank statement parsers (per bank, golden tests from anonymised samples)",build,P1,Missing,NG-08,DEC-050;DEC-063
+NF-NG-09,user brief 22 Oct; new-features/LOCALIZATION.md#ng,"Bank convert endpoint: preview, try_loading dry run, Odoo-ready CSV, TTL purge",build,P1,Missing,NG-09,DEC-050
+NF-NG-LIVE,user brief 22 Oct; new-features/LOCALIZATION.md#ng,Live proof on Odoo 17–20 (disposable `ingenium_nf_nigeria_pack_*` DBs),prove-live,P1,Missing,NG-LIVE,DEC-050
+NF-NG-SPEC,user brief 22 Oct; new-features/LOCALIZATION.md#ng,Screen spec: Setup → Country pack → Nigeria,ui-spec,P1,Missing,NG-SPEC,DEC-050
+NF-NG-UI,user brief 22 Oct; new-features/LOCALIZATION.md#ng,Build Setup → Country pack → Nigeria,ui-build,P1,Missing,NG-UI,DEC-050
+NF-NG-E2E,user brief 22 Oct; new-features/LOCALIZATION.md#ng,End-to-end and accessibility: Setup → Country pack → Nigeria,test,P1,Missing,NG-E2E,DEC-050
+NF-NG-VIS,user brief 22 Oct; new-features/LOCALIZATION.md#ng,Visual check and contact sheet: Setup → Country pack → Nigeria,test,P1,Missing,NG-VIS,DEC-050
+NF-EPIC-STAT,user brief 22 Oct; new-features/LOCALIZATION.md#stat,"Epic Statutory compliance check: read-only checks per Nigeria rule id (TIN, VAT on lines, WHT, CBN rate freshness, lock dates, e-invoice readiness), monthly option",build,P1,Missing,STAT-01;STAT-02;STAT-03;STAT-LIVE;STAT-SPEC;STAT-UI;STAT-E2E;STAT-VIS,DEC-050
+NF-STAT-01,user brief 22 Oct; new-features/LOCALIZATION.md#stat,"API contract: types, router, error envelope, tenancy, TS mirror",build,P1,Missing,STAT-01,DEC-050
+NF-STAT-02,user brief 22 Oct; new-features/LOCALIZATION.md#stat,Statutory checks engine (scan `statutory_ng`),build,P1,Missing,STAT-02,DEC-050
+NF-STAT-03,user brief 22 Oct; new-features/LOCALIZATION.md#stat,Monthly schedule and Go-live feed,build,P1,Missing,STAT-03,DEC-050
+NF-STAT-LIVE,user brief 22 Oct; new-features/LOCALIZATION.md#stat,Live proof on Odoo 17–20 (disposable `ingenium_nf_statutory_*` DBs),prove-live,P1,Missing,STAT-LIVE,DEC-050
+NF-STAT-SPEC,user brief 22 Oct; new-features/LOCALIZATION.md#stat,Screen spec: Safety → Statutory,ui-spec,P1,Missing,STAT-SPEC,DEC-050
+NF-STAT-UI,user brief 22 Oct; new-features/LOCALIZATION.md#stat,Build Safety → Statutory,ui-build,P1,Missing,STAT-UI,DEC-050
+NF-STAT-E2E,user brief 22 Oct; new-features/LOCALIZATION.md#stat,End-to-end and accessibility: Safety → Statutory,test,P1,Missing,STAT-E2E,DEC-050
+NF-STAT-VIS,user brief 22 Oct; new-features/LOCALIZATION.md#stat,Visual check and contact sheet: Safety → Statutory,test,P1,Missing,STAT-VIS,DEC-050
+NF-EPIC-CXB,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Epic Connector builder deltas: connector test kit and certification on top of Bridge; certified Paystack and Flutterwave flows; WMS and bank-feed templates,build,P3,Partial,CXB-01;CXB-02;CXB-03;CXB-04;CXB-05;CXB-06;CXB-07;CXB-LIVE;CXB-SPEC;CXB-UI;CXB-E2E;CXB-VIS,DEC-050;DEC-065
+NF-CXB-01,user brief 22 Oct; new-features/INTEGRATE.md#cxb,"API contract: types, router, error envelope, tenancy, TS mirror",build,P3,Missing,CXB-01,DEC-050
+NF-CXB-02,user brief 22 Oct; new-features/INTEGRATE.md#cxb,"App DB tables connector_certifications (Alembic, additive)",build,P3,Missing,CXB-02,DEC-050
+NF-CXB-03,user brief 22 Oct; new-features/INTEGRATE.md#cxb,"Connector test kit (auth, pagination, replay idempotency, signature, 429 backoff)",build,P3,Missing,CXB-03,DEC-050
+NF-CXB-04,user brief 22 Oct; new-features/INTEGRATE.md#cxb,"Paystack certified flow (descriptor, HMAC, landing per DEC-065)",build,P3,Missing,CXB-04,DEC-050;DEC-065
+NF-CXB-05,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Flutterwave certified flow (same rules as Paystack),build,P3,Missing,CXB-05,DEC-050;DEC-065
+NF-CXB-06,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Generic WMS REST template,build,P3,Missing,CXB-06,DEC-050
+NF-CXB-07,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Bank-feed template (aggregator chosen under DEC-065),build,P3,Missing,CXB-07,DEC-050;DEC-065
+NF-CXB-LIVE,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Live proof on Odoo 17–20 (disposable `ingenium_nf_connector_builder_*` DBs),prove-live,P3,Missing,CXB-LIVE,DEC-050
+NF-CXB-SPEC,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Screen spec: Bridge → Connector certification,ui-spec,P3,Missing,CXB-SPEC,DEC-050
+NF-CXB-UI,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Build Bridge → Connector certification,ui-build,P3,Missing,CXB-UI,DEC-050
+NF-CXB-E2E,user brief 22 Oct; new-features/INTEGRATE.md#cxb,End-to-end and accessibility: Bridge → Connector certification,test,P3,Missing,CXB-E2E,DEC-050
+NF-CXB-VIS,user brief 22 Oct; new-features/INTEGRATE.md#cxb,Visual check and contact sheet: Bridge → Connector certification,test,P3,Missing,CXB-VIS,DEC-050
+NF-EPIC-MIG,user brief 22 Oct; new-features/INTEGRATE.md#mig,"Epic Data migration studio: source profiles (Excel, QuickBooks Online, Sage 50), header mapping, ordered dry runs, idempotent import to test copy, reconciliation",build,P2,Partial,MIG-01;MIG-02;MIG-03;MIG-04;MIG-05;MIG-06;MIG-07;MIG-LIVE;MIG-SPEC;MIG-UI;MIG-E2E;MIG-VIS,DEC-050;DEC-066
+NF-MIG-01,user brief 22 Oct; new-features/INTEGRATE.md#mig,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,MIG-01,DEC-050
+NF-MIG-02,user brief 22 Oct; new-features/INTEGRATE.md#mig,"App DB tables migration_jobs, migration_profiles (Alembic, additive)",build,P2,Missing,MIG-02,DEC-050
+NF-MIG-03,user brief 22 Oct; new-features/INTEGRATE.md#mig,"Source profiles (Excel generic, QuickBooks Online, Sage 50) with golden tests",build,P2,Missing,MIG-03,DEC-050;DEC-066
+NF-MIG-04,user brief 22 Oct; new-features/INTEGRATE.md#mig,"AI header mapping suggestions (headers only, fenced, validated)",build,P2,Missing,MIG-04,DEC-050
+NF-MIG-05,user brief 22 Oct; new-features/INTEGRATE.md#mig,Dependency order and dry run per entity (try_loading),build,P2,Missing,MIG-05,DEC-050
+NF-MIG-06,user brief 22 Oct; new-features/INTEGRATE.md#mig,"Import to test copy (external ids, idempotent, drafts only; openings via IMP-OPENING)",build,P2,Missing,MIG-06,DEC-050
+NF-MIG-07,user brief 22 Oct; new-features/INTEGRATE.md#mig,"Reconciliation engine (counts and sums per entity, AR/AP, opening totals)",build,P2,Missing,MIG-07,DEC-050
+NF-MIG-LIVE,user brief 22 Oct; new-features/INTEGRATE.md#mig,Live proof on Odoo 17–20 (disposable `ingenium_nf_migration_studio_*` DBs),prove-live,P2,Missing,MIG-LIVE,DEC-050
+NF-MIG-SPEC,user brief 22 Oct; new-features/INTEGRATE.md#mig,Screen spec: Import → Migration studio,ui-spec,P2,Missing,MIG-SPEC,DEC-050
+NF-MIG-UI,user brief 22 Oct; new-features/INTEGRATE.md#mig,Build Import → Migration studio,ui-build,P2,Missing,MIG-UI,DEC-050
+NF-MIG-E2E,user brief 22 Oct; new-features/INTEGRATE.md#mig,End-to-end and accessibility: Import → Migration studio,test,P2,Missing,MIG-E2E,DEC-050
+NF-MIG-VIS,user brief 22 Oct; new-features/INTEGRATE.md#mig,Visual check and contact sheet: Import → Migration studio,test,P2,Missing,MIG-VIS,DEC-050
+NF-EPIC-HOWDO,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"Epic Embedded how-do-I assistant: in-Odoo help panel answering with the client's own menus, rules and required fields for the asking user's groups",build,P2,Partial,HOWDO-01;HOWDO-02;HOWDO-03;HOWDO-04;HOWDO-05;HOWDO-06;HOWDO-07;HOWDO-LIVE;HOWDO-SPEC;HOWDO-UI;HOWDO-E2E;HOWDO-VIS,DEC-050;DEC-067;DEC-074
+NF-HOWDO-01,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,HOWDO-01,DEC-050
+NF-HOWDO-02,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"Short-lived per-user session token (scoped read-only ask, 15 min)",build,P2,Missing,HOWDO-02,DEC-050
+NF-HOWDO-03,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"App DB tables assist_feedback (Alembic, additive)",build,P2,Missing,HOWDO-03,DEC-050
+NF-HOWDO-04,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"Config-grounded context (asking user's groups → visible menus, rules, required fields)",build,P2,Missing,HOWDO-04,DEC-050
+NF-HOWDO-05,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"Answer composer and validator (only existing, visible menus; deep links by code)",build,P2,Missing,HOWDO-05,DEC-050
+NF-HOWDO-06,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,"Odoo addon panel (systray '?', OWL per major, controller proxy)",build,P2,Missing,HOWDO-06,DEC-050
+NF-HOWDO-07,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,Labelled how-do-I eval set (60 questions per seeded DB) and harness,test,P2,Missing,HOWDO-07,DEC-050;DEC-074
+NF-HOWDO-LIVE,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,Live proof on Odoo 17–20 (disposable `ingenium_nf_how_do_i_*` DBs),prove-live,P2,Missing,HOWDO-LIVE,DEC-050
+NF-HOWDO-SPEC,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,Screen spec: Suite Ask → answer as a role,ui-spec,P2,Missing,HOWDO-SPEC,DEC-050
+NF-HOWDO-UI,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,Build Suite Ask → answer as a role,ui-build,P2,Missing,HOWDO-UI,DEC-050
+NF-HOWDO-E2E,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,End-to-end and accessibility: Suite Ask → answer as a role,test,P2,Missing,HOWDO-E2E,DEC-050
+NF-HOWDO-VIS,user brief 22 Oct; new-features/AI_IN_ODOO.md#howdo,Visual check and contact sheet: Suite Ask → answer as a role,test,P2,Missing,HOWDO-VIS,DEC-050
+NF-EPIC-NLR,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,"Epic Natural-language reports: question → validated ReportSpec → read_group table and chart with 'how this was computed'; save as report, Odoo filter or tile",build,P2,Partial,NLR-01;NLR-02;NLR-03;NLR-04;NLR-05;NLR-06;NLR-LIVE;NLR-SPEC;NLR-UI;NLR-E2E;NLR-VIS,DEC-050;DEC-068;DEC-074
+NF-NLR-01,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,NLR-01,DEC-050
+NF-NLR-02,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,"App DB tables nl_reports (Alembic, additive)",build,P2,Missing,NLR-02,DEC-050
+NF-NLR-03,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,"ReportSpec validator (live schema, operator allow-list, refused models and fields)",build,P2,Missing,NLR-03,DEC-050
+NF-NLR-04,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,Spec generator and executor (fenced AI; read_group; timeout; cache),build,P2,Missing,NLR-04,DEC-050
+NF-NLR-05,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,"Save as Odoo filter (plan, Undo) and dashboard tile handoff",build,P2,Missing,NLR-05,DEC-050
+NF-NLR-06,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,Labelled report question set (50 per seeded DB) and agreement harness,test,P2,Missing,NLR-06,DEC-050;DEC-074
+NF-NLR-LIVE,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,Live proof on Odoo 17–20 (disposable `ingenium_nf_nl_reports_*` DBs),prove-live,P2,Missing,NLR-LIVE,DEC-050
+NF-NLR-SPEC,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,Screen spec: Reports → Ask,ui-spec,P2,Missing,NLR-SPEC,DEC-050
+NF-NLR-UI,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,Build Reports → Ask,ui-build,P2,Missing,NLR-UI,DEC-050
+NF-NLR-E2E,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,End-to-end and accessibility: Reports → Ask,test,P2,Missing,NLR-E2E,DEC-050
+NF-NLR-VIS,user brief 22 Oct; new-features/AI_IN_ODOO.md#nlr,Visual check and contact sheet: Reports → Ask,test,P2,Missing,NLR-VIS,DEC-050
+NF-EPIC-PMINE,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,"Epic Process mining: event log from tracked state changes → flow map with counts, medians and stalls → automation suggestions as plans (decomposes BOLD-B2)",build,P3,Missing,PMINE-01;PMINE-02;PMINE-03;PMINE-04;PMINE-LIVE;PMINE-SPEC;PMINE-UI;PMINE-E2E;PMINE-VIS,DEC-050;DEC-072
+NF-PMINE-01,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,"API contract: types, router, error envelope, tenancy, TS mirror",build,P3,Missing,PMINE-01,DEC-050
+NF-PMINE-02,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,Event log extractor (mail.tracking.value by state field; compat names; sampling),build,P3,Missing,PMINE-02,DEC-050
+NF-PMINE-03,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,"Flow graph, durations and stalls (pure)",build,P3,Missing,PMINE-03,DEC-050
+NF-PMINE-04,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,Suggestions → automation plan templates (model ranks only),build,P3,Missing,PMINE-04,DEC-050
+NF-PMINE-LIVE,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,Live proof on Odoo 17–20 (disposable `ingenium_nf_process_map_*` DBs),prove-live,P3,Missing,PMINE-LIVE,DEC-050
+NF-PMINE-SPEC,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,Screen spec: Explore → Process,ui-spec,P3,Missing,PMINE-SPEC,DEC-050
+NF-PMINE-UI,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,Build Explore → Process,ui-build,P3,Missing,PMINE-UI,DEC-050
+NF-PMINE-E2E,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,End-to-end and accessibility: Explore → Process,test,P3,Missing,PMINE-E2E,DEC-050
+NF-PMINE-VIS,user brief 22 Oct; new-features/AI_IN_ODOO.md#pmine,Visual check and contact sheet: Explore → Process,test,P3,Missing,PMINE-VIS,DEC-050
+NF-EPIC-MKT,user brief 22 Oct; new-features/BUSINESS.md#mkt,"Epic Template marketplace: workspace-private and curated public templates (metadata plans only), validated, versioned, installed as plans with real success rates",build,P3,Partial,MKT-01;MKT-02;MKT-03;MKT-04;MKT-05;MKT-06;MKT-LIVE;MKT-SPEC;MKT-UI;MKT-E2E;MKT-VIS,DEC-050;DEC-069
+NF-MKT-01,user brief 22 Oct; new-features/BUSINESS.md#mkt,"API contract: types, router, error envelope, tenancy, TS mirror",build,P3,Missing,MKT-01,DEC-050
+NF-MKT-02,user brief 22 Oct; new-features/BUSINESS.md#mkt,"App DB tables templates, template_versions, template_installs (Alembic, additive)",build,P3,Missing,MKT-02,DEC-050
+NF-MKT-03,user brief 22 Oct; new-features/BUSINESS.md#mkt,"Template validator (allowed ops, refusals, size caps, PII strip)",build,P3,Missing,MKT-03,DEC-050
+NF-MKT-04,user brief 22 Oct; new-features/BUSINESS.md#mkt,Publish from a database (reuse release diff) with semver,build,P3,Missing,MKT-04,DEC-050
+NF-MKT-05,user brief 22 Oct; new-features/BUSINESS.md#mkt,Install as plan with version adapters; record outcome,build,P3,Missing,MKT-05,DEC-050
+NF-MKT-06,user brief 22 Oct; new-features/BUSINESS.md#mkt,Curator review for public templates,build,P3,Missing,MKT-06,DEC-050
+NF-MKT-LIVE,user brief 22 Oct; new-features/BUSINESS.md#mkt,Live proof on Odoo 17–20 (disposable `ingenium_nf_templates_*` DBs),prove-live,P3,Missing,MKT-LIVE,DEC-050
+NF-MKT-SPEC,user brief 22 Oct; new-features/BUSINESS.md#mkt,Screen spec: Templates,ui-spec,P3,Missing,MKT-SPEC,DEC-050
+NF-MKT-UI,user brief 22 Oct; new-features/BUSINESS.md#mkt,Build Templates,ui-build,P3,Missing,MKT-UI,DEC-050
+NF-MKT-E2E,user brief 22 Oct; new-features/BUSINESS.md#mkt,End-to-end and accessibility: Templates,test,P3,Missing,MKT-E2E,DEC-050
+NF-MKT-VIS,user brief 22 Oct; new-features/BUSINESS.md#mkt,Visual check and contact sheet: Templates,test,P3,Missing,MKT-VIS,DEC-050
+NF-EPIC-PORTAL,user brief 22 Oct; new-features/BUSINESS.md#portal,"Epic Client portal deltas: 'What was built' feed from History, client change requests → consultant drafts, and the portal isolation proof (on top of SUITE-28/40)",build,P2,Partial,PORTAL-01;PORTAL-02;PORTAL-03;PORTAL-04;PORTAL-05;PORTAL-LIVE;PORTAL-SPEC;PORTAL-UI;PORTAL-E2E;PORTAL-VIS,DEC-050;DEC-070
+NF-PORTAL-01,user brief 22 Oct; new-features/BUSINESS.md#portal,"API contract: types, router, error envelope, tenancy, TS mirror",build,P2,Missing,PORTAL-01,DEC-050
+NF-PORTAL-02,user brief 22 Oct; new-features/BUSINESS.md#portal,"App DB tables client_requests (Alembic, additive)",build,P2,Missing,PORTAL-02,DEC-050
+NF-PORTAL-03,user brief 22 Oct; new-features/BUSINESS.md#portal,"What-was-built feed (History → plain sentences, cursor, 30 s cache)",build,P2,Missing,PORTAL-03,DEC-050
+NF-PORTAL-04,user brief 22 Oct; new-features/BUSINESS.md#portal,Requests intake and consultant draft (fenced; uploads checked),build,P2,Missing,PORTAL-04,DEC-050
+NF-PORTAL-05,user brief 22 Oct; new-features/BUSINESS.md#portal,Portal isolation proof (client role on every new route; IDOR registry),security,P2,Missing,PORTAL-05,DEC-050
+NF-PORTAL-LIVE,user brief 22 Oct; new-features/BUSINESS.md#portal,Live proof on Odoo 17–20 (disposable `ingenium_nf_client_portal_*` DBs),prove-live,P2,Missing,PORTAL-LIVE,DEC-050
+NF-PORTAL-SPEC,user brief 22 Oct; new-features/BUSINESS.md#portal,Screen spec: Client Home,ui-spec,P2,Missing,PORTAL-SPEC,DEC-050
+NF-PORTAL-UI,user brief 22 Oct; new-features/BUSINESS.md#portal,Build Client Home,ui-build,P2,Missing,PORTAL-UI,DEC-050
+NF-PORTAL-E2E,user brief 22 Oct; new-features/BUSINESS.md#portal,End-to-end and accessibility: Client Home,test,P2,Missing,PORTAL-E2E,DEC-050
+NF-PORTAL-VIS,user brief 22 Oct; new-features/BUSINESS.md#portal,Visual check and contact sheet: Client Home,test,P2,Missing,PORTAL-VIS,DEC-050
+NF-EPIC-EFFORT,user brief 22 Oct; new-features/BUSINESS.md#effort,"Epic Effort and billing tracker against the SOW: hours per SOW line with burn warnings, suggestions from Ingenium runs, immutable month close and invoice CSV/PDF (no Odoo writes)",build,P3,Missing,EFFORT-01;EFFORT-02;EFFORT-03;EFFORT-04;EFFORT-LIVE;EFFORT-SPEC;EFFORT-UI;EFFORT-E2E;EFFORT-VIS,DEC-050;DEC-071
+NF-EFFORT-01,user brief 22 Oct; new-features/BUSINESS.md#effort,"API contract: types, router, error envelope, tenancy, TS mirror",build,P3,Missing,EFFORT-01,DEC-050
+NF-EFFORT-02,user brief 22 Oct; new-features/BUSINESS.md#effort,"App DB tables effort_entries, effort_closes (Alembic, additive)",build,P3,Missing,EFFORT-02,DEC-050
+NF-EFFORT-03,user brief 22 Oct; new-features/BUSINESS.md#effort,Burn engine and suggestions from runs,build,P3,Missing,EFFORT-03,DEC-050
+NF-EFFORT-04,user brief 22 Oct; new-features/BUSINESS.md#effort,"Month close (immutable, correction entries, audit chain, CSV/PDF)",build,P3,Missing,EFFORT-04,DEC-050
+NF-EFFORT-LIVE,user brief 22 Oct; new-features/BUSINESS.md#effort,Live proof on Odoo 17–20 (disposable `ingenium_nf_effort_*` DBs),prove-live,P3,Missing,EFFORT-LIVE,DEC-050
+NF-EFFORT-SPEC,user brief 22 Oct; new-features/BUSINESS.md#effort,Screen spec: Delivery → Effort,ui-spec,P3,Missing,EFFORT-SPEC,DEC-050
+NF-EFFORT-UI,user brief 22 Oct; new-features/BUSINESS.md#effort,Build Delivery → Effort,ui-build,P3,Missing,EFFORT-UI,DEC-050
+NF-EFFORT-E2E,user brief 22 Oct; new-features/BUSINESS.md#effort,End-to-end and accessibility: Delivery → Effort,test,P3,Missing,EFFORT-E2E,DEC-050
+NF-EFFORT-VIS,user brief 22 Oct; new-features/BUSINESS.md#effort,Visual check and contact sheet: Delivery → Effort,test,P3,Missing,EFFORT-VIS,DEC-050

@@ -1752,3 +1752,9 @@ proxied frames), optionally themed from the connected instance's own extracted p
 **Decided:** Every G1 default taken: DEC-003, 004, 005, 015, 024, 026–029, 032 and DEC-046 (L3 Oracle sessions; E1 reviews oracles at score ≥ 10), DEC-047 (dev-only `pytest-randomly`, later `hypothesis`; added by B0-GREEN), DEC-048 (phase order in `04_PHASES.md`), DEC-049 (generated cards released per phase after the G2 Prep check).
 **Why:** Plan skeleton and all card packs delivered; lint 0 errors, 0 uncovered.
 **Open:** GATE-A (DEC-006..014, 023, 025, 031, 033, 034) and GATE-C/D (DEC-016..019) are asked when the owning card is next; 18 cards carry Gate A.
+
+### 2026-10-22 — New-features brief planned as proposal cards (NF batch)
+**Decided:** 26 ideas + a shared SCAN foundation = 27 epics, 269 cards in phases 4–6 (no new phase), 296 `NF-*` ledger rows, DEC-050..074 open with defaults. Cards come from `docs/build-plan/tools/build_nf.py` + `nf_data.py`. Rerunning is idempotent, and it never overwrites a card whose `NF:` marker line was removed. Overlaps extend existing cards (BOLD-B1/B2/B3/B7/B8, SUITE-11, EL-JOB-GOLIVE, EL-IMP-RECONCILE) instead of duplicating them.
+**Why:** The approved FEATURE_AUDIT already covers parts of upgrade, process mining, doctor, training, compliance and portal. The new epics deepen them on one read-only scan path (`app/scans/reader.py`).
+**Open:** DEC-050 (scope) gates everything (INV-06). No customer-DB clone and no bundled OpenUpgrade (DEC-054). Nigeria tax rates are sourced data, adviser-reviewed (DEC-061).
+**Update 22 Oct:** DEC-050 (scope, 'approve all') and DEC-051 (phases 4–6, 'approve') resolved by Tope. DEC-052..074 stay open; each blocks only its named cards.

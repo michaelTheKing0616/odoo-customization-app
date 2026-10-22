@@ -12,6 +12,7 @@ Ledger IDs: P2-2-COMMON;FA-A28
 Depends on: none (phase order applies)
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L3 separate session · Score: 7 (C0 U1 F2 K2 V2 I0)
 Context pack:
+- docs/build-plan/new-features/BUSINESS.md §MKT extends this library into the marketplace after this card (MKT-01 depends on it).
 - apps/web/src/components/shell/
 - apps/web/src/components/ui/
 - docs/build-plan/FACTS.md
