@@ -72,6 +72,7 @@ from app.routers import (
     suite_insights,
     scans,
     fit_gap,
+    l10n_ng,
     views,
     view_engine,
     view_engine_2c,
@@ -226,6 +227,7 @@ app.include_router(suite_upkeep.router, prefix="/api", dependencies=_protected +
 app.include_router(suite_insights.router, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(scans.router, prefix="/api", dependencies=_protected)
 app.include_router(fit_gap.router, prefix="/api", dependencies=_protected)
+app.include_router(l10n_ng.router, prefix="/api", dependencies=_protected)
 app.include_router(suite_insights.playbooks, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
 app.include_router(views.router, prefix="/api", dependencies=_protected + [Depends(require_feature("designer"))])
 app.include_router(actions.router, prefix="/api", dependencies=_protected)

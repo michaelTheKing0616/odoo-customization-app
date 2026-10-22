@@ -59,6 +59,18 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "PATCH:/api/connections/{connection_id}/fitgap/{doc_id}/lines/{lid}": SafetySpec(
         risk="reversible", odoo_mutation=False, confirm="none"
     ),
+    # NF NG-01 (AC4): no route writes Odoo. Plan makes an Ingenium draft, so it follows
+    # POST:/api/inbox/plans; payroll compute (DEC-064) and bank convert (dry-run
+    # try_loading, DEC-063) only compute. None writes scan rows, so none bypasses.
+    "POST:/api/connections/{connection_id}/l10n-ng/plan": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/l10n-ng/payroll-compute": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/l10n-ng/bank/convert": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),

@@ -63,6 +63,16 @@ NF_FITGAP_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 
+# NF NG-01: every Nigeria pack route, resolved through the caller's workspace scope.
+NF_NG_ROUTES: tuple[tuple[str, str], ...] = (
+    ("GET", "/api/connections/{connection_id}/l10n-ng/detect"),
+    ("POST", "/api/connections/{connection_id}/l10n-ng/plan"),
+    ("GET", "/api/connections/{connection_id}/l10n-ng/einvoice-readiness"),
+    ("POST", "/api/connections/{connection_id}/l10n-ng/payroll-compute"),
+    ("POST", "/api/connections/{connection_id}/l10n-ng/bank/convert"),
+)
+
+
 def missing_registered_routes(
     openapi_paths: dict, routes: tuple[tuple[str, str], ...]
 ) -> list[tuple[str, str]]:
