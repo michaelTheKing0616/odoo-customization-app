@@ -24,7 +24,7 @@ def contract(types: str, router: str, web: str, models: list[str], endpoints: li
                   "{T}/test_nf_{py}_contract.py"],
         "goal": "Fix the request/response contract of this epic before any engine exists, so engine, live and UI cards build against one shape.",
         "acs": [
-            f"Pydantic models in `{types}` carry exactly the fields the epic doc §6 lists for: {', '.join(models)} (a test compares each model's field set to that list).",
+            f"Pydantic models in `{types}` carry exactly the fields listed in the epic doc §6, or in `00_BASELINE.md` B5 for the shared scan types, for: {', '.join(models)} (a test compares each model's field set to that list).",
             "Routes exist: " + "; ".join(f"`{e}`" for e in endpoints) + ". Each returns the B5 error envelope on 403, 404 and 422.",
             "Workspace B calling any route with workspace A's ids gets 404, and every route is listed in `app/security/idor_registry.py` (registry test).",
             f"`{web}` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` is green.",

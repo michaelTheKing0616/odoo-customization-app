@@ -103,6 +103,7 @@ Status: proposal (INV-06) until DEC-050. Source: Tope's new-features brief, 22 O
 
 - **Scan types** are defined once in SCAN-01 (`app/scans/contract.py`):
   - `ScanRun {id, connection_id, scan_id, status: queued|running|partial|done|failed|cancelled, started_at, finished_at, areas: [AreaResult], budget_ms, odoo_version, schema_fingerprint}`
+  - `AreaResult {area, status: done|partial|skipped|failed, rows_read, sampled: bool, duration_ms, findings_count, error_code | null}` (`error_code` is one of the B5 error codes; `skipped` means the Odoo user cannot read that area)
   - `Finding {id, scan_id, area, severity: info|low|medium|high|critical, title, plain_why, count, sample_ids: [int] (≤20), model, evidence: dict, fix: FixRef | null, docs_url | null}`
   - `FixRef {kind: plan|link|manual, plan_template, params}`
 - **Migrations:** App DB tables are created only with Alembic (B0-ALEMBIC). Every new table carries `workspace_id`, `connection_id` and `created_at`. Retention is 90 days by default (DEC-052).
