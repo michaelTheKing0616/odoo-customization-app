@@ -23,7 +23,7 @@ Root `STATE.md` keeps session retros. This file is the live board for the build.
 | 5 | BL-08 | 0 | docs | L3 | S | none · Worker in flight |
 | 6 | DOC-SPECS-INTAKE | 0 | docs | L1 | XS | none · waits; `docs/` overlaps open locks |
 | — | B0-DBGUARD | 0 | test | L2 | M | done [Done, code] |
-| — | B0-ISO | 0 | build | L2 | M | Tester PASS · Reviewer |
+| — | B0-ISO | 0 | build | L2 | M | done [Done, code] |
 | — | B0-JUNK | 0 | build | L2 | M | Gate D · not started |
 | — | REG-NP-UI | 0 | regression | L1 | S | hold · 2/2 · AC2 AC3 · AC5 keyboard · AC6 pinned |
 
@@ -33,7 +33,6 @@ Root `STATE.md` keeps session retros. This file is the live board for the build.
 |---|---|---|---|---|
 | L-BL-08 | BL-08 | hold | apps/api/tests/test_bl_08.py, docs/handoff/COMMIT_PLAN.md | 2026-10-22 |
 | L-REG-NP-GND | REG-NP-GND | hold | apps/api/tests/test_reg_np_gnd.py | 2026-10-22 |
-| L-B0-ISO | B0-ISO | Reviewer | apps/api/tests/conftest.py, apps/api/pytest.ini, apps/web/vitest.config.ts, apps/api/tests/test_b0_iso.py | 2026-10-22 |
 | L-V-STUDIODRAFT | V-STUDIODRAFT | Worker | apps/web/src/lib/api/studio-draft.ts, apps/web/src/lib/api/studio-draft.live.test.ts, docs/build-plan/verify/V-STUDIODRAFT.md | 2026-10-22 |
 | L-BL-07 | BL-07 | hold | apps/api/tests/test_no_mcp_write.py, apps/api/tests/test_bl_07.py | 2026-10-22 |
 | L-REG-NP-BL | REG-NP-BL | hold | apps/api/tests/test_reg_np_bl.py | 2026-10-22 |
@@ -48,7 +47,6 @@ Rule: a card is dispatched only if none of its allow-list paths matches an open 
 |---|---|---|---|---|---|
 | BL-08 | hold | 1/2 | L2 | 2026-10-22 | d831da67-b459-4724-8436-744ee173418c |
 | REG-NP-GND | hold | 1/2 | L2 | 2026-10-22 | d65dddae-1a95-4e15-bf0a-28424f78a48b |
-| B0-ISO | Reviewer | 2/2 | L2 | 2026-10-22 | 5d765127-d33e-4864-bcf6-3da3e1d02c0b |
 | V-STUDIODRAFT | Worker | 1/2 | L1 | 2026-10-22 | a8f60fc7-166c-4b92-b0c0-e7f17825c78e |
 | BL-07 | hold | 1/2 | L2 | 2026-10-22 | c5ccaef0-36ec-45a1-b9bf-8ba215de64ac |
 | REG-NP-BL | hold | 2/2 | L2 | 2026-10-22 | e127a619-9d10-4fe9-966b-d947d1c6d3bf |
@@ -154,6 +152,7 @@ Rule: a card is dispatched only if none of its allow-list paths matches an open 
 | 2026-10-22 | B0-ISO | Tester | L2 | n/a | 150000 | n/a | loop 1 · FAIL · AC2 counts unread |
 | 2026-10-22 | B0-ISO | Worker | L2 | n/a | 400000 | n/a | loop 2 · counts equal · 18 and 18 |
 | 2026-10-22 | B0-ISO | Tester | L2 | n/a | 150000 | n/a | loop 2 · PASS · counts equal |
+| 2026-10-22 | B0-ISO | Reviewer | L2 | n/a | 120000 | n/a | APPROVE |
 
 Weekly totals by tier (T0 / L1 / L2 / L3 / E1 / E2) and by phase are summed at each GATE-E and compared with `05_MODEL_ROUTING.md` projected shares.
 
@@ -164,6 +163,14 @@ Weekly totals by tier (T0 / L1 / L2 / L3 / E1 / E2) and by phase are summed at e
 | 2026-10-22 | REG-NP-T4 | L3→E1 | loop 2, AC6 `from app import llm_gateway` still passes | docs/build-plan/fix-notes/REG-NP-T4.md | n/a | APPROVE · [Done, code] |
 
 ## Packets (newest first; keep the last 20)
+
+```
+CLOSE B0-ISO · 2026-10-22
+PROGRESS: 2026-10-22 · B0-ISO · uv run pytest -q tests/test_b0_iso.py · 18 passed, reverse 18 passed · counts equal · [Done, code]
+ledger: P0-3-AC1 and P0-3-AC2 → [Done, code] · ARCH-1 stays Verified · REL-7.6 stays Open
+locks released: L-B0-ISO · tokens: W n/a T n/a R n/a vs cap 400000/150000/120000
+facts: FACTS.md +1 line
+```
 
 ```
 CLOSE B0-DBGUARD · 2026-10-22
@@ -444,3 +451,4 @@ rules: .cursorrules + 01_TOKEN_CHARTER.md + 02_INVARIANTS.md. Do only this card.
 | 2026-10-22 | REG-NP-BR | [Done, code] | 2026-10-22 · REG-NP-BR · uv run pytest -q tests/test_reg_np_br.py · 8 passed, reverse 8 passed · [Done, code] |
 | 2026-10-22 | REG-NP-UI-FIX | [Done, code] | 2026-10-22 · REG-NP-UI-FIX · vitest Button.asChild.test.tsx · 11 passed · regression 16 and 16 · [Done, code] |
 | 2026-10-22 | B0-DBGUARD | [Done, code] | 2026-10-22 · B0-DBGUARD · uv run pytest -q tests/test_b0_dbguard.py · 15 passed, reverse 15 passed · [Done, code] |
+| 2026-10-22 | B0-ISO | [Done, code] | 2026-10-22 · B0-ISO · uv run pytest -q tests/test_b0_iso.py · 18 passed, reverse 18 passed · counts equal · [Done, code] |

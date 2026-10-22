@@ -14,8 +14,8 @@ P0-2-CL4,§4 P0-2 L465,cluster: mastery battery,test,P0,Open,B0-TESTFIX-MASTERY,
 P0-2-CL5,§4 P0-2 L465,cluster: order-dependent t6_04 t6_07 test_create_session_blocks_low_ir test_diagnosis_name_strips_management_fluff,test,P0,Open,B0-TESTFIX-ORDER,
 P0-2-CL6,§4 P0-2 L465,cluster: test_ai_ollama + test_ai_module_generation passed only via live Vertex; test_llm_provider ollama routes,test,P0,Open,B0-TESTFIX-AIOFF,
 P0-2-CL7,§4 P0-2 L465,cluster: 5 understand tests,test,P0,Open,B0-TESTFIX-UNDERSTAND,
-P0-3-AC1,§4 P0-3 L473,every API test uses throwaway App DB set before settings import; dev DATABASE_URL fails loudly,build,P0,Open,B0-ISO,
-P0-3-AC2,§4 P0-3 L474,full suite leaves dev App DB counts (connections plan_cards audit History) unchanged; wrapper asserts,test,P0,Open,B0-ISO,
+P0-3-AC1,§4 P0-3 L473,every API test uses throwaway App DB set before settings import; dev DATABASE_URL fails loudly,build,P0,"[Done, code]",B0-ISO,
+P0-3-AC2,§4 P0-3 L474,full suite leaves dev App DB counts (connections plan_cards audit History) unchanged; wrapper asserts,test,P0,"[Done, code]",B0-ISO,
 P0-3-AC3,§4 P0-3 L475,scripts/cleanup_test_connections.py dry-run default; --apply after Tope yes; pg_dump -Fc first,build,P0,Open,B0-JUNK,DEC-016
 P0-3-AC4,§4 P0-3 L476,after cleanup GET /api/connections returns only real rows; count reported to Tope,verify,P0,Open,B0-JUNK,DEC-016
 P0-4-AC1,§4 P0-4 L479,next build never writes .next while dev runs; distDir set by script itself,build,P0,"[Done, live]",B0-DIST,

@@ -2,7 +2,7 @@
 
 ID: B0-ISO
 Title: every API test uses throwaway App DB set before settings import; dev DATABASE_URL fails lo
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: build
