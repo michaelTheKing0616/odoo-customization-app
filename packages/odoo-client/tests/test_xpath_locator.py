@@ -129,3 +129,9 @@ def test_kanban_card_inject_uses_t_name() -> None:
     assert semantic_inject_expr(kanban, "kanban") == "//t[@t-name='card']"
     cands = semantic_structure_candidates(kanban, tags=("kanban", "t"))
     assert any(c.xpath == "//t[@t-name='card']" for c in cands)
+
+
+def test_root_anchored_paths_match_the_root_like_odoo() -> None:
+    assert count_xpath_matches("<list><field name='a'/></list>", "//list") == 1
+    assert count_xpath_matches("<calendar date_start='d'/>", "//calendar") == 1
+    assert count_xpath_matches("<search><field name='a'/></search>", "//search/field[@name='a']") == 1

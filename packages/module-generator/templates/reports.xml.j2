@@ -5,7 +5,15 @@
     <template id="{{ report.template_xml_id }}">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="o">
-                <div class="page">
+                <div class="page ing-proof">
+                    <!-- Touch 130: print-grade proofs. No widows or orphans, hyphenation, hanging punctuation where the
+                         renderer supports it, and money columns that line up on the decimal (tabular figures, right-aligned). -->
+                    <style>
+                        .ing-proof p, .ing-proof li { orphans: 3; widows: 3; -webkit-hyphens: auto; hyphens: auto; hanging-punctuation: first last; }
+                        .ing-proof h1, .ing-proof h2, .ing-proof h3, .ing-proof thead, .ing-proof tr { page-break-inside: avoid; break-inside: avoid; page-break-after: auto; }
+                        .ing-proof h1, .ing-proof h2, .ing-proof h3 { page-break-after: avoid; break-after: avoid; }
+                        .ing-proof .text-end, .ing-proof .text-right, .ing-proof .o_price_total, .ing-proof [class*="amount"], .ing-proof td.money { text-align: right; font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1; white-space: nowrap; }
+                    </style>
 {% if report.t_lang %}
                     <t t-lang="{{ report.t_lang }}">
 {{ report.body_html }}

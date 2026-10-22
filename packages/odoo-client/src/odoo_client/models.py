@@ -137,6 +137,12 @@ class ConnectionConfig(BaseModel):
     # Multi-DB hosts without dbfilter need X-Odoo-Database on JSON-2.
     json2_send_db_header: bool = False
 
+    @field_validator("db", "username", "password")
+    @classmethod
+    def strip_surrounding_whitespace(cls, value: str) -> str:
+        # A copied API key with a trailing newline fails Odoo auth silently.
+        return value.strip()
+
     @field_validator("url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:

@@ -334,18 +334,50 @@ def normalize_module_spec_list_views(spec: "ModuleSpec") -> "ModuleSpec":
     return spec
 
 
-def _field_tag(field_name: str, widget: str | None = None) -> str:
-    if widget:
-        return f'<field name="{field_name}" widget="{widget}"/>'
+# Generic HTML/ttype stand-ins. A named Odoo widget must win over these.
+_GENERIC_WIDGET_STANDINS = frozenset(
+    {"char", "text", "html", "integer", "float", "boolean", "input"}
+)
+
+
+def resolve_named_widget(
+    named: str | None, *, standin: str | None = None
+) -> str | None:
+    """Return the widget the view must emit.
+
+    A named Odoo widget is kept. A generic stand-in must not replace it.
+    """
+    chosen = str(named or "").strip() or None
+    if chosen:
+        return chosen
+    fallback = str(standin or "").strip() or None
+    if fallback and fallback in _GENERIC_WIDGET_STANDINS:
+        return None
+    return fallback
+
+
+def _field_tag(
+    field_name: str,
+    widget: str | None = None,
+    *,
+    standin: str | None = None,
+) -> str:
+    chosen = resolve_named_widget(widget, standin=standin)
+    if chosen:
+        return f'<field name="{field_name}" widget="{chosen}"/>'
     return f'<field name="{field_name}"/>'
 
 
 def render_xpath_field_inject(
-    field_name: str, view_type: str, *, widget: str | None = None
+    field_name: str,
+    view_type: str,
+    *,
+    widget: str | None = None,
+    standin: str | None = None,
 ) -> str:
     """Return inherit-view arch that injects one field via xpath."""
     expr = _XPATH_ROOT_BY_VIEW.get(view_type, "//sheet")
-    tag = _field_tag(field_name, widget)
+    tag = _field_tag(field_name, widget, standin=standin)
     return (
         "<data>\n"
         f'  <xpath expr="{expr}" position="inside">\n'
@@ -360,6 +392,7 @@ def render_xpath_fields_inject(
     view_type: str,
     *,
     widgets: dict[str, str] | None = None,
+    standin: str | None = None,
 ) -> str:
     """Return inherit-view arch that injects multiple fields via one xpath."""
     expr = _XPATH_ROOT_BY_VIEW.get(view_type, "//sheet")
@@ -369,7 +402,7 @@ def render_xpath_fields_inject(
         f'  <xpath expr="{expr}" position="inside">',
     ]
     for name in field_names:
-        lines.append(f"    {_field_tag(name, widgets.get(name))}")
+        lines.append(f"    {_field_tag(name, widgets.get(name), standin=standin)}")
     lines.extend(["  </xpath>", "</data>"])
     return "\n".join(lines)
 
@@ -1108,6 +1141,10 @@ def build_module_zip(spec: ModuleSpec, *, odoo_major: int | None = None) -> byte
     """Build an installable zip. Optional ``odoo_major`` overrides ``spec.odoo_major``."""
     if odoo_major is not None:
         spec.odoo_major = odoo_major
+        # The manifest series must match the target major, or Odoo marks the module uninstallable.
+        if not str(spec.version or "").startswith(f"{odoo_major}."):
+            tail = ".".join(str(spec.version or "").split(".")[2:]) or "1.0.0"
+            spec.version = f"{odoo_major}.0.{tail}"
     files = render_module_files(spec)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -1138,6 +1175,22 @@ from .app_templates import (  # noqa: E402
     library_fines_python_module_spec,
     library_module_spec,
 )
+from .ispec import ispec_to_module_spec, module_spec_to_ispec  # noqa: E402
+from .sync import (  # noqa: E402
+    CONFIRM_PHRASE,
+    MODULE_EDITED_IN_ODOO,
+    SPEC_EDITED_OUTSIDE,
+    ArtifactDiff,
+    DriftItem,
+    RecompileRefused,
+    RecompileResult,
+    SyncRefused,
+    SyncResult,
+    artifact_ispec,
+    artifact_module_files,
+    recompile_module,
+    sync_module,
+)
 
 __all__ = [
     "FieldSpec",
@@ -1162,6 +1215,7 @@ __all__ = [
     "order_manifest_data_files",
     "sequence_code_for_model",
     "sequence_prefix_for_model",
+    "resolve_named_widget",
     "render_xpath_field_inject",
     "render_xpath_fields_inject",
     "render_module_files",
@@ -1171,6 +1225,21 @@ __all__ = [
     "library_module_spec",
     "library_fines_python_module_spec",
     "LIBRARY_FINE_AUTOMATION_CODE",
+    "module_spec_to_ispec",
+    "ispec_to_module_spec",
+    "CONFIRM_PHRASE",
+    "SPEC_EDITED_OUTSIDE",
+    "MODULE_EDITED_IN_ODOO",
+    "ArtifactDiff",
+    "DriftItem",
+    "RecompileRefused",
+    "RecompileResult",
+    "SyncRefused",
+    "SyncResult",
+    "artifact_ispec",
+    "artifact_module_files",
+    "recompile_module",
+    "sync_module",
     "MODEL_TO_MODULE",
     "SKIP_FIELD_NAMES",
     "ODOO_FIELD_MAP",

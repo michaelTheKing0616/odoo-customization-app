@@ -57,6 +57,9 @@ class CreateAccessRightRequest(BaseModel):
     perm_create: bool = True
     perm_unlink: bool = True
     active: bool = True
+    # Odoo 20+ only: ir.access rows carry their own row-level domain (with a group it
+    # is a scoped permission, without one a global restriction). Odoo <=19 uses ir.rule.
+    domain: str | None = None
 
 
 class RecordRuleInfo(BaseModel):

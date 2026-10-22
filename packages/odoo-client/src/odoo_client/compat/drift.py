@@ -6,8 +6,10 @@ and ``test_odoo20_version_table`` are not restated: ``read_group`` versus
 ``group_ids``, automation split from server actions, cron ``numbercall``,
 accounting and stock renames, external API shape, and Odoo 20 ``ir.access``.
 
-A cell is ``unknown`` when this repo does not already state the fact. Nothing
-here was probed on a live major.
+A cell is ``unknown`` when this table does not state it. Live Odoo 20
+payloads for kanban, name_get, company-dependent fields, selection storage,
+mail template syntax, and translations stay in the client test and are not
+copied into this table.
 """
 
 from __future__ import annotations

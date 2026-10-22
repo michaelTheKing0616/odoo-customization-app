@@ -27,8 +27,30 @@ _PARAM_TOKENS = (
 )
 
 
+_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CACHE_TTL = 3600.0
+
+
+def clear_probe_cache() -> None:
+    _CACHE.clear()
+
+
 def probe_json2(transport: Json2Transport) -> dict[str, Any]:
-    """Read-only confirmation. ``create`` is sent with an empty body so no row is written."""
+    """Read-only confirmation, once per database per hour (not on every client login)."""
+    import time
+
+    key = f"{transport.base_url}|{getattr(transport, 'database', '') or ''}"
+    hit = _CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < _CACHE_TTL:
+        return dict(hit[1])
+    out = _probe_json2(transport)
+    if out.get("live_parameters"):
+        _CACHE[key] = (time.monotonic(), dict(out))
+    return out
+
+
+def _probe_json2(transport: Json2Transport) -> dict[str, Any]:
+    """``create`` is sent with an empty body so no row is written; its 422 is expected, not an error."""
     doc_status, doc_text = _safe_get(transport, "/doc")
     doc_route, doc_parameters = _read_doc(doc_status, doc_text)
     calls: dict[str, int | None] = {"doc": doc_status}
@@ -54,7 +76,12 @@ def probe_json2(transport: Json2Transport) -> dict[str, Any]:
     if fields_status == 200:
         live["fields_get"] = ["attributes"]
 
-    create_status, create_message = _safe_call_message(transport, "res.partner", "create", {})
+    prev = getattr(transport, "expected_error_statuses", ())
+    transport.expected_error_statuses = frozenset({422})
+    try:
+        create_status, create_message = _safe_call_message(transport, "res.partner", "create", {})
+    finally:
+        transport.expected_error_statuses = prev
     calls["create"] = create_status
     if create_status == 422 and "vals_list" in create_message:
         live["create"] = ["vals_list"]

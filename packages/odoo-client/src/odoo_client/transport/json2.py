@@ -258,7 +258,10 @@ class Json2Transport:
                 error_class="transport",
             )
         status, raw = result
-        if status >= 400:
+        if status >= 400 and status in getattr(self, "expected_error_statuses", ()):
+            # A deliberate read-only probe (e.g. create with an empty body): the error IS the answer.
+            logger.debug("JSON-2 expected HTTP %s at %s", status, url)
+        elif status >= 400:
             logger.error(
                 "JSON-2 HTTP %s at %s body=%s",
                 status,

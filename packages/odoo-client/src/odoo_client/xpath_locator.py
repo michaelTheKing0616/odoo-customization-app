@@ -131,8 +131,14 @@ def _findall(root: Element, expr: str) -> list[Element] | None:
     q = _to_etree_path(expr)
     if not q:
         return []
+    target = root
+    if (expr or "").strip().startswith("//"):
+        # Odoo (lxml) evaluates ``//tag`` from the document, so the root element itself can match
+        # (e.g. ``//search``, ``//list``). ElementTree's ``.//tag`` only sees descendants, so wrap it.
+        target = Element("__ingenium_document__")
+        target.append(root)
     try:
-        return list(root.findall(q))
+        return list(target.findall(q))
     except (SyntaxError, Exception):  # noqa: BLE001
         return None
 

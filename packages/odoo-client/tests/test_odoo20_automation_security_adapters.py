@@ -180,10 +180,9 @@ def test_client_create_access_right_on_20_compiles_to_ir_access() -> None:
             [
                 {
                     "name": "read partner",
-                    "model": "res.partner",
-                    "group": 3,
-                    "operation": "read",
-                    "domain": None,
+                    "model_id": 11,
+                    "operation": "r",
+                    "group_id": 3,
                 }
             ],
             None,
@@ -450,3 +449,35 @@ def test_update_access_on_20_does_not_write_perm_columns() -> None:
     client.execute_kw = execute_kw  # type: ignore[method-assign]
     with pytest.raises(OdooClientError, match="ir.access"):
         client.update_access(4, {"perm_read": False})
+
+
+def test_client_create_access_right_on_20_carries_domain() -> None:
+    client = _client_for(20)
+    calls: list[tuple[object, ...]] = []
+
+    def execute_kw(model: str, method: str, args: list, kwargs: object = None) -> object:
+        calls.append((model, method, args, kwargs))
+        if model == "ir.model" and method == "search":
+            return [11]
+        return 42 if method == "create" else []
+
+    client.execute_kw = execute_kw  # type: ignore[method-assign]
+    client.create_access_right(
+        {"model": "x_renewal", "name": "own renewals", "group_id": 1, "perm_unlink": False,
+         "domain": "[('x_owner_id', '=', user.id)]"}
+    )
+    (create,) = [c for c in calls if c[1] == "create"]
+    assert create[0] == "ir.access"
+    assert create[2][0] == {"name": "own renewals", "model_id": 11, "operation": "cru",
+                            "group_id": 1, "domain": "[('x_owner_id', '=', user.id)]"}
+
+
+def test_access_right_domain_is_refused_before_20() -> None:
+    import pytest
+
+    from odoo_client.client import OdooClientError
+
+    client = _client_for(19)
+    client.execute_kw = lambda *a, **k: (_ for _ in ()).throw(AssertionError("no RPC"))  # type: ignore[method-assign]
+    with pytest.raises(OdooClientError, match="Odoo 20"):
+        client.create_access_right({"model": "x_a", "name": "n", "domain": "[(1,'=',1)]"})

@@ -10,6 +10,7 @@ Transport selection (dual-protocol):
 
 from __future__ import annotations
 
+from odoo_client.compat.ir_access_shim import IrAccessShape, adapt_call, adapt_result, missing_rule_result
 import os
 import xmlrpc.client
 from typing import Any, Literal
@@ -190,28 +191,12 @@ class OdooClient:
         suggested_db = suggest_db_name_from_url(self.config.url)
 
         def _online_hint(text: str) -> str:
-            hints: list[str] = []
+            # One short next step; the UI adds the how-to, so do not repeat it here.
             if "400" in text and "/odoo" in text.lower():
-                hints.append(
-                    "Use the site root (e.g. https://your-db.odoo.com) — do not include /odoo from the browser URL."
-                )
-            if hosting == "online":
-                hints.append(
-                    "Odoo Online: paste https://<db>.odoo.com (no /odoo path). "
-                    "Database name is usually the subdomain. Prefer an API key "
-                    "(Settings → Users → API Keys). Website login passwords often "
-                    "fail for Online RPC (especially with 2FA); on-prem and many "
-                    "Odoo.sh databases still accept the login password."
-                )
-                if suggested_db and suggested_db != self.config.db:
-                    hints.append(
-                        f"Subdomain suggests database={suggested_db!r} (you entered {self.config.db!r})."
-                    )
-            if "401" in text or "Access Denied" in text or "authentication failed" in text.lower():
-                hints.append(
-                    "Auth failed — for Online/Enterprise SaaS, an API key is often required."
-                )
-            return (" " + " ".join(hints)) if hints else ""
+                return " Use the site address only, e.g. https://your-db.odoo.com (without /odoo)."
+            if hosting == "online" and suggested_db and suggested_db != self.config.db:
+                return f" The address suggests the database is {suggested_db!r}."
+            return ""
 
         version: dict[str, Any] | None = None
         transport = "xmlrpc"
@@ -281,8 +266,8 @@ class OdooClient:
 
         if not uid:
             raise OdooClientError(
-                f"Authentication failed for db={self.config.db!r} user={self.config.username!r}."
-                f"{_online_hint('authentication failed')}"
+                f"Odoo did not accept the sign-in for database {self.config.db!r} "
+                f"and user {self.config.username!r}. {self._auth_failure_cause(hosting)}"
             )
         self._uid = int(uid)
         self.production_probe = probe_legacy(
@@ -291,6 +276,25 @@ class OdooClient:
             major=major,
         )
         return self._uid
+
+    def _auth_failure_cause(self, hosting: str) -> str:
+        """Best guess at which of database / user / key is wrong."""
+        try:
+            dbs = _jsonrpc_call(self.config.url, "db", "list", [])
+        except Exception:  # noqa: BLE001 - listing is often disabled
+            dbs = None
+        if isinstance(dbs, list) and dbs and self.config.db not in dbs:
+            return f"Database name looks wrong: this site has {', '.join(map(str, dbs[:5]))}."
+        secret = self.config.password
+        looks_like_key = len(secret) == 40 and all(c in "0123456789abcdef" for c in secret.lower())
+        if hosting == "online" and not looks_like_key:
+            return "This looks like a website password. Odoo Online needs an API key instead."
+        if looks_like_key:
+            return (
+                "The key was refused. Check the user is the exact Odoo login that created "
+                "the key, and that the key has not been deleted or expired."
+            )
+        return "Check the user login and password."
 
     def _env_protocol_override(self) -> str | None:
         raw = (os.environ.get("ODOO_RPC_PROTOCOL") or "").strip().lower()
@@ -374,8 +378,25 @@ class OdooClient:
             raise OdooClientError(f"forbidden {model}.{method}: {reason}")
         if self.rpc_guard is not None:
             self.rpc_guard(model, method, args or [], kwargs or {})
+        if model in ("ir.access", "ir.rule"):
+            shape = self._ir_access_shape()
+            handled, early = missing_rule_result(shape, model, method)
+            if handled:
+                return early
+            args, kwargs = adapt_call(shape, model, method, args, kwargs, self._dispatch_execute)
+            result = self._dispatch_execute(model, method, args, kwargs)
+            return adapt_result(shape, model, method, result, self._dispatch_execute)
         result = self._dispatch_execute(model, method, args, kwargs)
         return scrub_config_param_result(model, method, result)
+
+    def _ir_access_shape(self) -> IrAccessShape:
+        shape = getattr(self, "_ir_access_shape_cache", None)
+        if shape is None:
+            major = getattr(getattr(self, "capabilities", None), "major", None)
+            shape = IrAccessShape(self._dispatch_execute, major)
+            if major:
+                self._ir_access_shape_cache = shape
+        return shape
 
     def _dispatch_execute(
         self,
@@ -2069,6 +2090,10 @@ class OdooClient:
         )
         if self.capabilities.major >= 20:
             return self._create_access_right_v20(req)
+        if req.domain:
+            raise OdooClientError(
+                "Access-right domains are Odoo 20+ only; use a record rule (ir.rule) on this version."
+            )
         model_id = self._model_id(req.model)
         vals: dict[str, Any] = {
             "name": req.name,
@@ -2126,16 +2151,31 @@ class OdooClient:
             raise OdooClientError("access right needs at least one permission")
         ops = security.compile_access(rights)
         model_id = self._model_id(req.model)
-        access_id: Any = None
         for op in ops:
             if op.get("model") != "ir.access":
                 raise security.IrRuleNotSupportedOnOdoo20(
                     "Odoo 20 has no ir.rule. Rewrite the group record rule as an access right with a domain."
                 )
-            values = dict(op.get("values") or {})
-            if "kind" in values:
+            if "kind" in (op.get("values") or {}):
                 raise security.AccessCompileError("ir.access.kind is computed; do not write it")
-            access_id = self.execute_kw(str(op["model"]), "create", [values])
+        # Live Odoo 20 ir.access: model_id / group_id many2ones and ONE operation
+        # code made of the letters c, r, u, d in that order (e.g. "crud", "ru").
+        code = "".join(
+            letter
+            for letter, enabled in (
+                ("c", req.perm_create),
+                ("r", req.perm_read),
+                ("u", req.perm_write),
+                ("d", req.perm_unlink),
+            )
+            if enabled
+        )
+        values: dict[str, Any] = {"name": req.name, "model_id": model_id, "operation": code}
+        if req.group_id is not None:
+            values["group_id"] = req.group_id
+        if req.domain:
+            values["domain"] = str(req.domain)
+        access_id: Any = self.execute_kw("ir.access", "create", [values])
         if access_id is None:
             raise OdooClientError("access right needs at least one permission")
         return AccessRightInfo(

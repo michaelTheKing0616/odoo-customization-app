@@ -1,4 +1,8 @@
-"""Fake T8-OD-DRIFT answers for majors 17, 18, 19, and 20. No live Odoo."""
+"""Fake T8-OD-DRIFT answers for majors 17, 18, 19, and 20.
+
+This module does not call Odoo. Live Odoo 20 payloads for the six cells that
+stay unknown here are in test_odoo20_drift_cells.py.
+"""
 
 from __future__ import annotations
 
@@ -231,9 +235,23 @@ def test_server_action_state_cells_match_adapters() -> None:
     assert set(cell.split(", ")) == states
 
 
+_LIVE_TIP_20 = frozenset(
+    {
+        "kanban",
+        "name_get",
+        "company_dependent_fields",
+        "selection_storage",
+        "mail_template_syntax",
+        "translations",
+    }
+)
+
+
 @pytest.mark.parametrize("major", DRIFT_MAJORS)
 @pytest.mark.parametrize("row", DRIFT_ROWS)
 def test_live_drift_unrun(row: str, major: int) -> None:
+    if major == 20 and row in _LIVE_TIP_20:
+        pytest.skip("live Odoo 20 payload is test_odoo20_drift_cells")
     pytest.skip("live nightly unrun; no Odoo major was probed")
 
 
