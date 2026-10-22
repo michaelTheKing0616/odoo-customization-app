@@ -55,6 +55,14 @@ NF_SCAN_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 
+# NF FITGAP-01: every fit-gap route, resolved through the caller's workspace scope.
+NF_FITGAP_ROUTES: tuple[tuple[str, str], ...] = (
+    ("POST", "/api/connections/{connection_id}/fitgap"),
+    ("GET", "/api/connections/{connection_id}/fitgap/{doc_id}"),
+    ("PATCH", "/api/connections/{connection_id}/fitgap/{doc_id}/lines/{lid}"),
+)
+
+
 def missing_registered_routes(
     openapi_paths: dict, routes: tuple[tuple[str, str], ...]
 ) -> list[tuple[str, str]]:

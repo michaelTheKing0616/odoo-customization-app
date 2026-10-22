@@ -51,6 +51,14 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "POST:/api/connections/{connection_id}/findings/{fid}/plan": SafetySpec(
         risk="reversible", odoo_mutation=False, confirm="none"
     ),
+    # NF FITGAP-01 (AC4): no Odoo write and no Odoo record read; both write only Ingenium
+    # fit-gap rows, so they follow POST:/api/inbox/plans and honour writes-paused.
+    "POST:/api/connections/{connection_id}/fitgap": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
+    "PATCH:/api/connections/{connection_id}/fitgap/{doc_id}/lines/{lid}": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
