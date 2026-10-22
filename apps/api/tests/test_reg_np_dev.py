@@ -25,54 +25,29 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from starlette.requests import Request
 
-_DB_PATH = Path(tempfile.gettempdir()) / f"ingenium_reg_np_dev_{os.getpid()}.sqlite"
-if _DB_PATH.exists():
-    _DB_PATH.unlink()
-
-# Disposable ingenium sqlite. Set before app import so the engine never opens
-# the app Postgres (ports 5433 and 5436 are forbidden for this card).
-os.environ["DATABASE_URL"] = f"sqlite:///{_DB_PATH}"
-os.environ["FERNET_KEY"] = "dev-only-test"
-os.environ["AUTH_MODE"] = "accounts"
-os.environ["RATE_LIMIT_PER_MINUTE"] = "0"
-os.environ["DB_MIGRATIONS"] = "off"
-os.environ["AI_ASSIST"] = "off"
-os.environ["EMAIL_TRANSPORT"] = "console"
-os.environ["TEST_DEFAULT_WRITE_MODE"] = "standard"
-os.environ["INGENIUM_AI_CACHE_PATH"] = str(
-    Path(tempfile.gettempdir()) / f"ingenium_reg_np_dev_cache_{os.getpid()}.sqlite"
-)
-
-import app.db as dbmod  # noqa: E402
-
-_engine = create_engine(
-    os.environ["DATABASE_URL"],
-    connect_args={"check_same_thread": False},
-    poolclass=NullPool,
-)
-dbmod.engine = _engine
-dbmod.SessionLocal.configure(bind=_engine)
-
-import app.safety_dependency as safety_dependency  # noqa: E402
-from app.account_models import WorkspaceMembership  # noqa: E402
-from app.account_service import signup_user  # noqa: E402
-from app.crypto import encrypt_secret  # noqa: E402
-from app.db import SessionLocal, init_db  # noqa: E402
-from app.db_models import OdooConnection  # noqa: E402
-from app.entitlements import ensure_workspace_subscription, seed_plan_features  # noqa: E402
-from app.routers.code_studio import (  # noqa: E402
+import app.db as dbmod
+import app.safety_dependency as safety_dependency
+from app.account_models import WorkspaceMembership
+from app.account_service import signup_user
+from app.crypto import encrypt_secret
+from app.db import SessionLocal, init_db
+from app.db_models import OdooConnection
+from app.entitlements import ensure_workspace_subscription, seed_plan_features
+from app.routers.code_studio import (
     BindCodeBody,
     code_studio_bind,
     code_studio_option_a,
 )
-from app.safety_registry import ROUTE_OVERRIDES  # noqa: E402
-from app.snapshots import CONFIRM_PHRASE, save_snapshot  # noqa: E402
-from app.workspace_auth import WorkspaceAuth, bind_workspace_auth  # noqa: E402
+from app.safety_registry import ROUTE_OVERRIDES
+from app.settings import settings
+from app.snapshots import CONFIRM_PHRASE, save_snapshot
+from app.workspace_auth import WorkspaceAuth, bind_workspace_auth
 
 # The bind route's SafetySpec, without building the whole OpenAPI app.
 _BIND_PATH = "/api/connections/{connection_id}/code-studio/bind"
 _BIND_KEY = f"POST:{_BIND_PATH}"
-safety_dependency._REGISTRY = {_BIND_KEY: ROUTE_OVERRIDES[_BIND_KEY]}
+_DB_PATH = Path(tempfile.gettempdir()) / f"ingenium_reg_np_dev_{os.getpid()}.sqlite"
+_CACHE_PATH = Path(tempfile.gettempdir()) / f"ingenium_reg_np_dev_cache_{os.getpid()}.sqlite"
 
 pytestmark = pytest.mark.no_app_db
 
@@ -103,13 +78,63 @@ def _assert_disposable_db() -> None:
 
 
 @pytest.fixture(scope="module", autouse=True)
-def _schema():
-    _assert_disposable_db()
-    init_db()
-    yield
-    dbmod.engine.dispose()
+def _isolated_registry_and_db():
+    """Bind-route registry and a disposable sqlite engine. Restored after this module."""
+    from _pytest.monkeypatch import MonkeyPatch
+
+    mp = MonkeyPatch()
+    sqlite_engine = None
     _DB_PATH.unlink(missing_ok=True)
-    Path(os.environ["INGENIUM_AI_CACHE_PATH"]).unlink(missing_ok=True)
+    try:
+        db_url = f"sqlite:///{_DB_PATH}"
+        mp.setenv("DATABASE_URL", db_url)
+        mp.setenv("FERNET_KEY", "dev-only-test")
+        mp.setenv("AUTH_MODE", "accounts")
+        mp.setenv("RATE_LIMIT_PER_MINUTE", "0")
+        mp.setenv("DB_MIGRATIONS", "off")
+        mp.setenv("AI_ASSIST", "off")
+        mp.setenv("EMAIL_TRANSPORT", "console")
+        mp.setenv("TEST_DEFAULT_WRITE_MODE", "standard")
+        mp.setenv("INGENIUM_AI_CACHE_PATH", str(_CACHE_PATH))
+        mp.setattr(settings, "database_url", db_url)
+        mp.setattr(settings, "fernet_key", "dev-only-test")
+        mp.setattr(settings, "auth_mode", "accounts")
+        mp.setattr(settings, "rate_limit_per_minute", 0)
+        mp.setattr(settings, "db_migrations", "off")
+        mp.setattr(settings, "ai_assist", "off")
+        mp.setattr(settings, "email_transport", "console")
+        sqlite_engine = create_engine(
+            db_url,
+            connect_args={"check_same_thread": False},
+            poolclass=NullPool,
+        )
+        mp.setattr(dbmod, "engine", sqlite_engine)
+        mp.setitem(dbmod.SessionLocal.kw, "bind", sqlite_engine)
+        mp.setattr(
+            safety_dependency,
+            "_REGISTRY",
+            {_BIND_KEY: ROUTE_OVERRIDES[_BIND_KEY]},
+        )
+        _assert_disposable_db()
+        init_db()
+        yield
+    finally:
+        mp.undo()
+        if sqlite_engine is not None:
+            sqlite_engine.dispose()
+        _DB_PATH.unlink(missing_ok=True)
+        _CACHE_PATH.unlink(missing_ok=True)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _echo_randomly_seed(pytestconfig, request):
+    """`-q` hides the plugin header, so write the seed where that run still shows it."""
+    seed = pytestconfig.getoption("randomly_seed", default=None)
+    if pytestconfig.option.verbose < 0 and isinstance(seed, int):
+        reporter = request.config.pluginmanager.getplugin("terminalreporter")
+        if reporter is not None:
+            reporter.write_line(f"Using --randomly-seed={seed}")
+    yield
 
 
 def _bind_fields(**overrides: object) -> dict:
