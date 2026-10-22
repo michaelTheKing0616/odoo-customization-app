@@ -59,9 +59,11 @@ Each decision has a recommended default. Reply `DEC-nnn: yes` to take the defaul
 Approved 21 Oct (see the fourth batch above).
 
 ## Resolved 22 Oct (Tope: "approve both and continue")
-Phase 0 G2 approved. DEC-031 default taken: V-STUDIODRAFT stays Gate A until Tope has seen the focused `studio-draft.ts` diff. This message did not include that review. Other GATE-A decisions stay open and block only their own cards.
+Phase 0 G2 approved. DEC-031 was later replaced by a live test, recorded below. Other GATE-A decisions stay open and block only their own cards.
 
 DEC-034 resolved 22 Oct (Tope: yes). `AUTH_MODE=accounts` for any shared deployment. Local stays off. Unblocks `APR-NAMED`, `SEC-2APPROVER`, and `VD-APPROVERS`.
+
+DEC-031 resolved 22 Oct by test, not by an eyeball. `startOptionABatch` returns `StudioOptionABatchResponse`. The live test passed 3 against a disposable `ingenium_*` database. Project `tsc --noEmit` is still red on `src/lib/b0_dist.test.ts` TS5097, outside this card.
 
 ## GATE-A batch (before the owning card starts)
 | ID | Decision | Default |
@@ -77,7 +79,6 @@ DEC-034 resolved 22 Oct (Tope: yes). `AUTH_MODE=accounts` for any shared deploym
 | DEC-014 | i18n languages | English first. French, Portuguese, Arabic (RTL) as candidates. Phase 6 |
 | DEC-023 | SPEC 14: read up to 80 live records in the browser, and a DESIGN.md live reference page | 80 records yes, read-only and PII-masked in logs. DESIGN.md page later |
 | DEC-025 | Three first-time testers for the switcher (10 s) and onboarding (5 min) tests | You recruit 3 people. I prepare the script and timer |
-| DEC-031 | Eyeball the `studio-draft.ts` diff (two recovered methods) | 15 minutes of your time in Phase 0. I prepare a focused diff |
 | DEC-033 | Actually send Slack/Teams payloads and chat approvals | Off until SUITE-31 ships signed links. Then on per workspace |
 
 ## GATE-C / GATE-D batch
@@ -87,3 +88,34 @@ DEC-034 resolved 22 Oct (Tope: yes). `AUTH_MODE=accounts` for any shared deploym
 | DEC-017 | Accept each remaining `xfail` | Per test, after B0 cards |
 | DEC-018 | Keep `/tmp` backups (`designer_classic.bak`, `fp_*.bak`, `no_school_casual.gold.bak`, eval outputs) | Copy them to `docs/handoff/tmp-backups/` before the next reboot |
 | DEC-019 | Commit plan for 848 modified and 804 untracked files | B0-INV proposes feature-grouped commits. Nothing is committed without your yes |
+
+## New-features batch (DEC-050..074; proposals until Tope answers; source: new-features brief 22 Oct)
+Each row blocks only the cards named. DEC-050 is the scope approval every NF card needs before its phase's G2 (INV-06). Design: `docs/build-plan/new-features/`. Index: `NEW_FEATURES_INDEX.md`.
+
+| ID | Decision | Default (recommended) | Blocks |
+|---|---|---|---|
+| DEC-050 | Approve the 27 NF epics (the brief's 26 ideas + the SCAN foundation) as build scope (INV-06) | Approve all; they enter phases 4–6 per the index and are released per phase at G2 | all NF cards (at G2) |
+| DEC-051 | Phase placement | Fold into phases 4, 5 and 6 per the index; no Phase 8 | phase_map NF prefixes |
+| DEC-052 | What scans store and for how long | Counts, record ids and masked samples only; no field values; 90-day retention | SCAN-02, all scan epics |
+| DEC-053 | Usage signal source | Records created/changed and log-ins only; no click-tracking addon in client Odoo | USAGE-* |
+| DEC-054 | Upgrade rehearsal data source | No customer DB clone (AGENTS). Fresh target sandboxes with customisation replay, or an owner-supplied upgraded Test copy. OpenUpgrade (AGPL-3.0) is not bundled or run | UPG-* |
+| DEC-055 | Studio-to-code production takeover | Zip + sandbox proof only; production install is a human Option A promote with the field-takeover warning | S2C-* |
+| DEC-056 | Effort table and rate card | Workspace sets rates; effort defaults are labelled "Example" until 10 real projects calibrate them | FITGAP-06, SOW-03, UPG-05 |
+| DEC-057 | Manual media | Text plus sandbox screenshots with Example data now; video later (Playwright + LGPL ffmpeg build only) | MANUAL-05, BOLD-B7 video part |
+| DEC-058 | UAT on Live connections | Refused; Live gets read-only checks only | UAT-04 |
+| DEC-059 | Undo scope for drift restore and cleanup | Restore views, menus, actions, automations and access rules; fields and data are report-only | DEBT-04, DRIFT-04 |
+| DEC-060 | Default SoD rule set | Ship a starting set as data, labelled "review with your auditor" | SOD-03 |
+| DEC-061 | Nigeria rules table source | You supply an adviser-reviewed table (VAT, WHT, PAYE bands, pension) with effective dates and sources; until then values show as Example | NG-04 (Gate A) |
+| DEC-062 | E-invoicing scope | Readiness checks and a sample payload export from the published spec you supply; no transmission; nothing written to posted invoices | NG-06 (Gate A) |
+| DEC-063 | Bank statement samples | You supply ≥ 2 anonymised statements for each of 5 banks (default: Access, GTBank, Zenith, First Bank, UBA); Ingenium converts and dry-runs, the owner imports | NG-08 (Gate A) |
+| DEC-064 | PAYE and pension | Compute-only report and export; no journal entries; Community has no payroll app [Inferred; NG-LIVE verifies] | NG-07 (Gate A) |
+| DEC-065 | Connector landing and targets | Payment events land in the Bridge inbox or an x_ staging record for human reconciliation, never account.payment; Paystack and Flutterwave first; bank-feed aggregator chosen later | CXB-04, CXB-05, CXB-07 (Gate A) |
+| DEC-066 | Migration sources, samples, file retention | Excel/CSV, QuickBooks Online and Sage 50 first; you supply sample exports; files kept 7 days | MIG-03 (Gate A) |
+| DEC-067 | In-Odoo assistant install path | Addon via sandbox then human promote on Odoo.sh and on-prem; Online gets a link-out | HOWDO-06, HOWDO-LIVE |
+| DEC-068 | Who sees NL report results | Runs as the connection user; client-mode users see only reports the consultant shared | NLR-05 |
+| DEC-069 | Marketplace model | Free; metadata plans only (no Python); private plus curated public; no revenue share | MKT-* |
+| DEC-070 | Client requests and Run | Clients create requests and approve; they never trigger Run | PORTAL-04, PORTAL-05 |
+| DEC-071 | Effort tracker writes | No writes to any Odoo, including the agency's own; CSV/PDF export only | EFFORT-04 |
+| DEC-072 | Process mining window | 180 days, tracked fields only, sampling above 200k events | PMINE-02 |
+| DEC-073 | Performance probe budget | ≤ 60 calls per run, ≥ 250 ms apart, stop on 429/503 | PERF-02 |
+| DEC-074 | Who writes the labelled eval sets (fit-gap 120 lines, NL reports 50, how-do-I 60 per DB) | A separate L3 Oracle drafts them from seeded DBs; you spot-check 10%; never from holdout_fresh | FITGAP-07, NLR-06, HOWDO-07 (Gate A) |

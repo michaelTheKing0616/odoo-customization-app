@@ -39,7 +39,7 @@ NP_DIR = ROOT / "docs/plans/next-phase"
 DOC_TARGETS = {"02_INVARIANTS", "06_TEST_STRATEGY", "07_UI_PROTOCOL", "FACTS", "CODE_MAP", "GATE-R"}
 PRI_ORDER = ["INV", "P0", "P1", "P2", "P3"]
 OPEN_DECS = {"DEC-006", "DEC-007", "DEC-008", "DEC-009", "DEC-010", "DEC-011", "DEC-012", "DEC-013", "DEC-014",
-             "DEC-023", "DEC-025", "DEC-031", "DEC-033"}  # GATE-A batch, open until the owning card is next. DEC-034 resolved 22 Oct.
+             "DEC-023", "DEC-025", "DEC-033"}  # GATE-A batch, open until the owning card is next. DEC-031 and DEC-034 resolved 22 Oct.
 FLAGSHIP_UI = {"CONNECT", "HOME", "APPSTUDIO", "VD", "SUITE", "APPROVALS", "HISTORY", "SETTINGS", "SHELL"}
 
 A = "apps/api/app/"

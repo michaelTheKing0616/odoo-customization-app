@@ -2,7 +2,7 @@
 
 ID: V-STUDIODRAFT
 Title: studio-draft.ts non-repo Prettier reformat; decideStudioStockApp + startOptionABatch recov
-Status: todo
+Status: done
 Phase: 0
 Priority: P1
 Type: verify

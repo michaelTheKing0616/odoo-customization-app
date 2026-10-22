@@ -10,7 +10,7 @@ Root `STATE.md` keeps session retros. This file is the live board for the build.
 | Active phases | 0 |
 | Week | 1 · allocation 40M · reserve 15% · spent 0 (tokens n/a) |
 | Pilot | All three closed [Done, code] 21 Oct. L2/L3 reruns and the grok-4.6 P-1 run were not done. |
-| Blocked on Tope | B0-JUNK stays Gate D. DEC-031 proof is in progress. Commits are in progress. The eyeball is not required. |
+| Blocked on Tope | B0-JUNK stays Gate D. DEC-031 is settled by the live test. Project tsc is still red on b0_dist.test.ts. |
 
 ## Queue (next eligible cards; Orchestrator refreshes with `python3 docs/build-plan/tools/next_cards.py`)
 
@@ -33,7 +33,6 @@ Root `STATE.md` keeps session retros. This file is the live board for the build.
 |---|---|---|---|---|
 | L-BL-08 | BL-08 | hold | apps/api/tests/test_bl_08.py, docs/handoff/COMMIT_PLAN.md | 2026-10-22 |
 | L-REG-NP-GND | REG-NP-GND | hold | apps/api/tests/test_reg_np_gnd.py | 2026-10-22 |
-| L-V-STUDIODRAFT | V-STUDIODRAFT | Worker | apps/web/src/lib/api/studio-draft.ts, apps/web/src/lib/api/studio-draft.live.test.ts, docs/build-plan/verify/V-STUDIODRAFT.md | 2026-10-22 |
 | L-BL-07 | BL-07 | hold | apps/api/tests/test_no_mcp_write.py, apps/api/tests/test_bl_07.py | 2026-10-22 |
 | L-REG-NP-BL | REG-NP-BL | hold | apps/api/tests/test_reg_np_bl.py | 2026-10-22 |
 | L-REG-NP-T1 | REG-NP-T1 | hold | apps/api/tests/test_reg_np_t1.py | 2026-10-22 |
@@ -47,7 +46,6 @@ Rule: a card is dispatched only if none of its allow-list paths matches an open 
 |---|---|---|---|---|---|
 | BL-08 | hold | 1/2 | L2 | 2026-10-22 | d831da67-b459-4724-8436-744ee173418c |
 | REG-NP-GND | hold | 1/2 | L2 | 2026-10-22 | d65dddae-1a95-4e15-bf0a-28424f78a48b |
-| V-STUDIODRAFT | Worker | 1/2 | L1 | 2026-10-22 | a8f60fc7-166c-4b92-b0c0-e7f17825c78e |
 | BL-07 | hold | 1/2 | L2 | 2026-10-22 | c5ccaef0-36ec-45a1-b9bf-8ba215de64ac |
 | REG-NP-BL | hold | 2/2 | L2 | 2026-10-22 | e127a619-9d10-4fe9-966b-d947d1c6d3bf |
 | REG-NP-T1 | hold | 1/2 | L2 | 2026-10-22 | 8d791eef-284f-464d-a0e9-957be55c89f0 |
@@ -153,6 +151,12 @@ Rule: a card is dispatched only if none of its allow-list paths matches an open 
 | 2026-10-22 | B0-ISO | Worker | L2 | n/a | 400000 | n/a | loop 2 · counts equal · 18 and 18 |
 | 2026-10-22 | B0-ISO | Tester | L2 | n/a | 150000 | n/a | loop 2 · PASS · counts equal |
 | 2026-10-22 | B0-ISO | Reviewer | L2 | n/a | 120000 | n/a | APPROVE |
+| 2026-10-22 | V-STUDIODRAFT | Worker | L1 | n/a | 150000 | n/a | live test 3 passed · tsc red outside card |
+| 2026-10-22 | V-STUDIODRAFT | Tester | L2 | n/a | 60000 | n/a | PASS · 3 passed · [Done, live] |
+| 2026-10-22 | V-STUDIODRAFT | Reviewer | L1 | n/a | 45000 | n/a | CHANGES · restore applyStudioSession |
+| 2026-10-22 | V-STUDIODRAFT | Worker | L1 | n/a | 60000 | n/a | loop 2 · single POST restored · 3 passed |
+| 2026-10-22 | V-STUDIODRAFT | Tester | L2 | n/a | 60000 | n/a | loop 2 · PASS · [Done, live] |
+| 2026-10-22 | V-STUDIODRAFT | Reviewer | L1 | n/a | 45000 | n/a | loop 2 · APPROVE |
 
 Weekly totals by tier (T0 / L1 / L2 / L3 / E1 / E2) and by phase are summed at each GATE-E and compared with `05_MODEL_ROUTING.md` projected shares.
 
@@ -163,6 +167,14 @@ Weekly totals by tier (T0 / L1 / L2 / L3 / E1 / E2) and by phase are summed at e
 | 2026-10-22 | REG-NP-T4 | L3→E1 | loop 2, AC6 `from app import llm_gateway` still passes | docs/build-plan/fix-notes/REG-NP-T4.md | n/a | APPROVE · [Done, code] |
 
 ## Packets (newest first; keep the last 20)
+
+```
+CLOSE V-STUDIODRAFT · 2026-10-22
+PROGRESS: 2026-10-22 · V-STUDIODRAFT · vitest studio-draft.live.test.ts · 3 passed · [Done, live]
+ledger: AS-STUDIODRAFT and DISC-STUDIODRAFT → [Done, live]
+locks released: L-V-STUDIODRAFT · tokens: W n/a T n/a R n/a vs cap 150000/60000/45000
+facts: FACTS.md +1 line · DEC-031 resolved by test · tsc still red on b0_dist.test.ts
+```
 
 ```
 CLOSE B0-ISO · 2026-10-22
@@ -452,3 +464,4 @@ rules: .cursorrules + 01_TOKEN_CHARTER.md + 02_INVARIANTS.md. Do only this card.
 | 2026-10-22 | REG-NP-UI-FIX | [Done, code] | 2026-10-22 · REG-NP-UI-FIX · vitest Button.asChild.test.tsx · 11 passed · regression 16 and 16 · [Done, code] |
 | 2026-10-22 | B0-DBGUARD | [Done, code] | 2026-10-22 · B0-DBGUARD · uv run pytest -q tests/test_b0_dbguard.py · 15 passed, reverse 15 passed · [Done, code] |
 | 2026-10-22 | B0-ISO | [Done, code] | 2026-10-22 · B0-ISO · uv run pytest -q tests/test_b0_iso.py · 18 passed, reverse 18 passed · counts equal · [Done, code] |
+| 2026-10-22 | V-STUDIODRAFT | [Done, live] | 2026-10-22 · V-STUDIODRAFT · vitest studio-draft.live.test.ts · 3 passed · [Done, live] |

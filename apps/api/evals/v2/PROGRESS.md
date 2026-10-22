@@ -301,3 +301,4 @@ Verdict: keep pipeline default; agent no better on any quality metric, 4.8x slow
 - 2026-10-22 · REG-NP-BR · uv run pytest -q tests/test_reg_np_br.py · 8 passed, reverse 8 passed · [Done, code]
 - 2026-10-22 · B0-DBGUARD · uv run pytest -q tests/test_b0_dbguard.py · 15 passed, reverse 15 passed · [Done, code]
 - 2026-10-22 · B0-ISO · uv run pytest -q tests/test_b0_iso.py · 18 passed, reverse 18 passed · counts equal · [Done, code]
+- 2026-10-22 · V-STUDIODRAFT · pnpm exec vitest run src/lib/api/studio-draft.live.test.ts · 3 passed · [Done, live]

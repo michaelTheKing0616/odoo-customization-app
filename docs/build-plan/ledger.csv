@@ -127,7 +127,7 @@ AS-FAIL-D,§3.3 L238,failure D: computed counts drift into python_needed,build,P
 AS-FAIL-C,APP_STUDIO_HANDOFF §4C; FIX_PLAN D/C,failure C: need coverage 0.53 (renamed main entity; stock route not matched by stems),build,P1,Open,AS-PACK;AS-COVERAGE,
 AS-SKIPVIEW,§3.3 L241,'Skip view <model>.form.extension' warning re-verify,verify,P1,Open,V-AS-SKIPVIEW,
 AS-WRONGHOST,§3.3 L242,pre-install design picks wrong host (res.partner before CRM),build,P1,Open,AS-HOST-PREINSTALL,
-AS-STUDIODRAFT,§3.3 L243,studio-draft.ts non-repo Prettier reformat; decideStudioStockApp + startOptionABatch recovered; Tope eyeballs diff,verify,P1,Open,V-STUDIODRAFT,DEC-031
+AS-STUDIODRAFT,§3.3 L243,studio-draft.ts non-repo Prettier reformat; decideStudioStockApp + startOptionABatch recovered; Tope eyeballs diff,verify,P1,"[Done, live]",V-STUDIODRAFT,DEC-031
 AS-STOCKCARD,§3.3 L244; §3.17 L412,'Use stock app X' as first-class recommendation card in App Studio (restaurant project_tracker retail),build,P1,Partial,AS-STOCKCARD,
 AS-REG-OFFSET,§3.3 L245,regression: reminder offset (-7 on 17/18; 7+before on 19/20),regression,P1,Done-live,REG-AS-OFFSET,
 AS-REG-JUNKFIELD,§3.3 L245,regression: junk fields from sentence-length labels (x_to_each_opportunity_a_field_for_source; x_remind_the_salesperson_a_week_before_t),regression,P1,Done-code,REG-AS-JUNKFIELD,
@@ -643,7 +643,7 @@ DISC-PACKS,§3.17,11 curated vs 12 names,verify,P2,Discrepancy,V-PACK-COUNT,
 DISC-WEBSITE,§3.6,website scope SPEC 12 vs FA 7,decision,P2,Inferred,,DEC-005
 DISC-ATTENDEE,§3.12; §6.11,attendee_client.py ELv2,decision,P1,Open,CP-ATTENDEE,DEC-006
 DISC-DOCKERFILE,§3.9,middleware generator Dockerfile conflict,verify,P1,Discrepancy,V-BR-DOCKERFILE,
-DISC-STUDIODRAFT,§3.3,studio-draft.ts reformat review,verify,P1,Open,V-STUDIODRAFT,DEC-031
+DISC-STUDIODRAFT,§3.3,studio-draft.ts reformat review,verify,P1,"[Done, live]",V-STUDIODRAFT,DEC-031
 DISC-TMP,§4 P0-9 AC3,/tmp backups worth keeping,verify,P0,"[Done, code]",B0-INV,DEC-018
 DISC-ROOTPATCH,§4 P0-9 AC4,root .patch + APPLY_*.sh,verify,P0,"[Done, code]",B0-INV,
 DISC-SELFAPP,§2.4 vs §6.5,self-approval: any requester may self-approve (audited; §2.4 wins; §6.5 corrected),decision,P0,"[Done, code]",DOC-HANDOVER-ERRATA,

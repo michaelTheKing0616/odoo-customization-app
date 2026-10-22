@@ -2,6 +2,31 @@ import { request } from "./client";
 import type { AppTemplate, JobRow, ModuleExport } from "./types-catalog";
 import type { ProtectedModuleRefusal, StoreReadinessReport } from "./types-gating";
 
+/** Python piece kept by `_option_a_batch` and returned from option-a-batch. */
+export type StudioOptionAPiece = {
+  label: string;
+  key?: string;
+  models?: string[];
+  reason?: string;
+  delivery_lane?: string;
+  online_blocked?: boolean | "true" | "false";
+  lane_note?: string;
+};
+
+/** Promote control the option-a-batch route returns with the pieces. */
+export type StudioOptionAPromote = {
+  mode: "single_button";
+  label: "Promote";
+  config_required: false;
+};
+
+/** Success body of `POST /api/ai/sessions/{id}/option-a-batch`. */
+export type StudioOptionABatchResponse = {
+  session_id: string;
+  pieces: StudioOptionAPiece[];
+  promote: StudioOptionAPromote;
+};
+
 export const studioDraftApi = {
   getJob: (jobId: string) =>
     request<JobRow>(`/api/jobs/${jobId}`, { timeoutMs: 25_000 }),
@@ -131,6 +156,47 @@ export const studioDraftApi = {
         body: JSON.stringify(body),
       },
     ),
+  /**
+   * Install previews the body (dry run), then sends it.
+   * Decline is one POST: that response already stops the session.
+   */
+  decideStudioStockApp: async (sessionId: string, decision: "install" | "decline") => {
+    const url = `/api/ai/sessions/${sessionId}/stock-app`;
+    type StockAppDecision = import("@/lib/studio-session").StudioSession & {
+      stopped?: boolean;
+      message?: string;
+      installed?: { module: string; app_label: string; message: string };
+    };
+    if (decision === "decline") {
+      return request<StockAppDecision>(url, {
+        method: "POST",
+        body: JSON.stringify({ decision, dry_run: false }),
+        timeoutMs: 300_000,
+      });
+    }
+    await request<unknown>(url, { method: "POST", body: JSON.stringify({ decision, dry_run: true }) });
+    return request<StockAppDecision>(url, {
+      method: "POST",
+      body: JSON.stringify({ decision, dry_run: false }),
+      timeoutMs: 300_000,
+    });
+  },
+  /** Live installs need the same body previewed first (dry-run ledger), then sent for real. */
+  installStudioApps: async (sessionId: string) => {
+    const url = `/api/ai/sessions/${sessionId}/install-apps`;
+    await request<unknown>(url, { method: "POST", body: JSON.stringify({ dry_run: true }) });
+    return request<
+      import("@/lib/studio-session").StudioSession & {
+        install_step?: import("@/lib/studio-session").StudioInstallStep | null;
+        installed?: string[];
+        install_errors?: string[];
+      }
+    >(url, {
+      method: "POST",
+      body: JSON.stringify({ dry_run: false }),
+      timeoutMs: 300_000,
+    });
+  },
   generateStudioSession: (sessionId: string, force = false) =>
     request<import("@/lib/studio-session").StudioSession & { job_id?: string }>(
       `/api/ai/sessions/${sessionId}/generate`,
@@ -156,6 +222,11 @@ export const studioDraftApi = {
     request<import("@/lib/studio-session").StudioSession>(
       `/api/ai/sessions/${sessionId}/sync-job`,
       { method: "POST" },
+    ),
+  startOptionABatch: (sessionId: string) =>
+    request<StudioOptionABatchResponse>(
+      `/api/ai/sessions/${sessionId}/option-a-batch`,
+      { method: "POST", timeoutMs: 180_000 },
     ),
   stampOptionAPromote: (sessionId: string) =>
     request<{
