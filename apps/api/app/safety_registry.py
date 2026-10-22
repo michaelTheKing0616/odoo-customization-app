@@ -71,6 +71,9 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "POST:/api/connections/{connection_id}/l10n-ng/bank/convert": SafetySpec(
         risk="read", odoo_mutation=False, confirm="none"
     ),
+    # HOWDO-01: minting an ask token and answering read only config; no Odoo write.
+    "POST:/api/bridge-assist/token": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
+    "POST:/api/bridge-assist/ask": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),

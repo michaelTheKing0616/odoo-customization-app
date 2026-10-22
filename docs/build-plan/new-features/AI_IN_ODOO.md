@@ -30,10 +30,17 @@ Extends Odoo Expert / Suite Ask (`expert/ask.py`, `expert/live_schema_ask.py`, `
    - Rate limit per Odoo user: 20 per hour by default.
    - Addon versions: OWL differs on 17 vs 18+, so there is one addon per major in `packages/odoo-expert-bridge`, gated by `compat`.
 6. **Data / API:**
-   - `POST /api/bridge-assist/token {connection_id, odoo_uid}` (integration-key protected; called by the addon controller).
-   - `POST /api/bridge-assist/ask {question, page_context:{model, view_type, action_id}}` (Bearer short token) → `{answer_md, steps[{text, menu_path, deep_link}], citations[{kind, tech_name}], refused?: reason}`.
+   - `POST /api/bridge-assist/token` body `AssistTokenRequest {connection_id, odoo_uid}` → `HowdoToken`. `odoo_uid` is `int | None`. Pinned 2026-10-22.
+   - `HowdoToken {token, expires_at, scope}`. `token` is `str`. `expires_at` is `datetime`. `scope` is `str` and is `ask` for this route.
+   - `POST /api/bridge-assist/ask` body `AssistAsk {question, page_context}` with the Bearer short token → `AssistAnswer`. No `connection_id` in this body. `page_context` is `dict[str, str] | None`. The usual keys are `model`, `view_type`, and `action_id`.
+   - `AssistAnswer {answer_md, steps, citations, refused}`. `steps` is `[AssistStep]`. `citations` is `[AssistCitation]`. `refused` is `str | None` (the reason). Null means the answer was given.
+   - `AssistStep {text, menu_path, deep_link}`.
+   - `AssistCitation {kind, tech_name}`. `kind` is `Literal["doc", "field", "menu"]`.
+   - Models. A contract test compares these field names and no others.
+   - Auth. The token route depends on `require_api_auth` in `apps/api/app/auth.py` (the integration key: `Authorization: Bearer` or `X-API-Key`). A missing or bad integration key is 401, not 403 `ROLE_DENIED`. `/ask` depends on `require_howdo_token` in `apps/api/app/assist/auth.py` (new). It reads the Bearer short token. A missing or bad short token is 401, not 403 `ROLE_DENIED`. 403 `ROLE_DENIED` is only for a caller who is already authenticated and whose role or scope cannot do the action. HOWDO-01 stubs `require_howdo_token`. It does not check a real sign-in token.
+   - Tenancy. `/ask` takes its connection from the token. `NF_HOWDO_ROUTES` is `POST /api/bridge-assist/token` and `POST /api/bridge-assist/ask`. Those paths are not connection-scoped and do not call `get_scoped_connection_or_404`. The contract test is a cross-tenant token test: a token bound to workspace A's connection does not return workspace B's menus, and the reverse. That miss is 404 with the B5 `NOT_FOUND` envelope.
    - Table `assist_feedback`.
-7. **Risks / DEC:** DEC-067 (install path). Token design touches sign-in, so that card is routed L3 (guarded path naming avoided; reviewer L3).
+7. **Risks / DEC:** DEC-067 (install path). HOWDO-01 stays Worker L2: it is the contract only, with the stub `require_howdo_token`. The later card that checks real sign-in tokens is L3, because that token design touches sign-in.
 
 <a id="nlr"></a>
 ## NLR: Natural-language reports

@@ -73,6 +73,14 @@ NF_NG_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 
+# NF HOWDO-01: token-scoped, not connection-scoped. /token resolves the body connection
+# in the caller's workspace; /ask takes its connection from the short token. A miss is 404.
+NF_HOWDO_ROUTES: tuple[tuple[str, str], ...] = (
+    ("POST", "/api/bridge-assist/token"),
+    ("POST", "/api/bridge-assist/ask"),
+)
+
+
 def missing_registered_routes(
     openapi_paths: dict, routes: tuple[tuple[str, str], ...]
 ) -> list[tuple[str, str]]:
