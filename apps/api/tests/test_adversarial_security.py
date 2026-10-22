@@ -144,16 +144,28 @@ def test_confirm_gates_without_phrase_unit(client: TestClient) -> None:
         assert detail["requires_confirmation"] is True
         assert detail["confirm_phrase"] == CONFIRM_PHRASE
 
+    promote_body = {"technical_name": "x", "display_name": "X", "validation_id": "nope"}
+    promote_preview = client.post(
+        f"/api/connections/{cid}/modules/promote",
+        json={**promote_body, "dry_run": True},
+    )
+    assert promote_preview.status_code == 200, promote_preview.text
     promote = client.post(
         f"/api/connections/{cid}/modules/promote",
-        json={"technical_name": "x", "display_name": "X", "validation_id": "nope"},
+        json=promote_body,
     )
     assert promote.status_code == 403
     assert promote.json()["detail"]["requires_confirmation"] is True
 
+    uninstall_body = {"module_name": "x_mod"}
+    uninstall_preview = client.post(
+        f"/api/connections/{cid}/modules/uninstall",
+        json={**uninstall_body, "dry_run": True},
+    )
+    assert uninstall_preview.status_code == 200, uninstall_preview.text
     uninstall = client.post(
         f"/api/connections/{cid}/modules/uninstall",
-        json={"module_name": "x_mod"},
+        json=uninstall_body,
     )
     assert uninstall.status_code == 403
 

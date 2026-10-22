@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.changeset.executor import apply, get_journal, reset_journal
 from app.changeset.ops import get_op
 from app.changeset.plan_card import render_plan_card
-from app.changeset.policy import policy_decision, risk_of, self_approval_allowed
+from app.changeset.policy import (
+    policy_decision,
+    production_r3_approval_met,
+    risk_of,
+    self_approval_allowed,
+    target_requires_domain_owner,
+)
 from app.changeset.validate import (
     MAX_DEPTH,
     MAX_PARAMS_BYTES,
@@ -64,25 +72,161 @@ def test_risk_never_decreases() -> None:
     assert order.index(elevated) >= order.index(base)
 
 
-def test_r3_production_needs_two_approvers() -> None:
-    d = policy_decision("R3", "production")
-    assert d["approvers"] == 2
-    assert d["needs_simulation"] is True
-    assert d["deny"] is False
+def test_r3_needs_one_approval_without_heavy_facts() -> None:
+    for environment in ("staging", "production"):
+        decision = policy_decision("R3", environment, autonomy="L4")
+        assert decision["approvers"] == 1
+        assert decision["needs_simulation"] is False
+        assert decision["needs_backup"] is False
+        assert decision["needs_window"] is False
+        assert decision["deny"] is False
+        assert decision["allow"] is True
 
 
-def test_r4_denied() -> None:
+def test_r4_hard_stop_denied() -> None:
     d = policy_decision("R4", "production")
     assert d["deny"] is True
     assert d["allow"] is False
     d2 = policy_decision("R4", "staging")
     assert d2["deny"] is True
+    opened = policy_decision("R4", "production", autonomy="L4", heavy=True)
+    assert opened["approvers"] == 2
+    assert opened["allow"] is True
+    assert opened["needs_simulation"] is True
+    assert opened["needs_backup"] is True
+    assert opened["needs_window"] is True
 
 
-def test_self_approval_false_for_r3() -> None:
-    assert self_approval_allowed("R3") is False
+def test_self_approval_allowed_for_r3() -> None:
+    assert self_approval_allowed("R3") is True
     assert self_approval_allowed("R4") is False
     assert self_approval_allowed("R2") is True
+
+
+_R3_NOW = datetime(2026, 10, 4, 15, 0, tzinfo=timezone.utc)
+_R3_WINDOW = {
+    "start": "2026-10-04T14:00:00+00:00",
+    "end": "2026-10-04T16:00:00+00:00",
+}
+
+
+def _r3_person(user_id: str, **extra: object) -> dict:
+    approver_id = extra.pop("approver_id", user_id)
+    record: dict = {"approver_id": approver_id, "user_id": user_id, "decision": "approve"}
+    record.update(extra)
+    return record
+
+
+def _heavy_met(approvals: list[dict], **overrides: object) -> dict:
+    decision = policy_decision("R4", "production", heavy=True)
+    args: dict = {
+        "requester_id": "requester",
+        "protected": False,
+        "simulation_passed": True,
+        "backup_id": "backup-1",
+        "allowed_window": _R3_WINDOW,
+        "now": _R3_NOW,
+    }
+    args.update(overrides)
+    return production_r3_approval_met(decision, approvals, **args)
+
+
+def test_heavy_r4_two_oauth_identities_count_once() -> None:
+    """Google and Microsoft identities of one user are one heavy-R4 approver."""
+    decision = policy_decision("R4", "production", heavy=True, autonomy="L4")
+    assert decision["approvers"] == 2
+    assert decision["needs_simulation"] is True
+    assert decision["needs_backup"] is True
+    assert decision["needs_window"] is True
+    twice = _heavy_met(
+        [
+            _r3_person("ada", approver_id="google-ada", provider="google", session_id="sess-g"),
+            _r3_person("ada", approver_id="microsoft-ada", provider="microsoft", session_id="sess-m"),
+        ]
+    )
+    assert twice["distinct_approvers"] == 1
+    assert twice["met"] is False
+    assert "distinct_approvers" in twice["blockers"]
+
+
+def test_heavy_r4_two_sessions_count_once() -> None:
+    twice = _heavy_met(
+        [
+            _r3_person("ada", approver_id="session-1", session_id="session-1"),
+            _r3_person("ada", approver_id="session-2", session_id="session-2"),
+        ]
+    )
+    assert twice["distinct_approvers"] == 1
+    assert twice["met"] is False
+
+
+def test_heavy_r4_requester_identities_do_not_count_as_both() -> None:
+    """The requester cannot be both heavy-R4 approvers."""
+    result = _heavy_met(
+        [
+            _r3_person("requester", approver_id="google-requester", provider="google"),
+            _r3_person("requester", approver_id="microsoft-requester", provider="microsoft"),
+            _r3_person("mina"),
+        ]
+    )
+    assert result["distinct_approvers"] == 1
+    assert result["met"] is False
+    assert "distinct_approvers" in result["blockers"]
+
+
+def test_heavy_r4_protected_target_needs_a_domain_owner() -> None:
+    op = {"type": "data.delete", "params": {"model": "product.category"}}
+    assert target_requires_domain_owner([op]) is True
+    assert risk_of(op) == "R4"
+    missing = _heavy_met([_r3_person("ada"), _r3_person("mina")], protected=True)
+    assert missing["distinct_approvers"] == 2
+    assert missing["met"] is False
+    assert missing["blockers"] == ["domain_owner"]
+    ready = _heavy_met(
+        [_r3_person("ada"), _r3_person("mina", domain_owner=True)],
+        protected=True,
+    )
+    assert ready["met"] is True
+    assert ready["blockers"] == []
+
+
+def test_heavy_r4_requires_simulation_backup_and_an_open_window() -> None:
+    people = [_r3_person("ada"), _r3_person("mina")]
+    no_simulation = _heavy_met(people, simulation_passed=False)
+    assert no_simulation["met"] is False
+    assert no_simulation["blockers"] == ["simulation"]
+    no_backup = _heavy_met(people, backup_id="  ")
+    assert no_backup["met"] is False
+    assert no_backup["blockers"] == ["backup"]
+    closed = _heavy_met(
+        people,
+        allowed_window={
+            "start": "2026-10-04T10:00:00+00:00",
+            "end": "2026-10-04T15:00:00+00:00",
+        },
+    )
+    assert closed["met"] is False
+    assert closed["blockers"] == ["window"]
+    ready = _heavy_met(people)
+    assert ready["met"] is True
+    assert ready["distinct_approvers"] == 2
+    assert ready["blockers"] == []
+
+
+def test_heavy_gate_refuses_an_r3_decision() -> None:
+    staging = policy_decision("R3", "production")
+    result = production_r3_approval_met(
+        staging,
+        [_r3_person("ada"), _r3_person("mina")],
+        requester_id="requester",
+        protected=False,
+        simulation_passed=True,
+        backup_id="backup-1",
+        allowed_window=_R3_WINDOW,
+        now=_R3_NOW,
+    )
+    assert result["met"] is False
+    assert result["blockers"] == ["not_heavy_r4"]
 
 
 def test_plan_hash_changes_when_assumptions_change() -> None:

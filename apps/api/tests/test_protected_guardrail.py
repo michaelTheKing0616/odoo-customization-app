@@ -390,6 +390,11 @@ def test_api_module_spec_apply_skips_tier1_items(
         ],
         "automations": [],
     }
+    preview = api_client.post(
+        f"/api/connections/{conn.id}/module-spec/apply",
+        json={"spec": spec, "dry_run": True},
+    )
+    assert preview.status_code == 200, preview.text
     res = api_client.post(
         f"/api/connections/{conn.id}/module-spec/apply",
         json={"spec": spec, **_confirm()},

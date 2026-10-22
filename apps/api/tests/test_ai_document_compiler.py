@@ -192,6 +192,13 @@ def test_surface_gate_fails_duplicate_notebooks() -> None:
     assert any(str(f.get("detail") or "").startswith("surface:") for f in live)
 
 
+def _shaped(mid: str, desc: str) -> dict:
+    m = _sibling(mid, desc)
+    m["fields"] = m["fields"] + [{"name": "x_capacity", "ttype": "integer", "string": "Capacity"},
+                                 {"name": "x_address", "ttype": "char", "string": "Address"}]
+    return m
+
+
 def test_workspace_collapses_isomorphic_siblings() -> None:
     draft = {
         "display_name": "Hotel",
@@ -212,5 +219,12 @@ def test_workspace_collapses_isomorphic_siblings() -> None:
     compile_document_grammar(draft, prompt=str(draft["_user_prompt"]))
     models = {m.get("model") for m in draft["models"] if isinstance(m, dict)}
     assert "x_hotel_booking" in models
-    # One of the isomorphic pair may remain; both must not.
-    assert not ({"x_agreement", "x_expense"} <= models)
+    # Same fields but different documents (an agreement is not an expense): both stay.
+    assert {"x_agreement", "x_expense"} <= models
+    # The same role under two names (site / location) collapses to one.
+    fresh = {**{k: v for k, v in draft.items() if not k.startswith("_document")}, "_document_shape": "workspace",
+             "models": [draft["models"][0], _shaped("x_site", "Site"), _shaped("x_location", "Location")]}
+    compile_document_grammar(fresh, prompt=str(draft["_user_prompt"]))
+    draft = fresh
+    models = {m.get("model") for m in draft["models"] if isinstance(m, dict)}
+    assert len({"x_site", "x_location"} & models) == 1

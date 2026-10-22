@@ -69,6 +69,44 @@
       }
     ],
     "environment": "staging",
-    "plan_hash": "ba76bda2083722bb"
+    "plan_hash": "ba76bda2083722bb",
+    "sections": [
+      {
+        "title": "goal and assumptions",
+        "body": "Add a delivery note on the custom delivery order\nx_delivery.order exists\nx_delivery_note is not already a field"
+      },
+      {
+        "title": "each change",
+        "body": "field.create on x_delivery.order: risk R2, reversible E, ddl True"
+      },
+      {
+        "title": "impact",
+        "body": "op_count 1"
+      },
+      {
+        "title": "risk and why",
+        "body": "max R2\nper_op R2\napprovers 1"
+      },
+      {
+        "title": "what is not changing",
+        "body": "data.delete\nmodule.uninstall\nrpc.write"
+      },
+      {
+        "title": "how it will be checked",
+        "body": "postcondition:field.create"
+      },
+      {
+        "title": "how to undo",
+        "body": "field.create inverse field.deprecate"
+      },
+      {
+        "title": "environment",
+        "body": "staging"
+      },
+      {
+        "title": "plan fingerprint and expiry",
+        "body": "ba76bda2083722bb\n<expires_at>"
+      }
+    ]
   }
 }

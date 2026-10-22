@@ -74,6 +74,28 @@ def test_client_path_policy_hides_other_connections() -> None:
         )
         == "deny"
     )
+    assert client_request_decision("GET", "/api/inbox/plans", "client_approver", scope) == "allow"
+    assert client_request_decision("GET", "/api/inbox/plans", "client_viewer", scope) == "allow"
+    assert client_request_decision("POST", "/api/inbox/plans", "client_approver", scope) == "deny"
+    assert client_request_decision("POST", "/api/inbox/plans", "client_viewer", scope) == "deny"
+    assert (
+        client_request_decision(
+            "POST",
+            "/api/inbox/plans/plan-hash-abc/decide",
+            "client_approver",
+            scope,
+        )
+        == "allow"
+    )
+    assert (
+        client_request_decision(
+            "POST",
+            "/api/inbox/plans/plan-hash-abc/decide",
+            "client_viewer",
+            scope,
+        )
+        == "deny"
+    )
 
 
 def test_client_approver_cannot_reach_a_second_client(monkeypatch: pytest.MonkeyPatch) -> None:

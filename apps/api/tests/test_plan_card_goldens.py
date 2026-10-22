@@ -16,7 +16,12 @@ from typing import Any
 import pytest
 
 from app.changeset.ops import OP_CATALOG
-from app.changeset.plan_card import PLAN_CARD_SECTIONS, compute_plan_hash, render_plan_card
+from app.changeset.plan_card import (
+    PLAN_CARD_COPY_SECTIONS,
+    PLAN_CARD_SECTIONS,
+    compute_plan_hash,
+    render_plan_card,
+)
 
 pytestmark = pytest.mark.no_app_db
 
@@ -158,10 +163,26 @@ def _stable(card: dict[str, Any]) -> dict[str, Any]:
     """Drop the wall-clock expiry so the snapshot can be compared.
 
     Inputs: a rendered plan card.
-    Outputs: every section except expires_at.
+    Outputs: every section except expires_at. The fingerprint copy line
+    that repeats expires_at is replaced with a placeholder.
     Side effects: none.
     """
-    return {key: value for key, value in card.items() if key != "expires_at"}
+    expires = card.get("expires_at")
+    stable: dict[str, Any] = {key: value for key, value in card.items() if key != "expires_at"}
+    sections = stable.get("sections")
+    if isinstance(sections, list) and isinstance(expires, str) and expires:
+        rewritten: list[Any] = []
+        for section in sections:
+            if not isinstance(section, dict):
+                rewritten.append(section)
+                continue
+            body = section.get("body")
+            if isinstance(body, str):
+                rewritten.append({**section, "body": body.replace(expires, "<expires_at>")})
+            else:
+                rewritten.append(section)
+        stable["sections"] = rewritten
+    return stable
 
 
 def test_family_map_matches_the_catalog() -> None:
@@ -193,6 +214,7 @@ def test_rendered_plan_card_hash_matches_golden(path: Path) -> None:
     assert spec["changeset"][0]["type"] == op_type
     rendered = _render(spec)
     assert set(PLAN_CARD_SECTIONS) <= set(rendered)
+    assert [section["title"] for section in rendered["sections"]] == list(PLAN_CARD_COPY_SECTIONS)
     assert "expires_at" in rendered
     assert "expires_at" not in spec["card"]
     expected_hash = spec["card"]["plan_hash"]

@@ -71,6 +71,44 @@
       }
     ],
     "environment": "staging",
-    "plan_hash": "19c1765a9b499712"
+    "plan_hash": "19c1765a9b499712",
+    "sections": [
+      {
+        "title": "goal and assumptions",
+        "body": "Create one sample delivery order\nthe batch stays under the row cap\nno stock.quant rows are included"
+      },
+      {
+        "title": "each change",
+        "body": "data.create_batch on x_delivery.order: risk R2, reversible E, ddl False"
+      },
+      {
+        "title": "impact",
+        "body": "op_count 1"
+      },
+      {
+        "title": "risk and why",
+        "body": "max R2\nper_op R2\napprovers 1"
+      },
+      {
+        "title": "what is not changing",
+        "body": "data.delete\nmodule.uninstall\nrpc.write"
+      },
+      {
+        "title": "how it will be checked",
+        "body": "postcondition:data.create_batch"
+      },
+      {
+        "title": "how to undo",
+        "body": "data.create_batch irreversible"
+      },
+      {
+        "title": "environment",
+        "body": "staging"
+      },
+      {
+        "title": "plan fingerprint and expiry",
+        "body": "19c1765a9b499712\n<expires_at>"
+      }
+    ]
   }
 }

@@ -55,6 +55,9 @@ class RecordingClient:
     def model_exists(self, model: str) -> bool:
         return True
 
+    def resolve_xml_id(self, ref: str) -> int:
+        return 3  # installed group (base.group_user, sales.group_sale_salesman, ...)
+
     def field_exists(self, model: str, name: str) -> bool:
         return True
 
@@ -70,7 +73,8 @@ class RecordingClient:
         return self.execute_kw("ir.rule", "create", [request])
 
     def create_access_right(self, request: Any) -> Any:
-        return self.execute_kw("ir.model.access", "create", [request])
+        # Major 20 goes through the client's ir.access adapter (model_id/group_id/letter code).
+        return self.execute_kw("ir.access" if self.major >= 20 else "ir.model.access", "create", [request])
 
 
 def _creates(client: RecordingClient, model: str | None = None) -> list[tuple[Any, ...]]:
@@ -202,13 +206,13 @@ def test_spec_apply_access_on_20_writes_ir_access_with_domain() -> None:
         },
         result,
     )
-    creates = _creates(client)
+    creates = _creates(client, "ir.access")
     assert result.access_rights_created == 1
-    assert [call[0] for call in creates] == ["ir.access"]
-    values = creates[0][2][0]
-    assert values["operation"] == "read"
-    assert values["domain"] == "[('id','=',1)]"
-    assert "kind" not in values
+    assert len(creates) == 1
+    req = creates[0][2][0]  # CreateAccessRightRequest -> client adapter writes operation "r"
+    assert (req.model, req.perm_read, req.perm_write, req.perm_create, req.perm_unlink) == ("x_job", True, False, False, False)
+    assert req.domain == "[('id','=',1)]"
+    assert not _creates(client, "ir.rule")
 
 
 def test_spec_apply_group_record_rule_on_20_warns_and_keeps_applied_work() -> None:
@@ -259,8 +263,8 @@ def test_spec_apply_group_record_rule_on_20_warns_and_keeps_applied_work() -> No
     )
     creates = _creates(client)
     assert [call[0] for call in creates] == ["ir.access"]
-    assert creates[0][2][0]["name"] == "read job"
-    assert creates[0][2][0]["group"] == "sales.group_sale_salesman"
+    assert creates[0][2][0].name == "read job"
+    assert creates[0][2][0].group_id == 3  # sales.group_sale_salesman resolved to its id
     assert result.models_created == ["x_job"]
     assert result.fields_created == 2
 
@@ -338,51 +342,25 @@ def test_library_template_on_20_does_not_claim_isolation() -> None:
     )
 
 
-def test_access_rule_v20_skips_only_the_existing_operation() -> None:
-    class _Partial(RecordingClient):
-        def execute_kw(self, model: str, method: str, args: list[Any], kwargs: Any = None) -> Any:
-            self.calls.append((model, method, args, kwargs))
-            if method == "search":
-                domain = args[0] if args else []
-                operation = next(
-                    (
-                        term[2]
-                        for term in domain
-                        if isinstance(term, (list, tuple))
-                        and len(term) >= 3
-                        and term[0] == "operation"
-                    ),
-                    None,
-                )
-                if operation is None:
-                    return [1]
-                return [1] if operation == "read" else []
-            if method == "create":
-                self._seq += 1
-                return self._seq
-            return []
+def test_access_rule_v20_is_idempotent_by_name() -> None:
+    """Live Odoo 20 keeps ONE ir.access row per grant (letter-code operation), so a re-apply
+    with the same name creates nothing, and a new name creates exactly one row."""
 
-    client = _Partial(20)
+    class _Existing(RecordingClient):
+        def execute_kw(self, model: str, method: str, args: list[Any], kwargs: Any = None) -> Any:
+            if model == "ir.access" and method == "search":
+                self.calls.append((model, method, args, kwargs))
+                return [1] if ("name", "=", "job acl") in (args[0] if args else []) else []
+            return super().execute_kw(model, method, args, kwargs)
+
+    client = _Existing(20)
     result = UiApplyResult()
-    _apply_access_rules(
-        client,
-        {
-            "access_rules": [
-                {
-                    "name": "job acl",
-                    "model": "x_job",
-                    "group": "base.group_user",
-                    "perm_read": True,
-                    "perm_write": True,
-                    "perm_create": True,
-                    "perm_unlink": True,
-                }
-            ]
-        },
-        result,
-    )
-    created_ops = [call[2][0]["operation"] for call in _creates(client, "ir.access")]
-    assert created_ops == ["write", "create", "unlink"]
+    rule = {"name": "job acl", "model": "x_job", "group": "base.group_user"}
+    _apply_access_rules(client, {"access_rules": [rule]}, result)
+    assert _creates(client, "ir.access") == [] and result.access_rights_created == 0
+    _apply_access_rules(client, {"access_rules": [{**rule, "name": "job acl 2"}]}, result)
+    created = _creates(client, "ir.access")
+    assert len(created) == 1 and created[0][2][0].name == "job acl 2"
     assert result.access_rights_created == 1
 
 
@@ -444,3 +422,35 @@ def test_router_create_rule_on_20_fails_with_rewrite_message() -> None:
     assert exc.value.status_code == 400
     assert "access right with a domain" in str(exc.value.detail)
     assert issubclass(security_v20.IrRuleNotSupportedOnOdoo20, Exception)
+
+
+def test_spec_apply_restricted_access_on_20_switches_off_open_row_for_same_group() -> None:
+    class Client(RecordingClient):
+        def execute_kw(self, model, method, args, kwargs=None):
+            if model == "ir.access" and method == "search_read":
+                self.calls.append((model, method, args, kwargs))
+                return [{"id": 7, "name": "x_job open", "domain": False}, {"id": 8, "name": "x_job other", "domain": "[(1,'=',1)]"}]
+            if model == "ir.access" and method == "fields_get":
+                return {"active": {"type": "boolean"}}
+            if model == "res.groups" and method == "search":
+                return [3]
+            return super().execute_kw(model, method, args, kwargs)
+
+        def resolve_xml_id(self, ref):
+            return 3
+
+    client = Client(20)
+    result = UiApplyResult()
+    _apply_access_rules(client, {"access_rules": [{"name": "own", "model": "x_job", "group": "base.group_user",
+                                                    "domain": "[('id','=',1)]"}]}, result)
+    writes = [c for c in client.calls if c[0] == "ir.access" and c[1] == "write"]
+    assert writes == [("ir.access", "write", [[7], {"active": False}], None)]
+    assert any("Turned off the open access 'x_job open'" in w for w in result.warnings)
+
+
+def test_spec_apply_open_access_on_20_leaves_other_rows_alone() -> None:
+    client = RecordingClient(20)
+    result = UiApplyResult()
+    _apply_access_rules(client, {"access_rules": [{"name": "open", "model": "x_job", "group": "base.group_user"}]}, result)
+    assert result.access_rights_created == 1
+    assert not [c for c in client.calls if c[0] == "ir.access" and c[1] in {"write", "unlink"}]

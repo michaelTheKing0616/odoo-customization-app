@@ -1,0 +1,21 @@
+{
+  "kind": "sketch",
+  "source": "photograph",
+  "title": "Visitor Log",
+  "prompt": "Visitor log — one box is smudged",
+  "regions": [
+    {
+      "id": "r1",
+      "label": "Visitor name",
+      "hint": "char",
+      "confidence": 0.9
+    },
+    {
+      "id": "r2",
+      "label": "??? amount or date",
+      "hint": "unknown",
+      "confidence": 0.22,
+      "misread": true
+    }
+  ]
+}

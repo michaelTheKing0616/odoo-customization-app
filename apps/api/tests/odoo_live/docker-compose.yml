@@ -1,0 +1,31 @@
+# Disposable Odoo stack for tests marked odoo_live. Project: ingenium-live-test.
+# docker compose -p ingenium-live-test -f tests/odoo_live/docker-compose.yml up -d
+services:
+  db:
+    image: postgres:16
+    environment: {POSTGRES_USER: odoo, POSTGRES_PASSWORD: odoo, POSTGRES_DB: postgres}
+    tmpfs: [/var/lib/postgresql/data]
+  odoo17:
+    image: odoo:17
+    depends_on: [db]
+    environment: {HOST: db, USER: odoo, PASSWORD: odoo}
+    command: ["--", "-d", "live17", "-i", "base_automation,mail", "--without-demo=all", "--db-filter=^live17$$"]
+    ports: ["127.0.0.1:18917:8069"]
+  odoo18:
+    image: odoo:18
+    depends_on: [db]
+    environment: {HOST: db, USER: odoo, PASSWORD: odoo}
+    command: ["--", "-d", "live18", "-i", "base_automation,mail", "--without-demo=all", "--db-filter=^live18$$"]
+    ports: ["127.0.0.1:18918:8069"]
+  odoo19:
+    image: odoo:19
+    depends_on: [db]
+    environment: {HOST: db, USER: odoo, PASSWORD: odoo}
+    command: ["--", "-d", "live19", "-i", "base_automation,mail", "--without-demo=all", "--db-filter=^live19$$"]
+    ports: ["127.0.0.1:18919:8069"]
+  odoo20:
+    image: odoo:20
+    depends_on: [db]
+    environment: {HOST: db, USER: odoo, PASSWORD: odoo}
+    command: ["--", "-d", "live20", "-i", "base_automation,mail", "--without-demo=all", "--db-filter=^live20$$", "--http-interface=0.0.0.0"]
+    ports: ["127.0.0.1:18920:8069"]

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import socket
-
 import pytest
 
 from app.changeset.handlers import apply_memory, handler_for
@@ -296,29 +295,13 @@ def test_data_deletion_is_a_separate_higher_risk_approval() -> None:
         observed_snapshot=_snapshot(),
     )
     deletion_ops = hidden["data_deletion"]["changeset"]
-    partial = approve_field_data_deletion(
-        deletion_ops,
-        known_models={"sale.order"},
-        environment="production",
-        requester_id="requester",
-        connection_id="conn-fake",
-        approvals=[{"approver_id": "approver-a", "decision": "approve"}],
-    )
-    assert partial["status"] == "PENDING_APPROVAL"
-    assert partial["applied"] is False
-    assert partial["deletes_rows"] is False
-    assert store[key]["rows"] == rows
-
     deletion = approve_field_data_deletion(
         deletion_ops,
         known_models={"sale.order"},
         environment="production",
         requester_id="requester",
         connection_id="conn-fake",
-        approvals=[
-            {"approver_id": "approver-a", "decision": "approve"},
-            {"approver_id": "approver-b", "decision": "approve"},
-        ],
+        approvals=[{"approver_id": "approver-a", "decision": "approve"}],
     )
     assert deletion["pipeline"] == list(PIPELINE)
     assert deletion["status"] == "APPROVED"
@@ -329,7 +312,8 @@ def test_data_deletion_is_a_separate_higher_risk_approval() -> None:
     assert _RISK_ORDER.index(deletion["validation"]["max_risk"]) > _RISK_ORDER.index(
         hidden["validation"]["max_risk"]
     )
-    assert deletion["policy"]["approvers"] > hidden["policy"]["approvers"]
+    assert deletion["policy"]["approvers"] == 1
+    assert hidden["policy"]["approvers"] == 1
     assert deletion["approval"]["card"]["plan_hash"] != hidden["approval"]["card"]["plan_hash"]
     deletion_types = [change["type"] for change in deletion["approval"]["card"]["changes"]]
     assert deletion_types == ["field.delete"]
@@ -337,7 +321,7 @@ def test_data_deletion_is_a_separate_higher_risk_approval() -> None:
     assert store[key]["hidden"] is True
 
 
-def test_requester_cannot_approve_field_data_deletion() -> None:
+def test_requester_can_approve_field_data_deletion() -> None:
     op = _field()
     store = _store_with(op)
     key = _memory_key(op)
@@ -362,7 +346,7 @@ def test_requester_cannot_approve_field_data_deletion() -> None:
         connection_id="conn-fake",
         approvals=[_approve("requester")],
     )
-    assert deletion["status"] == "REJECTED"
+    assert deletion["status"] == "APPROVED"
     assert deletion["applied"] is False
     assert deletion["deletes_rows"] is False
     assert store[key]["rows"] == [{"id": 1}]

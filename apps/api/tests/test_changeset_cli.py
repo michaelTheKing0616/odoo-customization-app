@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app.changeset.cli import COMMANDS, main
+from app.changeset.cli import COMMANDS, FakePort, load_changeset, main, run_command
 
 pytestmark = pytest.mark.no_app_db
 
@@ -149,3 +149,105 @@ def test_module_entrypoint_runs_two_op_changeset(tmp_path: Path) -> None:
     assert apply_payload is not None
     assert apply_payload["status"] == "VERIFIED"
     assert apply_payload["port_calls"] == 2
+
+
+_FIXTURE = _API / "tests" / "fixtures" / "changeset_cli_two_ops.json"
+_LLM_MODULE_ROOTS = ("app.llm_gateway", "google", "anthropic", "openai", "litellm")
+
+
+def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(_PYTHON), "-m", "app.changeset.cli", *args],
+        cwd=_API,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+@pytest.mark.parametrize("command", COMMANDS)
+def test_fixture_subcommand_exits_zero_with_result(command: str) -> None:
+    completed = _run_cli(command, str(_FIXTURE))
+    assert completed.returncode == 0, completed.stderr
+    assert "Traceback" not in completed.stderr
+    payload = json.loads(completed.stdout)
+    assert payload["ok"] is True
+    assert payload["command"] == command
+    assert payload["op_count"] == 2
+    assert payload["port"] == "fake"
+    assert payload["live_odoo"] is False
+
+    if command == "plan":
+        assert len(payload["result"]["changes"]) == 2
+        assert payload["result"]["plan_hash"]
+    elif command == "validate":
+        assert payload["result"]["valid"] is True
+    elif command == "simulate":
+        assert payload["result"]["passed"] is True
+        assert payload["result"]["contacted_odoo"] is False
+    elif command == "apply":
+        assert payload["status"] == "VERIFIED"
+        assert [row["model"] for row in payload["created"]] == ["ir.model.fields", "ir.ui.view"]
+    else:
+        assert payload["status"] == "ROLLED_BACK"
+        assert payload["snapshot_match"] is True
+        assert payload["port_rows_after"] == 0
+
+
+def test_apply_then_rollback_returns_fake_port_to_start() -> None:
+    loaded = load_changeset(_FIXTURE)
+    port = FakePort()
+    start = (list(port.created), list(port.writes))
+
+    applied = run_command("apply", loaded, port)
+    assert applied["ok"] is True
+    assert [model for model, _values in port.created] == ["ir.model.fields", "ir.ui.view"]
+
+    rolled = run_command("rollback", loaded, port)
+    assert rolled["ok"] is True
+    assert rolled["status"] == "ROLLED_BACK"
+    assert (port.created, port.writes) == start
+
+
+@pytest.mark.parametrize("body", [None, "{not json", '"just a string"', '{"ops": []}'])
+def test_bad_file_exits_nonzero_with_one_line_error(tmp_path: Path, body: str | None) -> None:
+    path = tmp_path / "bad.json"
+    if body is not None:
+        path.write_text(body, encoding="utf-8")
+    completed = _run_cli("apply", str(path))
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    lines = completed.stderr.strip().splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("error: ")
+    assert json.loads(completed.stdout)["ok"] is False
+
+
+def test_cli_run_loads_no_llm_module() -> None:
+    script = (
+        "import json, sys\n"
+        "from app.changeset.cli import COMMANDS, main\n"
+        f"codes = [main([c, {str(_FIXTURE)!r}]) for c in COMMANDS]\n"
+        "sys.stdout.flush()\n"
+        "print('\\nMODULES=' + json.dumps({'codes': codes, 'modules': sorted(sys.modules)}))\n"
+    )
+    completed = subprocess.run(
+        [str(_PYTHON), "-c", script],
+        cwd=_API,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stderr
+    marker = completed.stdout.rsplit("MODULES=", 1)[1]
+    report = json.loads(marker)
+    assert report["codes"] == [0, 0, 0, 0, 0]
+    assert "app.changeset.executor" in report["modules"]
+    leaked = [
+        name
+        for name in report["modules"]
+        if any(name == root or name.startswith(root + ".") for root in _LLM_MODULE_ROOTS)
+    ]
+    assert leaked == []

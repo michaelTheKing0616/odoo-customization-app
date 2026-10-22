@@ -181,6 +181,10 @@ def test_stub_author_can_pass_gate() -> None:
 
 def test_empty_authored_draft_blocks_zip() -> None:
     draft = seed_option_a_authored(MARKUP, classify_generation(MARKUP))
+    # Since 67f1535 the sale markup + WHT CLASS seeds a deterministic CE-safe scaffold,
+    # so the seed is no longer empty. Empty the authored files to keep this test's intent.
+    draft["custom_code_blocks"] = []
+    draft.pop("_option_a_authoring", None)
     assert requires_authoring_gate(draft)
     assert not authoring_gate_passed(draft)
     evaluate_authoring_gate(draft)

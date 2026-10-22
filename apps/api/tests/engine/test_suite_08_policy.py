@@ -3,7 +3,7 @@
 The ten-cell contract stays in ``tests/test_policy_matrix.py``. This module
 loads that file, then calls ``policy_decision``, freeze (``apply_blocked``),
 and expiry (``approval_expiry_hours``) the same way that file does.
-Production R4 is deny. Production R3 asks for two approvers.
+Production hard-stop R4 is deny. Production R3 asks for one approver.
 
 GATE-P3-06 is unrun. mutmut and cosmic-ray are not installed. This module
 does not record a mutation score, and it does not call Odoo.
@@ -98,15 +98,15 @@ def test_production_r4_is_deny() -> None:
     assert approval_expiry_hours("R4", "production") == decision["expiry_hours"]
 
 
-def test_production_r3_asks_for_two_approvers() -> None:
-    """Production R3 asks for two approvers, and a freeze still blocks apply.
+def test_production_r3_asks_for_one_approver() -> None:
+    """Production R3 asks for one approver, and a freeze still blocks apply.
 
     Inputs: risk R3 and environment production.
     Outputs: none.
     Side effects: none.
     """
     decision = policy_decision("R3", "production")
-    assert decision["approvers"] == 2
+    assert decision["approvers"] == 1
     assert apply_blocked(decision, frozen=True) is True
     assert approval_expiry_hours("R3", "production") == decision["expiry_hours"]
 

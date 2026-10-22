@@ -2,20 +2,33 @@
 
 from __future__ import annotations
 
+import socket
+
 import pytest
 
-from app.changeset.executor import reset_journal
+from app.changeset.inbox import Inbox
+from app.changeset.rollback import PIPELINE
 from app.rollback_tiers import (
     NOT_REVERSIBLE_BY_THIS_TIER,
     CompensatingRefused,
     build_compensating_plan,
+    describe_database_snapshot_tier,
     run_compensating_pipeline,
 )
 from app.rpc_classify import classify_rpc
 
+pytestmark = pytest.mark.no_app_db
+
+
+@pytest.fixture(autouse=True)
+def _no_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _refuse_socket(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("rollback tiers opened a socket")
+
+    monkeypatch.setattr(socket, "socket", _refuse_socket)
+
 
 def test_compensating_plan_from_change_rows_goes_through_pipeline() -> None:
-    reset_journal()
     rows = [
         {
             "kind": "change",
@@ -42,13 +55,27 @@ def test_compensating_plan_from_change_rows_goes_through_pipeline() -> None:
     assert plan.changeset[0]["params"]["values"] == {"name": "Old Co"}
     assert plan.changeset[1]["params"] == {"model": "res.partner", "ids": [12]}
 
-    result = run_compensating_pipeline(plan, known_models={"res.partner"}, environment="staging")
-    assert result["ok"] is True
+    inbox = Inbox()
+    result = run_compensating_pipeline(
+        plan,
+        known_models={"res.partner"},
+        environment="staging",
+        requester_id="requester",
+        connection_id="conn-fake",
+        approvals=[{"approver_id": "requester", "decision": "approve"}],
+        inbox=inbox,
+    )
+    assert result["pipeline"] == list(PIPELINE)
+    assert result["status"] == "APPROVED"
     assert result["validation"]["valid"] is True
-    assert result["stage"] == "apply"
-    assert all(item["deny"] is False for item in result["policy"])
-    assert result["apply"]["status"] == "VERIFIED"
-    assert result["apply"]["mode"] == "T"
+    assert result["policy"]["deny"] is False
+    assert result["approval"]["status"] == "approved"
+    assert result["applied"] is False
+    assert result["deletes_rows"] is False
+    assert [change["type"] for change in result["approval"]["card"]["changes"]] == [
+        "data.update_batch",
+        "data.unlink",
+    ]
 
 
 def test_module_install_and_posted_entries_not_reversible_by_this_tier() -> None:
@@ -83,6 +110,7 @@ def test_module_install_and_posted_entries_not_reversible_by_this_tier() -> None
         item["reason"] == NOT_REVERSIBLE_BY_THIS_TIER
         for item in plan.not_reversible_by_this_tier
     )
+    assert plan.changelog == plan.not_reversible_by_this_tier
     assert [op["type"] for op in plan.changeset] == ["data.unlink"]
     assert plan.changeset[0]["params"]["model"] == "res.partner"
 
@@ -143,5 +171,24 @@ def test_tiers_name_database_snapshot_without_live_restore() -> None:
     assert "odoo_online" in snapshot["not_for"]
     assert "odoo_sh" in snapshot["not_for"]
     assert "odoo_20" in snapshot["not_for"]
-    assert by_id["compensating"]["pipeline"] == ("validate", "policy", "apply")
+    assert by_id["compensating"]["pipeline"] == PIPELINE
     assert by_id["manual"]["name"] == "Manual changelog"
+
+
+def test_database_snapshot_tier_never_calls_web_database() -> None:
+    class _ForbiddenClient:
+        def dump_db(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("/web/database via dump_db")
+
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"/web/database via {name}")
+
+    named = describe_database_snapshot_tier(
+        odoo_major=20,
+        hosting_hint="odoo_online",
+        client=_ForbiddenClient(),
+    )
+    assert named["live_restore"] is False
+    assert named["called_db_service"] is False
+    assert named["backup"]["refused"] is True
+    assert named["backup"]["called_db_service"] is False

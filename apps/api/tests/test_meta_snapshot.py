@@ -13,7 +13,13 @@ from typing import Any
 import pytest
 
 from app.changeset.handlers import apply_memory, compensate_memory
-from app.changeset.meta_snapshot import EXPORT_KEYS, MetaSnapshot, equal
+from app.changeset.meta_snapshot import (
+    CAPTURE_SOURCES,
+    EXPORT_KEYS,
+    MetaSnapshot,
+    capture,
+    equal,
+)
 from app.changeset.rollback import snapshots_match
 from app.changeset.verify import REQUIRED_SMOKE, postconditions_for, verify
 
@@ -195,9 +201,7 @@ def test_apply_verify_inverse_round_trip_restores_meta_snapshot() -> None:
             "xmlid": "ingenium.field_sale_order_x_note",
         }
     ]
-    assert during.to_dict()["xmlids"] == [
-        {"module": "ingenium", "name": "field_sale_order_x_note"}
-    ]
+    assert during.to_dict()["xmlids"] == [{"module": "ingenium", "name": "field_sale_order_x_note"}]
     report = verify([op], _passing_observation([op]), model_success=False)
     assert report["verified"] is True
     assert report["contacted_odoo"] is False
@@ -232,3 +236,217 @@ def test_build_rejects_non_json() -> None:
         MetaSnapshot.build({"fields": [{"name": "x_note", "tags": {"a", "b"}}]})
     with pytest.raises(TypeError):
         MetaSnapshot.build({"models": []}, config_allowlist="sale.default_deposit_product_id")
+
+
+_M2O = {
+    "inherit_id",
+    "model_id",
+    "group_id",
+    "parent_id",
+    "category_id",
+    "binding_model_id",
+    "action_server_id",
+    "ir_actions_server_id",
+    "user_id",
+    "company_id",
+    "action_id",
+}
+_M2M = {"groups_id", "groups", "implied_ids", "trigger_field_ids"}
+
+
+class _ReadPort:
+    """Read-only fake port. ``search_read`` honours ``in``/``=`` and ``active_test``."""
+
+    def __init__(self, tables: dict[str, list[dict[str, Any]]]) -> None:
+        self.tables = tables
+        self.calls: list[tuple[str, str, list[Any], dict[str, Any]]] = []
+
+    def execute_kw(self, model: str, method: str, args: list, kwargs: dict | None = None) -> Any:
+        self.calls.append((model, method, list(args), dict(kwargs or {})))
+        rows = self.tables.get(model, [])
+        if method == "fields_get":
+            names = {name for row in rows for name in row} | {
+                name for source, odoo, wanted in CAPTURE_SOURCES if odoo == model for name in wanted
+            }
+            return {name: {"type": _type_of(name)} for name in names}
+        if method != "search_read":
+            raise AssertionError(f"capture called {method}")
+        domain = args[0]
+        fields = kwargs["fields"] if kwargs else []
+        out = []
+        for row in rows:
+            if row.get("active") is False:
+                continue
+            if all(_matches(row, leaf) for leaf in domain):
+                out.append({"id": row.get("id", 0), **{f: row[f] for f in fields if f in row}})
+        return out
+
+
+def _type_of(name: str) -> str:
+    if name in _M2O:
+        return "many2one"
+    if name in _M2M:
+        return "many2many"
+    return "char"
+
+
+def _matches(row: dict[str, Any], leaf: list[Any]) -> bool:
+    field, operator, value = leaf
+    if operator == "in":
+        return row.get(field) in value
+    if operator == "=":
+        return row.get(field) == value
+    raise AssertionError(f"unexpected operator {operator}")
+
+
+def _tables() -> dict[str, list[dict[str, Any]]]:
+    sources = {odoo for _category, odoo, _wanted in CAPTURE_SOURCES if odoo != "ir.rule"}
+    sources.add("ir.rule")
+    return {
+        "ir.model": [{"model": name, "name": name, "state": "base"} for name in sorted(sources)]
+        + [{"model": "x_job", "name": "Job", "state": "manual"}],
+        "ir.model.fields": [{"model": "x_job", "name": "x_ref", "ttype": "char"}],
+        "ir.ui.view": [
+            {
+                "name": "job form",
+                "model": "x_job",
+                "type": "form",
+                "priority": 16,
+                "inherit_id": [7, "base"],
+            },
+            {"name": "old form", "model": "x_job", "type": "form", "active": False},
+        ],
+        "ir.actions.act_window": [
+            {"name": "Jobs", "type": "ir.actions.act_window", "res_model": "x_job"}
+        ],
+        "ir.actions.server": [
+            {"name": "Mark", "type": "ir.actions.server", "model_id": [9, "Job"]}
+        ],
+        "ir.actions.report": [{"name": "Job PDF", "type": "ir.actions.report", "model": "x_job"}],
+        "ir.ui.menu": [{"name": "Jobs", "sequence": 10, "groups_id": [3, 1, 2]}],
+        "ir.model.access": [
+            {"name": "job user", "model_id": [9, "Job"], "group_id": [3, "User"], "perm_read": True}
+        ],
+        "ir.access": [],
+        "ir.rule": [
+            {"name": "own jobs", "model_id": [9, "Job"], "groups": [5, 4], "domain_force": "[]"}
+        ],
+        "res.groups": [{"name": "Job User", "implied_ids": [1, 2]}],
+        "base.automation": [{"name": "On create", "model_id": [9, "Job"], "trigger": "on_create"}],
+        "ir.cron": [
+            {"name": "Sweep", "model_id": [9, "Job"], "interval_number": 1, "nextcall": "x"}
+        ],
+        "mail.template": [{"name": "Job mail", "model": "x_job"}],
+        "ir.sequence": [{"name": "Job", "code": "x.job", "prefix": "JOB", "number_next": 41}],
+        "ir.config_parameter": [
+            {"key": "sale.default_deposit_product_id", "value": "0"},
+            {"key": "database.secret", "value": "nope"},
+            {"key": "smtp_password", "value": "secret"},
+            {"key": "not.allowlisted", "value": "x"},
+        ],
+        "ir.filters": [{"name": "Open", "model_id": "x_job", "domain": "[]"}],
+        "ir.model.data": [
+            {"module": "ingenium", "name": "menu_x_job", "model": "ir.ui.menu", "res_id": 4},
+            {"module": "base", "name": "group_user", "model": "res.groups", "res_id": 1},
+        ],
+    }
+
+
+def _shuffled(tables: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    for model in reversed(list(tables)):
+        rows = []
+        for row in reversed(tables[model]):
+            rows.append(
+                {
+                    key: list(reversed(value)) if key in _M2M else value
+                    for key, value in reversed(list(row.items()))
+                }
+            )
+        out[model] = rows
+    return out
+
+
+def test_capture_reads_every_export_category() -> None:
+    port = _ReadPort(_tables())
+    body = capture(port, config_allowlist=_ALLOW).to_dict()
+    assert list(body) == list(EXPORT_KEYS)
+    for key in EXPORT_KEYS:
+        assert body[key], key
+    assert {row["type"] for row in body["actions"]} == {
+        "ir.actions.act_window",
+        "ir.actions.server",
+        "ir.actions.report",
+    }
+    assert body["views"] == [
+        {"inherit_id": 7, "model": "x_job", "name": "job form", "priority": 16, "type": "form"}
+    ]
+    assert body["menus"][0]["groups_id"] == [1, 2, 3]
+    assert body["menus"][0]["sequence"] == 10
+    assert "nextcall" not in body["crons"][0]
+    assert "number_next" not in body["sequences"][0]
+    assert body["xmlids"] == [
+        {"model": "ir.ui.menu", "module": "ingenium", "name": "menu_x_job", "res_id": 4}
+    ]
+    assert all(method in {"fields_get", "search_read"} for _m, method, _a, _k in port.calls)
+
+
+def test_capture_never_reads_a_non_allowlisted_or_secret_config_param() -> None:
+    port = _ReadPort(_tables())
+    body = capture(port, config_allowlist=_ALLOW).to_dict()
+    assert body["config_params"] == [{"key": "sale.default_deposit_product_id", "value": "0"}]
+    domains = [
+        args[0]
+        for model, method, args, _k in port.calls
+        if model == "ir.config_parameter" and method == "search_read"
+    ]
+    assert domains == [[["key", "in", ["sale.default_deposit_product_id"]]]]
+    assert "database.secret" not in json.dumps(body)
+    assert "smtp_password" not in json.dumps(body)
+
+
+def test_capture_with_no_allowlist_skips_config_params() -> None:
+    port = _ReadPort(_tables())
+    body = capture(port).to_dict()
+    assert body["config_params"] == []
+    assert not [
+        call for call in port.calls if call[0] == "ir.config_parameter" and call[1] == "search_read"
+    ]
+
+
+def test_capture_skips_a_model_that_is_not_installed() -> None:
+    tables = _tables()
+    tables["ir.model"] = [row for row in tables["ir.model"] if row["model"] != "ir.rule"]
+    port = _ReadPort(tables)
+    body = capture(port, config_allowlist=_ALLOW).to_dict()
+    assert body["rules"] == []
+    assert not [call for call in port.calls if call[0] == "ir.rule"]
+
+
+def test_shuffled_records_and_m2m_ids_compare_equal() -> None:
+    left = capture(_ReadPort(_tables()), config_allowlist=_ALLOW)
+    right = capture(_ReadPort(_shuffled(_tables())), config_allowlist=_ALLOW)
+    assert left == right
+    assert left.diff(right) == []
+
+
+def test_a_semantic_sequence_change_is_reported_by_category_and_key() -> None:
+    changed = _tables()
+    changed["ir.ui.menu"] = [{"name": "Jobs", "sequence": 20, "groups_id": [3, 1, 2]}]
+    changed["ir.model.fields"].append({"model": "x_job", "name": "x_extra", "ttype": "char"})
+    left = capture(_ReadPort(_tables()), config_allowlist=_ALLOW)
+    right = capture(_ReadPort(changed), config_allowlist=_ALLOW)
+    assert left != right
+    report = left.diff(right)
+    assert [(item["category"], item["key"]) for item in report] == [
+        ("fields", {"model": "x_job", "name": "x_extra"}),
+        ("menus", {"name": "Jobs"}),
+    ]
+    assert report[0]["before"] == []
+    assert report[1]["before"][0]["sequence"] == 10
+    assert report[1]["after"][0]["sequence"] == 20
+
+
+def test_capture_refuses_a_port_without_execute_kw() -> None:
+    with pytest.raises(TypeError):
+        capture(object())

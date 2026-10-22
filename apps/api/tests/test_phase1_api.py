@@ -559,21 +559,33 @@ def test_promote_requires_confirm_and_validation(client: TestClient) -> None:
     )
     z64 = base64.b64encode(raw).decode()
 
+    denied_body = {"zip_base64": z64, "run_sandbox": False, "validation_id": "nope"}
+    denied_preview = client.post(
+        f"/api/connections/{cid}/modules/promote",
+        json={**denied_body, "dry_run": True},
+    )
+    assert denied_preview.status_code == 200, denied_preview.text
     denied = client.post(
         f"/api/connections/{cid}/modules/promote",
-        json={"zip_base64": z64, "run_sandbox": False, "validation_id": "nope"},
+        json=denied_body,
     )
     assert denied.status_code == 403
     assert denied.json()["detail"]["requires_confirmation"] is True
 
     # Missing validation after confirm
+    missing_body = {
+        "zip_base64": z64,
+        "confirm_advanced": True,
+        "confirm_phrase": "I understand the risks",
+    }
+    missing_preview = client.post(
+        f"/api/connections/{cid}/modules/promote",
+        json={**missing_body, "dry_run": True},
+    )
+    assert missing_preview.status_code == 200, missing_preview.text
     missing = client.post(
         f"/api/connections/{cid}/modules/promote",
-        json={
-            "zip_base64": z64,
-            "confirm_advanced": True,
-            "confirm_phrase": "I understand the risks",
-        },
+        json=missing_body,
     )
     assert missing.status_code == 422
 
@@ -671,9 +683,15 @@ def test_uninstall_requires_confirm(client: TestClient) -> None:
         pytest.skip(f"Odoo/app-db not ready: {create.text}")
     cid = create.json()["id"]
 
+    uninstall_body = {"module_name": "promote_fs"}
+    uninstall_preview = client.post(
+        f"/api/connections/{cid}/modules/uninstall",
+        json={**uninstall_body, "dry_run": True},
+    )
+    assert uninstall_preview.status_code == 200, uninstall_preview.text
     denied = client.post(
         f"/api/connections/{cid}/modules/uninstall",
-        json={"module_name": "promote_fs"},
+        json=uninstall_body,
     )
     assert denied.status_code == 403
     assert denied.json()["detail"]["requires_confirmation"] is True

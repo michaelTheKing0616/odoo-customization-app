@@ -137,7 +137,7 @@ def test_option_a_inherit_is_not_residual_app_fallback() -> None:
     )
     assert "residual app" not in surface["summary"]
     assert "sale.order" in surface["summary"]
-    assert "Option A module" in surface["summary"]
+    assert "custom-code module" in surface["summary"]
 
 
 def test_residual_full_app_find_it_no_contacts_invent() -> None:

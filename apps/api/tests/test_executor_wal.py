@@ -110,16 +110,63 @@ def test_unknown_outcome_does_not_retry_the_write() -> None:
 
 
 def test_one_apply_per_odoo_database() -> None:
-    lock = DatabaseApplyLock()
-    assert lock.acquire("db-a", "run-1", now=_NOW) is True
-    assert lock.acquire("db-a", "run-2", now=_NOW) is False
-    assert lock.acquire("db-b", "run-2", now=_NOW) is True
+    """One holder per database; a queued apply waits, then runs after release.
+
+    A try-once acquire still fails while the database is held. A second
+    database may be held at the same time. ``apply`` with a short wait bound
+    returns ``lock_wait_exceeded`` while the first holder keeps the lock.
+    After release, the same plan applies.
+    """
+    import threading
+    from datetime import timedelta
+
+    lock = DatabaseApplyLock(
+        wait_timeout=timedelta(milliseconds=80),
+        heartbeat_interval=timedelta(milliseconds=10),
+        stale_after=timedelta(seconds=30),
+    )
+    assert lock.acquire("db-a", "run-1", now=_NOW, wait=False) is True
+    assert lock.acquire("db-a", "run-2", now=_NOW, wait=False) is False
+    assert lock.acquire("db-b", "run-2", now=_NOW, wait=False) is True
+    # Keep run-1 heartbeat fresh so apply() (real clock) does not reclaim as stale.
+    lock.heartbeat("db-a", "run-1", now=datetime.now(timezone.utc))
     reset_journal()
-    blocked = apply([_field()], mode="T", odoo_database="db-a", apply_lock=lock)
-    assert blocked["status"] == "NEEDS_HUMAN"
-    assert blocked["report"]["reason"] == "database_busy"
+    timed_out = apply(
+        [_field()],
+        mode="T",
+        odoo_database="db-a",
+        apply_lock=lock,
+        lock_wait=0.05,
+    )
+    assert timed_out["status"] == "NEEDS_HUMAN"
+    assert timed_out["report"]["reason"] == "lock_wait_exceeded"
     assert get_journal() == []
     assert lock.holder("db-a") == "run-1"
+
+    results: list[dict] = []
+
+    def _queued() -> None:
+        results.append(
+            apply(
+                [_field()],
+                mode="T",
+                odoo_database="db-a",
+                apply_lock=lock,
+                lock_wait=2.0,
+            )
+        )
+
+    thread = threading.Thread(target=_queued)
+    thread.start()
+    # Give the queued apply a moment to block on the lock.
+    threading.Event().wait(0.05)
+    assert lock.holder("db-a") == "run-1"
+    lock.release("db-a", "run-1")
+    thread.join(timeout=2.0)
+    assert not thread.is_alive()
+    assert len(results) == 1
+    assert results[0]["status"] == "VERIFIED"
+    assert lock.holder("db-a") is None
 
 
 def test_journal_migration_declares_wal_tables_and_is_not_applied_here() -> None:

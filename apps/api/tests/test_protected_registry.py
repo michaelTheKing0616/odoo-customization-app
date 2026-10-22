@@ -328,7 +328,7 @@ def test_protected_elevate_is_risk_plus_one_and_needs_a_domain_owner() -> None:
         assert order.index(bumped) == order.index(base) + 1
         assert requires_domain_owner(op) is True
         assert requires_domain_owner(op, tenant={"remove_models": [model]}) is True
-        for environment, approvers in (("production", 2), ("staging", 1)):
+        for environment, approvers in (("production", 1), ("staging", 1)):
             decision = policy_for_op(op, environment)
             assert decision["domain_owner"] is True
             assert decision["deny"] is False

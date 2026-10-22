@@ -14,70 +14,179 @@
       "model": "x_lib_branch",
       "description": "Library Branch",
       "mode": "new",
+      "source": "pack_seed",
       "fields": [
         {
           "name": "x_name",
           "ttype": "char",
           "string": "Branch Name",
-          "required": true
+          "required": true,
+          "source": "pack_seed"
         },
         {
           "name": "x_code",
           "ttype": "char",
           "string": "Code",
+          "source": "pack_seed",
           "help": "Auto-numbered via ir.sequence (BR/00001)"
         },
         {
           "name": "x_address",
           "ttype": "text",
-          "string": "Address"
+          "string": "Address",
+          "source": "pack_seed"
         },
         {
           "name": "x_phone",
           "ttype": "char",
-          "string": "Phone"
+          "string": "Phone",
+          "source": "pack_seed"
         },
         {
           "name": "x_manager_id",
           "ttype": "many2one",
           "string": "Manager",
-          "relation": "res.users"
+          "relation": "res.users",
+          "source": "pack_seed"
         }
-      ]
+      ],
+      "is_workflow": false
     },
     {
       "model": "x_lib_author",
       "description": "Author",
       "mode": "new",
+      "source": "pack_seed",
       "fields": [
         {
           "name": "x_name",
           "ttype": "char",
           "string": "Author Name",
-          "required": true
+          "required": true,
+          "source": "pack_seed"
         },
         {
           "name": "x_bio",
           "ttype": "text",
-          "string": "Biography"
+          "string": "Biography",
+          "source": "pack_seed"
         },
         {
           "name": "x_country_id",
           "ttype": "many2one",
           "string": "Country",
-          "relation": "res.country"
+          "relation": "res.country",
+          "source": "pack_seed"
         }
-      ]
+      ],
+      "is_workflow": false
     },
     {
       "model": "x_lib_book",
       "description": "Book",
       "mode": "new",
+      "source": "pack_seed",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Title",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_isbn",
+          "ttype": "char",
+          "string": "ISBN",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_barcode",
+          "ttype": "char",
+          "string": "Barcode",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_copies",
+          "ttype": "integer",
+          "string": "Copies",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_available_copies",
+          "ttype": "integer",
+          "string": "Available Copies",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('available','Available'),('loaned','Loaned'),('reserved','Reserved'),('lost','Lost'),('closed','Closed'),('on_hold','On hold'),('cancelled','Cancelled')]",
+          "source": "pack_seed",
+          "tracking": true,
+          "default": "available"
+        },
+        {
+          "name": "x_fine_rate",
+          "ttype": "float",
+          "string": "Daily Overdue fine Rate",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_category_id",
+          "ttype": "many2one",
+          "string": "Category",
+          "relation": "x_lib_category",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_author_id",
+          "ttype": "many2one",
+          "string": "Author",
+          "relation": "x_lib_author",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "string": "Branch",
+          "relation": "x_lib_branch",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_loan_ids",
+          "ttype": "one2many",
+          "string": "Loans",
+          "relation": "x_lib_loan",
+          "relation_field": "x_book_id",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB/00001)",
+          "source": "depth_workflow"
+        }
+      ],
       "is_workflow": true,
       "state_field": {
-        "name": "x_status",
-        "selection": "[('available', 'Available'), ('loaned', 'Loaned'), ('reserved', 'Reserved'), ('lost', 'Lost')]",
+        "field": "x_status",
+        "states": [
+          "on_hold",
+          "closed",
+          "cancelled",
+          "available",
+          "loaned",
+          "reserved",
+          "lost"
+        ],
         "transitions": [
+          [
+            "on_hold",
+            "available"
+          ],
           [
             "available",
             "loaned"
@@ -89,101 +198,41 @@
           [
             "reserved",
             "lost"
+          ],
+          [
+            "on_hold",
+            "cancelled"
+          ],
+          [
+            "available",
+            "cancelled"
+          ],
+          [
+            "loaned",
+            "cancelled"
+          ],
+          [
+            "reserved",
+            "cancelled"
+          ],
+          [
+            "lost",
+            "cancelled"
+          ],
+          [
+            "lost",
+            "closed"
           ]
         ],
         "statusbar_visible": [
+          "on_hold",
           "available",
           "loaned",
           "reserved",
-          "lost"
-        ],
-        "states": [
-          "available",
-          "loaned",
-          "reserved",
-          "lost"
+          "lost",
+          "closed"
         ]
       },
-      "fields": [
-        {
-          "name": "x_name",
-          "ttype": "char",
-          "string": "Title",
-          "required": true
-        },
-        {
-          "name": "x_code",
-          "ttype": "char",
-          "string": "Reference",
-          "help": "Auto-numbered via ir.sequence (LIB/00001)"
-        },
-        {
-          "name": "x_isbn",
-          "ttype": "char",
-          "string": "ISBN"
-        },
-        {
-          "name": "x_barcode",
-          "ttype": "char",
-          "string": "Barcode"
-        },
-        {
-          "name": "x_copies",
-          "ttype": "integer",
-          "string": "Copies"
-        },
-        {
-          "name": "x_available_copies",
-          "ttype": "integer",
-          "string": "Available Copies"
-        },
-        {
-          "name": "x_status",
-          "ttype": "selection",
-          "string": "Status",
-          "selection": "[('available','Available'),('loaned','Loaned'),('reserved','Reserved'),('lost','Lost')]",
-          "tracking": true,
-          "default": "available"
-        },
-        {
-          "name": "x_fine_rate",
-          "ttype": "float",
-          "string": "Daily Overdue fine Rate"
-        },
-        {
-          "name": "x_category_id",
-          "ttype": "many2one",
-          "string": "Category",
-          "relation": "x_lib_category"
-        },
-        {
-          "name": "x_author_id",
-          "ttype": "many2one",
-          "string": "Author",
-          "relation": "x_lib_author"
-        },
-        {
-          "name": "x_branch_id",
-          "ttype": "many2one",
-          "string": "Branch",
-          "relation": "x_lib_branch"
-        },
-        {
-          "name": "x_loan_ids",
-          "ttype": "one2many",
-          "string": "Loans",
-          "relation": "x_lib_loan",
-          "relation_field": "x_book_id"
-        },
-        {
-          "name": "x_lib_reservation_ids",
-          "ttype": "one2many",
-          "string": "Book reservation",
-          "relation": "x_lib_reservation",
-          "relation_field": "x_book_id",
-          "source": "quality_o2m"
-        }
-      ],
       "mixins": [
         "mail.thread",
         "mail.activity.mixin"
@@ -193,10 +242,99 @@
       "model": "x_lib_loan",
       "description": "Book loan",
       "mode": "new",
+      "source": "pack_seed",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB2/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('active','Active'),('returned','Returned'),('overdue','Overdue'),('cancelled','Cancelled')]",
+          "source": "pack_seed",
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_book_id",
+          "ttype": "many2one",
+          "string": "Book",
+          "relation": "x_lib_book",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "string": "Branch",
+          "relation": "x_lib_branch",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_loan_date",
+          "ttype": "date",
+          "string": "Book loan Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_due_date",
+          "ttype": "date",
+          "string": "Due Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_return_date",
+          "ttype": "date",
+          "string": "Return Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_returned",
+          "ttype": "boolean",
+          "string": "Returned",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_days_overdue",
+          "ttype": "integer",
+          "string": "Days Overdue",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency"
+        },
+        {
+          "name": "x_fine_amount",
+          "ttype": "monetary",
+          "string": "Overdue fine Amount",
+          "source": "pack_seed",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes",
+          "source": "pack_seed"
+        }
+      ],
       "is_workflow": true,
       "state_field": {
-        "name": "x_status",
-        "selection": "[('draft', 'Draft'), ('active', 'Active'), ('returned', 'Returned'), ('overdue', 'Overdue'), ('cancelled', 'Cancelled')]",
+        "field": "x_status",
         "transitions": [
           [
             "draft",
@@ -227,113 +365,20 @@
             "cancelled"
           ]
         ],
-        "statusbar_visible": [
-          "draft",
-          "active",
-          "returned",
-          "overdue"
-        ],
         "states": [
           "draft",
           "active",
           "cancelled",
           "returned",
           "overdue"
+        ],
+        "statusbar_visible": [
+          "draft",
+          "active",
+          "returned",
+          "overdue"
         ]
       },
-      "fields": [
-        {
-          "name": "x_name",
-          "ttype": "char",
-          "string": "Reference",
-          "required": true
-        },
-        {
-          "name": "x_code",
-          "ttype": "char",
-          "string": "Reference",
-          "help": "Auto-numbered via ir.sequence (LIB2/00001)"
-        },
-        {
-          "name": "x_status",
-          "ttype": "selection",
-          "string": "Status",
-          "selection": "[('draft','Draft'),('active','Active'),('returned','Returned'),('overdue','Overdue'),('cancelled','Cancelled')]",
-          "tracking": true,
-          "default": "draft"
-        },
-        {
-          "name": "x_book_id",
-          "ttype": "many2one",
-          "string": "Book",
-          "relation": "x_lib_book",
-          "required": true
-        },
-        {
-          "name": "x_member_id",
-          "ttype": "many2one",
-          "string": "Library member",
-          "relation": "res.partner",
-          "required": true
-        },
-        {
-          "name": "x_branch_id",
-          "ttype": "many2one",
-          "string": "Branch",
-          "relation": "x_lib_branch"
-        },
-        {
-          "name": "x_loan_date",
-          "ttype": "date",
-          "string": "Book loan Date"
-        },
-        {
-          "name": "x_due_date",
-          "ttype": "date",
-          "string": "Due Date"
-        },
-        {
-          "name": "x_return_date",
-          "ttype": "date",
-          "string": "Return Date"
-        },
-        {
-          "name": "x_returned",
-          "ttype": "boolean",
-          "string": "Returned"
-        },
-        {
-          "name": "x_days_overdue",
-          "ttype": "integer",
-          "string": "Days Overdue"
-        },
-        {
-          "name": "x_currency_id",
-          "ttype": "many2one",
-          "relation": "res.currency",
-          "string": "Currency"
-        },
-        {
-          "name": "x_fine_amount",
-          "ttype": "monetary",
-          "string": "Overdue fine Amount",
-          "currency_field": "x_currency_id",
-          "widget": "monetary"
-        },
-        {
-          "name": "x_notes",
-          "ttype": "text",
-          "string": "Notes"
-        },
-        {
-          "name": "x_lib_fine_ids",
-          "ttype": "one2many",
-          "string": "Library Overdue fine",
-          "relation": "x_lib_fine",
-          "relation_field": "x_loan_id",
-          "source": "quality_o2m"
-        }
-      ],
       "mixins": [
         "mail.thread",
         "mail.activity.mixin"
@@ -345,10 +390,76 @@
       "model": "x_lib_reservation",
       "description": "Book reservation",
       "mode": "new",
+      "source": "pack_seed",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB3/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('pending','Pending'),('confirmed','Confirmed'),('fulfilled','Fulfilled'),('cancelled','Cancelled')]",
+          "source": "pack_seed",
+          "tracking": true,
+          "default": "pending"
+        },
+        {
+          "name": "x_book_id",
+          "ttype": "many2one",
+          "string": "Book",
+          "relation": "x_lib_book",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_reservation_date",
+          "ttype": "date",
+          "string": "Book reservation Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_pickup_date",
+          "ttype": "date",
+          "string": "Pickup Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_invoice_id",
+          "ttype": "many2one",
+          "relation": "account.move",
+          "string": "Invoice",
+          "help": "Link-only \u2014 wire to account.move manually",
+          "source": "apply_readiness"
+        },
+        {
+          "name": "x_sale_order_id",
+          "ttype": "many2one",
+          "relation": "sale.order",
+          "string": "Sales order",
+          "help": "Link-only \u2014 wire to sale.order manually",
+          "source": "apply_readiness"
+        }
+      ],
       "is_workflow": true,
       "state_field": {
-        "name": "x_status",
-        "selection": "[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('fulfilled', 'Fulfilled'), ('cancelled', 'Cancelled')]",
+        "field": "x_status",
         "transitions": [
           [
             "pending",
@@ -371,85 +482,18 @@
             "cancelled"
           ]
         ],
-        "statusbar_visible": [
-          "pending",
-          "confirmed",
-          "fulfilled"
-        ],
         "states": [
           "pending",
           "confirmed",
           "cancelled",
           "fulfilled"
+        ],
+        "statusbar_visible": [
+          "pending",
+          "confirmed",
+          "fulfilled"
         ]
       },
-      "fields": [
-        {
-          "name": "x_name",
-          "ttype": "char",
-          "string": "Reference",
-          "required": true
-        },
-        {
-          "name": "x_code",
-          "ttype": "char",
-          "string": "Reference",
-          "help": "Auto-numbered via ir.sequence (LIB3/00001)"
-        },
-        {
-          "name": "x_status",
-          "ttype": "selection",
-          "string": "Status",
-          "selection": "[('pending','Pending'),('confirmed','Confirmed'),('fulfilled','Fulfilled'),('cancelled','Cancelled')]",
-          "tracking": true,
-          "default": "pending"
-        },
-        {
-          "name": "x_book_id",
-          "ttype": "many2one",
-          "string": "Book",
-          "relation": "x_lib_book",
-          "required": true
-        },
-        {
-          "name": "x_member_id",
-          "ttype": "many2one",
-          "string": "Library member",
-          "relation": "res.partner",
-          "required": true
-        },
-        {
-          "name": "x_reservation_date",
-          "ttype": "date",
-          "string": "Book reservation Date"
-        },
-        {
-          "name": "x_pickup_date",
-          "ttype": "date",
-          "string": "Pickup Date"
-        },
-        {
-          "name": "x_notes",
-          "ttype": "text",
-          "string": "Notes"
-        },
-        {
-          "name": "x_invoice_id",
-          "ttype": "many2one",
-          "relation": "account.move",
-          "string": "Invoice",
-          "help": "Link-only \u2014 wire to account.move manually",
-          "source": "apply_readiness"
-        },
-        {
-          "name": "x_sale_order_id",
-          "ttype": "many2one",
-          "relation": "sale.order",
-          "string": "Sales order",
-          "help": "Link-only \u2014 wire to sale.order manually",
-          "source": "apply_readiness"
-        }
-      ],
       "mixins": [
         "mail.thread",
         "mail.activity.mixin"
@@ -459,10 +503,68 @@
       "model": "x_lib_fine",
       "description": "Library Overdue fine",
       "mode": "new",
+      "source": "pack_seed",
+      "fields": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Auto-numbered via ir.sequence (LIB4/00001)"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('open','Open'),('paid','Paid'),('waived','Waived')]",
+          "source": "pack_seed",
+          "tracking": true,
+          "default": "draft"
+        },
+        {
+          "name": "x_loan_id",
+          "ttype": "many2one",
+          "string": "Book loan",
+          "relation": "x_lib_loan",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_currency_id",
+          "ttype": "many2one",
+          "relation": "res.currency",
+          "string": "Currency"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "monetary",
+          "string": "Amount",
+          "source": "pack_seed",
+          "currency_field": "x_currency_id",
+          "widget": "monetary"
+        },
+        {
+          "name": "x_paid_date",
+          "ttype": "date",
+          "string": "Paid Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes",
+          "source": "pack_seed"
+        }
+      ],
       "is_workflow": true,
       "state_field": {
-        "name": "x_status",
-        "selection": "[('draft', 'Draft'), ('open', 'Open'), ('paid', 'Paid'), ('waived', 'Waived')]",
+        "field": "x_status",
         "transitions": [
           [
             "draft",
@@ -481,77 +583,19 @@
             "paid"
           ]
         ],
-        "statusbar_visible": [
-          "draft",
-          "open",
-          "waived",
-          "paid"
-        ],
         "states": [
           "draft",
           "open",
           "paid",
           "waived"
+        ],
+        "statusbar_visible": [
+          "draft",
+          "open",
+          "waived",
+          "paid"
         ]
       },
-      "fields": [
-        {
-          "name": "x_name",
-          "ttype": "char",
-          "string": "Reference",
-          "required": true
-        },
-        {
-          "name": "x_code",
-          "ttype": "char",
-          "string": "Reference",
-          "help": "Auto-numbered via ir.sequence (LIB4/00001)"
-        },
-        {
-          "name": "x_status",
-          "ttype": "selection",
-          "string": "Status",
-          "selection": "[('draft','Draft'),('open','Open'),('paid','Paid'),('waived','Waived')]",
-          "tracking": true,
-          "default": "draft"
-        },
-        {
-          "name": "x_loan_id",
-          "ttype": "many2one",
-          "string": "Book loan",
-          "relation": "x_lib_loan",
-          "required": true
-        },
-        {
-          "name": "x_member_id",
-          "ttype": "many2one",
-          "string": "Library member",
-          "relation": "res.partner"
-        },
-        {
-          "name": "x_currency_id",
-          "ttype": "many2one",
-          "relation": "res.currency",
-          "string": "Currency"
-        },
-        {
-          "name": "x_amount",
-          "ttype": "monetary",
-          "string": "Amount",
-          "currency_field": "x_currency_id",
-          "widget": "monetary"
-        },
-        {
-          "name": "x_paid_date",
-          "ttype": "date",
-          "string": "Paid Date"
-        },
-        {
-          "name": "x_notes",
-          "ttype": "text",
-          "string": "Notes"
-        }
-      ],
       "mixins": [
         "mail.thread",
         "mail.activity.mixin"
@@ -565,9 +609,13 @@
       "elite-test"
     ],
     "step": 6,
-    "step_label": "Finalizing draft"
+    "step_label": "Finalizing draft",
+    "retry_recommended": false,
+    "enrichment_clean": true
   },
   "ambition": "comprehensive",
+  "_document_shape": "workspace",
+  "document_shape": "workspace",
   "_pack_reuse_stock": [
     {
       "model": "res.partner",
@@ -599,6 +647,1029 @@
     "x_lib_reservation",
     "x_lib_fine"
   ],
+  "_generate_ir": {
+    "host_model": null,
+    "display_name": "Sophisticated Library Management",
+    "technical_name": "library_management",
+    "models": [
+      {
+        "model": "x_lib_branch",
+        "description": "Library Branch",
+        "mode": "new",
+        "source": "pack_seed",
+        "is_workflow": false
+      },
+      {
+        "model": "x_lib_author",
+        "description": "Author",
+        "mode": "new",
+        "source": "pack_seed",
+        "is_workflow": false
+      },
+      {
+        "model": "x_lib_book",
+        "description": "Book",
+        "mode": "new",
+        "source": "pack_seed",
+        "is_workflow": true
+      },
+      {
+        "model": "x_lib_loan",
+        "description": "Book Loan",
+        "mode": "new",
+        "source": "pack_seed",
+        "is_workflow": true
+      },
+      {
+        "model": "x_lib_reservation",
+        "description": "Book Reservation",
+        "mode": "new",
+        "source": "pack_seed",
+        "is_workflow": true
+      },
+      {
+        "model": "x_lib_fine",
+        "description": "Library Fine",
+        "mode": "new",
+        "source": "pack_seed",
+        "is_workflow": true
+      }
+    ],
+    "fields_by_model": {
+      "x_lib_branch": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Branch Name",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Code",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_address",
+          "ttype": "text",
+          "string": "Address",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_phone",
+          "ttype": "char",
+          "string": "Phone",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_manager_id",
+          "ttype": "many2one",
+          "string": "Manager",
+          "relation": "res.users",
+          "source": "pack_seed"
+        }
+      ],
+      "x_lib_author": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Author Name",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_bio",
+          "ttype": "text",
+          "string": "Biography",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_country_id",
+          "ttype": "many2one",
+          "string": "Country",
+          "relation": "res.country",
+          "source": "pack_seed"
+        }
+      ],
+      "x_lib_book": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Title",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_isbn",
+          "ttype": "char",
+          "string": "ISBN",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_barcode",
+          "ttype": "char",
+          "string": "Barcode",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_copies",
+          "ttype": "integer",
+          "string": "Copies",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_available_copies",
+          "ttype": "integer",
+          "string": "Available Copies",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('available','Available'),('loaned','Loaned'),('reserved','Reserved'),('lost','Lost'),('closed','Closed'),('on_hold','On hold'),('cancelled','Cancelled')]",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_fine_rate",
+          "ttype": "float",
+          "string": "Daily Fine Rate",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_category_id",
+          "ttype": "many2one",
+          "string": "Category",
+          "relation": "x_lib_category",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_author_id",
+          "ttype": "many2one",
+          "string": "Author",
+          "relation": "x_lib_author",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "string": "Branch",
+          "relation": "x_lib_branch",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_loan_ids",
+          "ttype": "one2many",
+          "string": "Loans",
+          "relation": "x_lib_loan",
+          "relation_field": "x_book_id",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Sequence / reference \u2014 wire ir.sequence later",
+          "source": "depth_workflow"
+        }
+      ],
+      "x_lib_loan": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Wire ir.sequence (e.g. REC/00001) \u2014 configure sequence on apply"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('active','Active'),('returned','Returned'),('overdue','Overdue'),('cancelled','Cancelled')]",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_book_id",
+          "ttype": "many2one",
+          "string": "Book",
+          "relation": "x_lib_book",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_branch_id",
+          "ttype": "many2one",
+          "string": "Branch",
+          "relation": "x_lib_branch",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_loan_date",
+          "ttype": "date",
+          "string": "Loan Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_due_date",
+          "ttype": "date",
+          "string": "Due Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_return_date",
+          "ttype": "date",
+          "string": "Return Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_returned",
+          "ttype": "boolean",
+          "string": "Returned",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_days_overdue",
+          "ttype": "integer",
+          "string": "Days Overdue",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_fine_amount",
+          "ttype": "monetary",
+          "string": "Fine Amount",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes",
+          "source": "pack_seed"
+        }
+      ],
+      "x_lib_reservation": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Wire ir.sequence (e.g. REC/00001) \u2014 configure sequence on apply"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('pending','Pending'),('confirmed','Confirmed'),('fulfilled','Fulfilled'),('cancelled','Cancelled')]",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_book_id",
+          "ttype": "many2one",
+          "string": "Book",
+          "relation": "x_lib_book",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_reservation_date",
+          "ttype": "date",
+          "string": "Reservation Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_pickup_date",
+          "ttype": "date",
+          "string": "Pickup Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes",
+          "source": "pack_seed"
+        }
+      ],
+      "x_lib_fine": [
+        {
+          "name": "x_name",
+          "ttype": "char",
+          "string": "Reference",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_code",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Wire ir.sequence (e.g. REC/00001) \u2014 configure sequence on apply"
+        },
+        {
+          "name": "x_status",
+          "ttype": "selection",
+          "string": "Status",
+          "selection": "[('draft','Draft'),('open','Open'),('paid','Paid'),('waived','Waived')]",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_loan_id",
+          "ttype": "many2one",
+          "string": "Loan",
+          "relation": "x_lib_loan",
+          "required": true,
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_amount",
+          "ttype": "monetary",
+          "string": "Amount",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_paid_date",
+          "ttype": "date",
+          "string": "Paid Date",
+          "source": "pack_seed"
+        },
+        {
+          "name": "x_notes",
+          "ttype": "text",
+          "string": "Notes",
+          "source": "pack_seed"
+        }
+      ]
+    },
+    "o2ms": [
+      {
+        "name": "x_loan_ids",
+        "on_model": "x_lib_book",
+        "relation": "x_lib_loan",
+        "string": "Loans"
+      }
+    ],
+    "menus": [
+      {
+        "name": "Sophisticated Library Management",
+        "sequence": 10,
+        "technical_name": "root_library_management",
+        "xml_id": "menu_root_library_management",
+        "groups": [
+          "group_library_management_user"
+        ]
+      },
+      {
+        "name": "Library Branch",
+        "action_xml_id": "action_x_lib_branch",
+        "parent_xml_id": "menu_root_library_management",
+        "sequence": 10,
+        "technical_name": "menu_x_lib_branch"
+      },
+      {
+        "name": "Author",
+        "action_xml_id": "action_x_lib_author",
+        "parent_xml_id": "menu_root_library_management",
+        "sequence": 11,
+        "technical_name": "menu_x_lib_author"
+      },
+      {
+        "name": "Book",
+        "action_xml_id": "action_x_lib_book",
+        "parent_xml_id": "menu_root_library_management",
+        "sequence": 12,
+        "technical_name": "menu_x_lib_book"
+      },
+      {
+        "name": "Book Loan",
+        "action_xml_id": "action_x_lib_loan",
+        "parent_xml_id": "menu_root_library_management",
+        "sequence": 13,
+        "technical_name": "menu_x_lib_loan"
+      },
+      {
+        "name": "Book Reservation",
+        "action_xml_id": "action_x_lib_reservation",
+        "parent_xml_id": "menu_root_library_management",
+        "sequence": 14,
+        "technical_name": "menu_x_lib_reservation"
+      },
+      {
+        "name": "Library Fine",
+        "action_xml_id": "action_x_lib_fine",
+        "parent_xml_id": "menu_root_library_management",
+        "sequence": 15,
+        "technical_name": "menu_x_lib_fine"
+      }
+    ],
+    "cues": {
+      "tokens": [
+        "account",
+        "base",
+        "contacts",
+        "mail",
+        "product",
+        "sale"
+      ],
+      "ast": {}
+    },
+    "approved_craft": {},
+    "structural_defaults": [
+      "Requests",
+      "x_active",
+      "x_code",
+      "x_name",
+      "x_reference",
+      "x_sequence",
+      "x_state",
+      "x_status"
+    ],
+    "rejected_proposals": [],
+    "admitted": [
+      {
+        "kind": "model",
+        "name": "x_lib_branch",
+        "payload": {
+          "description": "Library Branch",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": false,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Branch Name",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_code",
+              "ttype": "char",
+              "string": "Code",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_address",
+              "ttype": "text",
+              "string": "Address",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_phone",
+              "ttype": "char",
+              "string": "Phone",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_manager_id",
+              "ttype": "many2one",
+              "string": "Manager",
+              "relation": "res.users",
+              "source": "pack_seed"
+            }
+          ],
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_branch",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_branch",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "model",
+        "name": "x_lib_category",
+        "payload": {
+          "description": "Book Category",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": false,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Category",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_description",
+              "ttype": "text",
+              "string": "Description",
+              "source": "pack_seed"
+            }
+          ],
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_category",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_category",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "model",
+        "name": "x_lib_author",
+        "payload": {
+          "description": "Author",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": false,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Author Name",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_bio",
+              "ttype": "text",
+              "string": "Biography",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_country_id",
+              "ttype": "many2one",
+              "string": "Country",
+              "relation": "res.country",
+              "source": "pack_seed"
+            }
+          ],
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_author",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_author",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "model",
+        "name": "x_lib_book",
+        "payload": {
+          "description": "Book",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": true,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Title",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_isbn",
+              "ttype": "char",
+              "string": "ISBN",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_barcode",
+              "ttype": "char",
+              "string": "Barcode",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_copies",
+              "ttype": "integer",
+              "string": "Copies",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_available_copies",
+              "ttype": "integer",
+              "string": "Available Copies",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_status",
+              "ttype": "selection",
+              "string": "Status",
+              "selection": "[('available', 'Available'), ('loaned', 'Loaned'), ('reserved', 'Reserved'), ('lost', 'Lost')]",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_fine_rate",
+              "ttype": "float",
+              "string": "Daily Fine Rate",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_category_id",
+              "ttype": "many2one",
+              "string": "Category",
+              "relation": "x_lib_category",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_author_id",
+              "ttype": "many2one",
+              "string": "Author",
+              "relation": "x_lib_author",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_branch_id",
+              "ttype": "many2one",
+              "string": "Branch",
+              "relation": "x_lib_branch",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_loan_ids",
+              "ttype": "one2many",
+              "string": "Loans",
+              "relation": "x_lib_loan",
+              "relation_field": "x_book_id",
+              "source": "pack_seed"
+            }
+          ],
+          "state_field": {
+            "name": "x_status",
+            "selection": "[('available', 'Available'), ('loaned', 'Loaned'), ('reserved', 'Reserved'), ('lost', 'Lost')]",
+            "transitions": [
+              [
+                "available",
+                "loaned"
+              ],
+              [
+                "available",
+                "reserved"
+              ],
+              [
+                "loaned",
+                "available"
+              ],
+              [
+                "reserved",
+                "available"
+              ],
+              [
+                "available",
+                "lost"
+              ]
+            ],
+            "statusbar_visible": [
+              "available",
+              "loaned",
+              "reserved"
+            ]
+          },
+          "pack_anchor": true,
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_book",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_book",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "model",
+        "name": "x_lib_loan",
+        "payload": {
+          "description": "Book Loan",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": true,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Reference",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_status",
+              "ttype": "selection",
+              "string": "Status",
+              "selection": "[('draft', 'Draft'), ('active', 'Active'), ('returned', 'Returned'), ('overdue', 'Overdue'), ('cancelled', 'Cancelled')]",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_book_id",
+              "ttype": "many2one",
+              "string": "Book",
+              "relation": "x_lib_book",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_branch_id",
+              "ttype": "many2one",
+              "string": "Branch",
+              "relation": "x_lib_branch",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_loan_date",
+              "ttype": "date",
+              "string": "Loan Date",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_due_date",
+              "ttype": "date",
+              "string": "Due Date",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_return_date",
+              "ttype": "date",
+              "string": "Return Date",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_returned",
+              "ttype": "boolean",
+              "string": "Returned",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_days_overdue",
+              "ttype": "integer",
+              "string": "Days Overdue",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_fine_amount",
+              "ttype": "monetary",
+              "string": "Fine Amount",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_notes",
+              "ttype": "text",
+              "string": "Notes",
+              "source": "pack_seed"
+            }
+          ],
+          "state_field": {
+            "name": "x_status",
+            "selection": "[('draft', 'Draft'), ('active', 'Active'), ('returned', 'Returned'), ('overdue', 'Overdue'), ('cancelled', 'Cancelled')]",
+            "transitions": [
+              [
+                "draft",
+                "active"
+              ],
+              [
+                "active",
+                "returned"
+              ],
+              [
+                "active",
+                "overdue"
+              ],
+              [
+                "overdue",
+                "returned"
+              ],
+              [
+                "draft",
+                "cancelled"
+              ],
+              [
+                "active",
+                "cancelled"
+              ]
+            ],
+            "statusbar_visible": [
+              "draft",
+              "active",
+              "returned"
+            ]
+          },
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_loan",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_loan",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "model",
+        "name": "x_lib_reservation",
+        "payload": {
+          "description": "Book Reservation",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": true,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Reference",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_status",
+              "ttype": "selection",
+              "string": "Status",
+              "selection": "[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('fulfilled', 'Fulfilled'), ('cancelled', 'Cancelled')]",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_book_id",
+              "ttype": "many2one",
+              "string": "Book",
+              "relation": "x_lib_book",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_reservation_date",
+              "ttype": "date",
+              "string": "Reservation Date",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_pickup_date",
+              "ttype": "date",
+              "string": "Pickup Date",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_notes",
+              "ttype": "text",
+              "string": "Notes",
+              "source": "pack_seed"
+            }
+          ],
+          "state_field": {
+            "name": "x_status",
+            "selection": "[('pending', 'Pending'), ('confirmed', 'Confirmed'), ('fulfilled', 'Fulfilled'), ('cancelled', 'Cancelled')]",
+            "transitions": [
+              [
+                "pending",
+                "confirmed"
+              ],
+              [
+                "confirmed",
+                "fulfilled"
+              ],
+              [
+                "pending",
+                "cancelled"
+              ],
+              [
+                "confirmed",
+                "cancelled"
+              ]
+            ],
+            "statusbar_visible": [
+              "pending",
+              "confirmed",
+              "fulfilled"
+            ]
+          },
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_reservation",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_reservation",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "model",
+        "name": "x_lib_fine",
+        "payload": {
+          "description": "Library Fine",
+          "mode": "new",
+          "source": "pack_seed",
+          "is_workflow": true,
+          "fields": [
+            {
+              "name": "x_name",
+              "ttype": "char",
+              "string": "Reference",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_status",
+              "ttype": "selection",
+              "string": "Status",
+              "selection": "[('draft', 'Draft'), ('open', 'Open'), ('paid', 'Paid'), ('waived', 'Waived')]",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_loan_id",
+              "ttype": "many2one",
+              "string": "Loan",
+              "relation": "x_lib_loan",
+              "required": true,
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_amount",
+              "ttype": "monetary",
+              "string": "Amount",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_paid_date",
+              "ttype": "date",
+              "string": "Paid Date",
+              "source": "pack_seed"
+            },
+            {
+              "name": "x_notes",
+              "ttype": "text",
+              "string": "Notes",
+              "source": "pack_seed"
+            }
+          ],
+          "state_field": {
+            "name": "x_status",
+            "selection": "[('draft', 'Draft'), ('open', 'Open'), ('paid', 'Paid'), ('waived', 'Waived')]",
+            "transitions": [
+              [
+                "draft",
+                "open"
+              ],
+              [
+                "open",
+                "paid"
+              ],
+              [
+                "open",
+                "waived"
+              ],
+              [
+                "draft",
+                "waived"
+              ]
+            ],
+            "statusbar_visible": [
+              "draft",
+              "open",
+              "paid"
+            ]
+          },
+          "pack_provenance": {
+            "pack": "library_management",
+            "curated": true
+          }
+        },
+        "source_cue": "lib_fine",
+        "confidence": 0.9,
+        "rationale": "domain pack model x_lib_fine",
+        "proposer": "ai_domain_packs",
+        "admit_reason": "curated_pack"
+      },
+      {
+        "kind": "field",
+        "name": "x_code",
+        "payload": {
+          "model": "x_lib_book",
+          "ttype": "char",
+          "string": "Reference",
+          "help": "Sequence / reference \u2014 wire ir.sequence later",
+          "source": "depth_workflow"
+        },
+        "source_cue": "structural_default",
+        "confidence": 0.9,
+        "rationale": "reference companion on workflow model",
+        "proposer": "ai_depth.ensure_workflow_minimum",
+        "admit_reason": "structural_default"
+      }
+    ]
+  },
   "smart_buttons": [
     {
       "on_model": "x_lib_book",
@@ -611,6 +1682,38 @@
       "related_model": "x_lib_fine",
       "relation_field": "x_loan_id",
       "label": "Fines"
+    },
+    {
+      "on_model": "x_lib_author",
+      "label": "Book",
+      "related_model": "x_lib_book",
+      "relation_field": "x_author_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_lib_branch",
+      "label": "Book",
+      "related_model": "x_lib_book",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_lib_branch",
+      "label": "Book loan",
+      "related_model": "x_lib_loan",
+      "relation_field": "x_branch_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
+    },
+    {
+      "on_model": "x_lib_book",
+      "label": "Book reservation",
+      "related_model": "x_lib_reservation",
+      "relation_field": "x_book_id",
+      "icon": "fa-list",
+      "source": "depth_synthesize"
     }
   ],
   "automations": [
@@ -678,7 +1781,7 @@
     {
       "name": "Book",
       "model": "x_lib_book",
-      "view_mode": "list,kanban,form",
+      "view_mode": "list,form",
       "technical_name": "action_x_lib_book"
     },
     {
@@ -765,7 +1868,7 @@
       "name": "x_lib_branch.form",
       "model": "x_lib_branch",
       "type": "form",
-      "arch": "<form string=\"Library Branch\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_manager_id\" widget=\"many2one_avatar_user\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_address\"/><field name=\"x_phone\"/></group></sheet></form>",
+      "arch": "<form string=\"Library Branch\"><sheet><group col=\"2\"><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_manager_id\" widget=\"many2one_avatar_user\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_address\"/><field name=\"x_phone\"/></group></group></sheet></form>",
       "mode": "primary"
     },
     {
@@ -779,7 +1882,7 @@
       "name": "x_lib_author.form",
       "model": "x_lib_author",
       "type": "form",
-      "arch": "<form string=\"Author\"><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_country_id\"/></group><group string=\"Details\"><field name=\"x_bio\"/></group></sheet></form>",
+      "arch": "<form string=\"Author\"><sheet><group col=\"2\"><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_country_id\"/></group><group string=\"Details\"><field name=\"x_bio\"/></group></group></sheet></form>",
       "mode": "primary"
     },
     {
@@ -793,28 +1896,21 @@
       "name": "x_lib_book.form",
       "model": "x_lib_book",
       "type": "form",
-      "arch": "<form string=\"Book\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"available,loaned,reserved,lost\"/><button string=\"Loaned\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'available'\" data-transition-to=\"loaned\"/><button string=\"Reserved\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'loaned'\" data-transition-to=\"reserved\"/><button string=\"Lost\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'reserved'\" data-transition-to=\"lost\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\" /><field name=\"x_category_id\" /><field name=\"x_author_id\" /><field name=\"x_branch_id\" /></group><group string=\"Details\"><field name=\"x_code\" /><field name=\"x_isbn\" /><field name=\"x_barcode\" /><field name=\"x_copies\" /><field name=\"x_available_copies\" /><field name=\"x_fine_rate\" /></group><notebook><page string=\"Loans\"><field name=\"x_loan_ids\"><list editable=\"bottom\"><field name=\"x_name\" /><field name=\"x_status\" /><field name=\"x_code\" /><field name=\"x_notes\" /></list></field></page><page string=\"Book reservation\"><field name=\"x_lib_reservation_ids\"><list editable=\"bottom\"><field name=\"x_name\" /><field name=\"x_status\" /><field name=\"x_code\" /><field name=\"x_notes\" /></list></field></page></notebook></sheet><chatter/></form>",
-      "mode": "primary"
-    },
-    {
-      "name": "x_lib_book.kanban",
-      "model": "x_lib_book",
-      "type": "kanban",
-      "arch": "<kanban default_group_by=\"x_status\" class=\"o_kanban_small_column\" sample=\"1\"><templates><t t-name=\"card\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_branch_id\"/></t></templates></kanban>",
+      "arch": "<form string=\"Book\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"on_hold,available,loaned,reserved,lost,closed\" options=\"{'clickable': False}\" readonly=\"1\"/><button string=\"Available\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'on_hold'\" data-transition-to=\"available\"/><button string=\"Loaned\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'available'\" data-transition-to=\"loaned\"/><button string=\"Reserved\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'loaned'\" data-transition-to=\"reserved\"/><button string=\"Lost\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'reserved'\" data-transition-to=\"lost\"/><button string=\"Cancel\" type=\"object\" class=\"btn-secondary\" invisible=\"x_status not in ('on_hold', 'available', 'loaned', 'reserved', 'lost')\" data-transition-to=\"cancelled\"/><button string=\"Closed\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'lost'\" data-transition-to=\"closed\"/></header><sheet><group col=\"2\"><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_category_id\"/><field name=\"x_author_id\"/><field name=\"x_branch_id\"/></group><group string=\"Details\"><field name=\"x_isbn\"/><field name=\"x_barcode\"/><field name=\"x_copies\"/><field name=\"x_available_copies\"/><field name=\"x_fine_rate\"/><field name=\"x_code\"/></group></group><notebook><page string=\"Loans\"><field name=\"x_loan_ids\"><list editable=\"bottom\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_code\"/><field name=\"x_notes\"/></list></field></page></notebook></sheet><chatter/></form>",
       "mode": "primary"
     },
     {
       "name": "x_lib_loan.list",
       "model": "x_lib_loan",
       "type": "list",
-      "arch": "<list string=\"Book loan\" sample=\"1\" decoration-danger=\"x_status == 'overdue'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_branch_id\"/><field name=\"x_loan_date\"/><field name=\"x_due_date\"/><field name=\"x_return_date\"/></list>",
+      "arch": "<list string=\"Book loan\" sample=\"1\" decoration-danger=\"x_status == 'overdue'\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_book_id\"/><field name=\"x_branch_id\"/><field name=\"x_loan_date\"/><field name=\"x_due_date\"/><field name=\"x_return_date\"/><field name=\"x_returned\"/></list>",
       "mode": "primary"
     },
     {
       "name": "x_lib_loan.form",
       "model": "x_lib_loan",
       "type": "form",
-      "arch": "<form string=\"Book loan\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,active,returned,overdue\"/><button string=\"Active\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"active\"/><button string=\"Returned\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'active'\" data-transition-to=\"returned\"/><button string=\"Overdue\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'returned'\" data-transition-to=\"overdue\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status not in ('draft', 'active', 'returned', 'overdue')\" data-transition-to=\"cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_branch_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_loan_date\"/><field name=\"x_due_date\"/><field name=\"x_return_date\"/><field name=\"x_returned\"/><field name=\"x_days_overdue\"/><field name=\"x_fine_amount\"/><field name=\"x_notes\"/></group><notebook><page string=\"Library Overdue fine\"><field name=\"x_lib_fine_ids\"><list editable=\"bottom\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_amount\"/><field name=\"x_code\"/><field name=\"x_notes\"/></list></field></page></notebook></sheet><chatter/></form>",
+      "arch": "<form string=\"Book loan\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,active,returned,overdue\" options=\"{'clickable': False}\" readonly=\"1\"/><button string=\"Active\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"active\"/><button string=\"Returned\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'active'\" data-transition-to=\"returned\"/><button string=\"Overdue\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'returned'\" data-transition-to=\"overdue\"/><button string=\"Cancel\" type=\"object\" class=\"btn-secondary\" invisible=\"x_status not in ('draft', 'active', 'returned', 'overdue')\" data-transition-to=\"cancelled\"/></header><sheet><group col=\"2\"><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_book_id\"/><field name=\"x_branch_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_loan_date\"/><field name=\"x_due_date\"/><field name=\"x_return_date\"/><field name=\"x_returned\"/><field name=\"x_days_overdue\"/><field name=\"x_fine_amount\"/><field name=\"x_notes\"/></group></group></sheet><chatter/></form>",
       "mode": "primary"
     },
     {
@@ -828,14 +1924,14 @@
       "name": "x_lib_reservation.list",
       "model": "x_lib_reservation",
       "type": "list",
-      "arch": "<list string=\"Book reservation\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/><field name=\"x_reservation_date\"/><field name=\"x_pickup_date\"/></list>",
+      "arch": "<list string=\"Book reservation\" sample=\"1\" decoration-danger=\"x_status == 'cancelled'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_book_id\"/><field name=\"x_reservation_date\"/><field name=\"x_pickup_date\"/></list>",
       "mode": "primary"
     },
     {
       "name": "x_lib_reservation.form",
       "model": "x_lib_reservation",
       "type": "form",
-      "arch": "<form string=\"Book reservation\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"pending,confirmed,fulfilled\"/><button string=\"Confirmed\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'pending'\" data-transition-to=\"confirmed\"/><button string=\"Fulfilled\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'confirmed'\" data-transition-to=\"fulfilled\"/><button string=\"Cancel\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status not in ('pending', 'confirmed', 'fulfilled')\" data-transition-to=\"cancelled\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_book_id\"/><field name=\"x_member_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_reservation_date\"/><field name=\"x_pickup_date\"/><field name=\"x_notes\"/></group></sheet><chatter/></form>",
+      "arch": "<form string=\"Book reservation\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"pending,confirmed,fulfilled\" options=\"{'clickable': False}\" readonly=\"1\"/><button string=\"Confirmed\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'pending'\" data-transition-to=\"confirmed\"/><button string=\"Fulfilled\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'confirmed'\" data-transition-to=\"fulfilled\"/><button string=\"Cancel\" type=\"object\" class=\"btn-secondary\" invisible=\"x_status not in ('pending', 'confirmed', 'fulfilled')\" data-transition-to=\"cancelled\"/></header><sheet><group col=\"2\"><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_book_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_reservation_date\"/><field name=\"x_pickup_date\"/><field name=\"x_notes\"/></group></group></sheet><chatter/></form>",
       "mode": "primary"
     },
     {
@@ -849,14 +1945,14 @@
       "name": "x_lib_fine.list",
       "model": "x_lib_fine",
       "type": "list",
-      "arch": "<list string=\"Library Overdue fine\" sample=\"1\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_loan_id\"/><field name=\"x_member_id\"/><field name=\"x_amount\"/><field name=\"x_paid_date\"/></list>",
+      "arch": "<list string=\"Library Overdue fine\" sample=\"1\" decoration-muted=\"x_status == 'draft'\"><field name=\"x_name\"/><field name=\"x_status\"/><field name=\"x_loan_id\"/><field name=\"x_amount\"/><field name=\"x_paid_date\"/></list>",
       "mode": "primary"
     },
     {
       "name": "x_lib_fine.form",
       "model": "x_lib_fine",
       "type": "form",
-      "arch": "<form string=\"Library Overdue fine\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,open,waived,paid\"/><button string=\"Confirm\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"open\"/><button string=\"Paid\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status not in ('open', 'waived')\" data-transition-to=\"paid\"/><button string=\"Waived\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'open'\" data-transition-to=\"waived\"/></header><sheet><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_loan_id\"/><field name=\"x_member_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_amount\"/><field name=\"x_paid_date\"/><field name=\"x_notes\"/></group></sheet><chatter/></form>",
+      "arch": "<form string=\"Library Overdue fine\"><header><field name=\"x_status\" widget=\"statusbar\" statusbar_visible=\"draft,open,waived,paid\" options=\"{'clickable': False}\" readonly=\"1\"/><button string=\"Confirm\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'draft'\" data-transition-to=\"open\"/><button string=\"Paid\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status not in ('open', 'waived')\" data-transition-to=\"paid\"/><button string=\"Waived\" type=\"object\" class=\"oe_highlight\" invisible=\"x_status != 'open'\" data-transition-to=\"waived\"/></header><sheet><group col=\"2\"><group string=\"Identity\"><field name=\"x_name\"/><field name=\"x_loan_id\"/><field name=\"x_currency_id\"/></group><group string=\"Details\"><field name=\"x_code\"/><field name=\"x_amount\"/><field name=\"x_paid_date\"/><field name=\"x_notes\"/></group></group></sheet><chatter/></form>",
       "mode": "primary"
     },
     {
@@ -891,21 +1987,21 @@
       "name": "x_lib_fine.search",
       "model": "x_lib_fine",
       "type": "search",
-      "arch": "<search string=\"Library Overdue fine\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Open\" name=\"status_open\" domain=\"[('x_status','=','open')]\"/><filter string=\"Paid\" name=\"status_paid\" domain=\"[('x_status','=','paid')]\"/><filter string=\"Waived\" name=\"status_waived\" domain=\"[('x_status','=','waived')]\"/><filter string=\"Book loan\" name=\"group_x_loan_id\" context=\"{'group_by': 'x_loan_id'}\"/><filter string=\"Library member\" name=\"group_x_member_id\" context=\"{'group_by': 'x_member_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "arch": "<search string=\"Library Overdue fine\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Open\" name=\"status_open\" domain=\"[('x_status','=','open')]\"/><filter string=\"Paid\" name=\"status_paid\" domain=\"[('x_status','=','paid')]\"/><filter string=\"Waived\" name=\"status_waived\" domain=\"[('x_status','=','waived')]\"/><filter string=\"Book loan\" name=\"group_x_loan_id\" context=\"{'group_by': 'x_loan_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
       "mode": "primary"
     },
     {
       "name": "x_lib_loan.search",
       "model": "x_lib_loan",
       "type": "search",
-      "arch": "<search string=\"Book loan\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Active\" name=\"status_active\" domain=\"[('x_status','=','active')]\"/><filter string=\"Returned\" name=\"status_returned\" domain=\"[('x_status','=','returned')]\"/><filter string=\"Overdue\" name=\"status_overdue\" domain=\"[('x_status','=','overdue')]\"/><filter string=\"Book\" name=\"group_x_book_id\" context=\"{'group_by': 'x_book_id'}\"/><filter string=\"Library member\" name=\"group_x_member_id\" context=\"{'group_by': 'x_member_id'}\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "arch": "<search string=\"Book loan\"><filter string=\"Draft\" name=\"status_draft\" domain=\"[('x_status','=','draft')]\"/><filter string=\"Active\" name=\"status_active\" domain=\"[('x_status','=','active')]\"/><filter string=\"Returned\" name=\"status_returned\" domain=\"[('x_status','=','returned')]\"/><filter string=\"Overdue\" name=\"status_overdue\" domain=\"[('x_status','=','overdue')]\"/><filter string=\"Book\" name=\"group_x_book_id\" context=\"{'group_by': 'x_book_id'}\"/><filter string=\"Branch\" name=\"group_x_branch_id\" context=\"{'group_by': 'x_branch_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
       "mode": "primary"
     },
     {
       "name": "x_lib_reservation.search",
       "model": "x_lib_reservation",
       "type": "search",
-      "arch": "<search string=\"Book reservation\"><filter string=\"Pending\" name=\"status_pending\" domain=\"[('x_status','=','pending')]\"/><filter string=\"Confirmed\" name=\"status_confirmed\" domain=\"[('x_status','=','confirmed')]\"/><filter string=\"Fulfilled\" name=\"status_fulfilled\" domain=\"[('x_status','=','fulfilled')]\"/><filter string=\"Cancelled\" name=\"status_cancelled\" domain=\"[('x_status','=','cancelled')]\"/><filter string=\"Book\" name=\"group_x_book_id\" context=\"{'group_by': 'x_book_id'}\"/><filter string=\"Library member\" name=\"group_x_member_id\" context=\"{'group_by': 'x_member_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
+      "arch": "<search string=\"Book reservation\"><filter string=\"Pending\" name=\"status_pending\" domain=\"[('x_status','=','pending')]\"/><filter string=\"Confirmed\" name=\"status_confirmed\" domain=\"[('x_status','=','confirmed')]\"/><filter string=\"Fulfilled\" name=\"status_fulfilled\" domain=\"[('x_status','=','fulfilled')]\"/><filter string=\"Cancelled\" name=\"status_cancelled\" domain=\"[('x_status','=','cancelled')]\"/><filter string=\"Book\" name=\"group_x_book_id\" context=\"{'group_by': 'x_book_id'}\"/><filter string=\"Status\" name=\"group_x_status\" context=\"{'group_by': 'x_status'}\"/></search>",
       "mode": "primary"
     }
   ],
@@ -1048,34 +2144,84 @@
   ],
   "_completeness": [
     {
-      "id": "model_ui:x_lib_author",
+      "id": "has_models",
       "ok": true,
-      "detail": "complete"
+      "detail": "6 models"
     },
     {
-      "id": "model_ui:x_lib_book",
+      "id": "has_menus",
       "ok": true,
-      "detail": "complete"
+      "detail": ""
     },
     {
-      "id": "model_ui:x_lib_branch",
+      "id": "has_views",
       "ok": true,
-      "detail": "complete"
+      "detail": "6 model view sets"
     },
     {
-      "id": "model_ui:x_lib_fine",
+      "id": "has_workflow",
       "ok": true,
-      "detail": "complete"
+      "detail": "x_lib_book,x_lib_loan,x_lib_reservation,x_lib_fine"
     },
     {
-      "id": "model_ui:x_lib_loan",
+      "id": "kanban_for_workflow",
       "ok": true,
-      "detail": "complete"
+      "detail": "kanban present"
     },
     {
-      "id": "model_ui:x_lib_reservation",
+      "id": "mail_thread",
       "ok": true,
-      "detail": "complete"
+      "detail": ""
+    },
+    {
+      "id": "sequence_on_workflow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_access_stubs",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "has_smart_buttons",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "id": "contacts_link",
+      "ok": false,
+      "detail": "none"
+    },
+    {
+      "id": "depth_models",
+      "ok": false,
+      "detail": "6/7 substantive models (excl. depth_seed; raw=6, seeded=0)"
+    },
+    {
+      "id": "depth_fields_avg",
+      "ok": true,
+      "detail": "avg 8.33/6 fields/model"
+    },
+    {
+      "id": "depth_relations",
+      "ok": true,
+      "detail": "13/10 many2one links"
+    },
+    {
+      "id": "depth_workflows",
+      "ok": true,
+      "detail": "4/2 workflow models"
+    },
+    {
+      "id": "depth_smart_buttons",
+      "ok": true,
+      "detail": "6/6 smart buttons"
+    },
+    {
+      "id": "depth_automations",
+      "ok": false,
+      "detail": "1/2 automations"
     }
   ],
   "reuse": {
@@ -1112,22 +2258,22 @@
       "model_count": 6,
       "model_count_raw": 6,
       "hollow_model_count": 0,
-      "field_total": 53,
-      "fields_avg": 8.83,
-      "m2o_count": 14,
+      "field_total": 50,
+      "fields_avg": 8.33,
+      "m2o_count": 13,
       "workflow_count": 4,
-      "smart_button_count": 2,
+      "smart_button_count": 6,
       "automation_count": 1
     },
     "metrics_without_seeds": {
       "model_count": 6,
       "model_count_raw": 6,
       "hollow_model_count": 0,
-      "field_total": 53,
-      "fields_avg": 8.83,
-      "m2o_count": 14,
+      "field_total": 50,
+      "fields_avg": 8.33,
+      "m2o_count": 13,
       "workflow_count": 4,
-      "smart_button_count": 2,
+      "smart_button_count": 6,
       "automation_count": 1
     },
     "gaps": [
@@ -1153,12 +2299,12 @@
       {
         "id": "depth_fields_avg",
         "ok": true,
-        "detail": "avg 8.83/5 fields/model"
+        "detail": "avg 8.33/5 fields/model"
       },
       {
         "id": "depth_relations",
         "ok": true,
-        "detail": "14/4 many2one links"
+        "detail": "13/4 many2one links"
       },
       {
         "id": "depth_workflows",
@@ -1168,7 +2314,7 @@
       {
         "id": "depth_smart_buttons",
         "ok": true,
-        "detail": "2/2 smart buttons"
+        "detail": "6/2 smart buttons"
       },
       {
         "id": "depth_automations",
@@ -1200,7 +2346,8 @@
       "go_live_ready": false,
       "next_step": "Apply to Odoo \u2014 verify fields_get / form arch"
     },
-    "go_live_ready": false
+    "go_live_ready": false,
+    "certification_tier": "Reject"
   },
   "_meta": {
     "live_apply_ready": true,
@@ -1209,9 +2356,9 @@
     "done_bar_mode": "live",
     "certification_tier": "Reject",
     "model_count": 6,
-    "view_count": 22,
+    "view_count": 21,
     "menu_count": 7,
-    "smart_button_count": 2,
+    "smart_button_count": 6,
     "automation_count": 1,
     "score_0_10": 9.5,
     "certification_quality": 99.1,
@@ -1297,7 +2444,6 @@
     "grain": "full_app",
     "document_shape": "workspace"
   },
-  "_document_shape": "workspace",
   "_architecture_drift": [],
   "_scorecard": {
     "score_0_10": 9.91,
@@ -1331,7 +2477,91 @@
       "xml_ok": true,
       "consistency_ok": true,
       "all_green": true
+    },
+    "studio_contract": {
+      "pass": true,
+      "blocking": false,
+      "repairs": [],
+      "summary": "New app: Sophisticated Library; title \u00abSophisticated Library\u00bb"
     }
+  },
+  "_operator_surface": {
+    "app_menu": {
+      "label": "Advanced library operations",
+      "technical_name": "root_library_management"
+    },
+    "host_buttons": [],
+    "residual_buttons": [
+      {
+        "on_model": "x_lib_book",
+        "related_model": "x_lib_loan",
+        "button_label": "Loans"
+      },
+      {
+        "on_model": "x_lib_loan",
+        "related_model": "x_lib_fine",
+        "button_label": "Fines"
+      },
+      {
+        "on_model": "x_lib_author",
+        "related_model": "x_lib_book",
+        "button_label": "Book"
+      },
+      {
+        "on_model": "x_lib_branch",
+        "related_model": "x_lib_book",
+        "button_label": "Book"
+      },
+      {
+        "on_model": "x_lib_branch",
+        "related_model": "x_lib_loan",
+        "button_label": "Book loan"
+      },
+      {
+        "on_model": "x_lib_book",
+        "related_model": "x_lib_reservation",
+        "button_label": "Book reservation"
+      }
+    ],
+    "stock_links": [
+      {
+        "field": "x_manager_id",
+        "field_label": "Manager",
+        "stock_model": "res.users",
+        "stock_label": "Users",
+        "on_model": "x_lib_branch"
+      },
+      {
+        "field": "x_country_id",
+        "field_label": "Country",
+        "stock_model": "res.country",
+        "stock_label": "Countries",
+        "on_model": "x_lib_author"
+      },
+      {
+        "field": "x_currency_id",
+        "field_label": "Currency",
+        "stock_model": "res.currency",
+        "stock_label": "Currencies",
+        "on_model": "x_lib_loan"
+      },
+      {
+        "field": "x_invoice_id",
+        "field_label": "Invoice",
+        "stock_model": "account.move",
+        "stock_label": "Invoices",
+        "on_model": "x_lib_reservation"
+      },
+      {
+        "field": "x_sale_order_id",
+        "field_label": "Sales order",
+        "stock_model": "sale.order",
+        "stock_label": "Sales orders",
+        "on_model": "x_lib_reservation"
+      }
+    ],
+    "summary": "Open \u00abAdvanced library operations\u00bb from the Odoo home / app switcher. 6 smart button(s) on your custom form(s) link related custom documents. Linked stock records appear as form fields on the residual (Manager \u2192 Users; Country \u2192 Countries; Currency \u2192 Currencies).",
+    "display_name": "Sophisticated Library Management"
   },
   "custom_code_blocks": [
     {
@@ -1476,6 +2706,40 @@
       "rule": "manifest_dep_missing"
     }
   ],
+  "grain": "full_app",
+  "_studio_contract": {
+    "version": 1,
+    "host_model": null,
+    "host_label": null,
+    "inherit_only": false,
+    "no_new_app": false,
+    "reuse_fields": false,
+    "grain": "full_app",
+    "title": "Sophisticated Library",
+    "placement_group": null,
+    "fields": [],
+    "surfaces": [],
+    "summary": "New app: Sophisticated Library; title \u00abSophisticated Library\u00bb",
+    "source_prompt": "Build a sophisticated library management system with books, loans, reservations, fines, and overdue reminders for library members",
+    "delivery_lane": "online_metadata",
+    "artifact_kind": "full_app",
+    "prove_status": "not_required",
+    "delivery_lane_copy": "Online lane: metadata / Studio / data-XML only \u2014 custom Python cannot install on Odoo Online.",
+    "artifact_kind_copy": "Residual full app \u2014 new model/menu; promote stays human.",
+    "promote_human": true,
+    "completeness_is_not_cert": true
+  },
+  "_contract_summary": "New app: Sophisticated Library; title \u00abSophisticated Library\u00bb",
+  "_contract_scorecard": {
+    "pass": true,
+    "findings": [],
+    "repairs": [],
+    "blocking": false,
+    "summary": "New app: Sophisticated Library; title \u00abSophisticated Library\u00bb",
+    "surfaces_expected": [],
+    "smart_button_count": 6,
+    "automation_count": 1
+  },
   "_certification": {
     "tier": "Reject",
     "quality": 99.1,
@@ -1533,6 +2797,6 @@
     ],
     "completeness_score_0_10": 9.91,
     "option_a_pending": true,
-    "note": "ModuleSpec completeness (_scorecard) is separate from Certification. Certification is separate from Job Autopilot process smoke. Promote stays human even at Gold."
+    "note": "ModuleSpec completeness (_scorecard) is separate from Certification. Certification is separate from Job Autopilot process smoke. Publishing stays a step you confirm even at Gold."
   }
 }

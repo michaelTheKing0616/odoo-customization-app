@@ -279,9 +279,11 @@ def test_ops_the_executor_cannot_apply_are_not_claimed() -> None:
     )
     assert len(_APPLIED) + len(_NOT_APPLIED) == len(OP_CATALOG)
     assert len(_APPLIED) < len(OP_CATALOG), _coverage_report()
-    assert "menu.create" in _NOT_APPLIED
+    # data.* ops apply since T8-OP-DATA. user.create (T8-OP-SEC) still has no
+    # dispatcher, so it is the real not-applied example.
+    assert "user.create" in _NOT_APPLIED
     port = FakePort()
-    plan = _plan("menu.create")
+    plan = _plan("user.create")
     with pytest.raises(DispatchError):
         apply(plan, mode="T", port=port)
     assert port.calls() == 0

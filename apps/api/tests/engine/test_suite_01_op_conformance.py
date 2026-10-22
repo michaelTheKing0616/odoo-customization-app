@@ -232,14 +232,9 @@ def _conformance_rows() -> tuple[OpConformance, ...]:
     return tuple(inspect_op(op_type, schemas=schemas, handlers=handlers) for op_type in OP_CATALOG)
 
 
-# Known debt on 2026-10-03. Not a pass. Only field.create, field.update, and
-# field.delete have every part. A new missing part fails the lock.
+# Known debt. Schema-family inverses were closed. A new missing part fails
+# the lock. Closing a remaining gap also fails it until this snapshot updates.
 _KNOWN_GAPS: dict[str, tuple[str, ...]] = {
-    "model.create": ("inverse",),
-    "model.scaffold": ("inverse",),
-    "field.deprecate": ("inverse",),
-    "selection.update": ("inverse",),
-    "constraint.sql": ("inverse",),
     "view.inherit.create": ("params_schema",),
     "view.inherit.update": ("params_schema",),
     "view.archive": ("params_schema", "inverse"),
@@ -326,8 +321,8 @@ def _failure_report(rows: tuple[OpConformance, ...]) -> str:
 def test_every_catalog_op_conforms_to_the_twelve_parts() -> None:
     """Lock the known twelve-part gap. This is not a claim that every op conforms.
 
-    Measured 2026-10-03: 3 of 63 ops pass. A new missing part fails this test.
-    Closing a gap also fails it until this snapshot is updated. Empty inverse
+    Schema-family ops now pass. A new missing part fails this test. Closing a
+    remaining gap also fails it until this snapshot is updated. Empty inverse
     stubs do not count.
     """
     rows = _conformance_rows()

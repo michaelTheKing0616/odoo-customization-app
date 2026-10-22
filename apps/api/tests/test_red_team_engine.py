@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
+from datetime import datetime, timezone
 
-from app.changeset.inbox import Inbox, InboxError
+from app.changeset.inbox import Inbox
 from app.rpc_classify import classify_rpc
 from app.worker_bot.runtime import WorkerBot
 
@@ -50,6 +50,7 @@ def test_rt17_modified_plan_is_not_the_approved_hash() -> None:
 
 
 def test_rt18_self_approval_of_r3_is_refused() -> None:
+    """R3 self-approval is allowed. One person still cannot be both heavy approvers."""
     inbox = Inbox()
     result = inbox.submit(
         [{"type": "access.create", "params": {"model": "res.partner", "name": "x_acl", "group": "sales.group_sale_user"}}],
@@ -60,13 +61,53 @@ def test_rt18_self_approval_of_r3_is_refused() -> None:
         known_models={"res.partner"},
         connection_id="c1",
     )
-    with pytest.raises(InboxError):
-        inbox.decide(
-            result["card"]["plan_hash"],
-            approver_id="u1",
-            decision="approve",
-            connection_id="c1",
-        )
+    approved = inbox.decide(
+        result["card"]["plan_hash"],
+        approver_id="u1",
+        decision="approve",
+        connection_id="c1",
+        user_id="u1",
+    )
+    assert approved["status"] == "approved"
+
+    heavy = inbox.submit(
+        [{"type": "module.uninstall", "params": {"module": "sale"}}],
+        goal="remove",
+        assumptions=[],
+        environment="production",
+        requester_id="u1",
+        known_models={"sale"},
+        connection_id="c1",
+    )
+    assert heavy["ok"] is True
+    plan_hash = heavy["card"]["plan_hash"]
+    window = {"start": "2026-10-04T14:00:00+00:00", "end": "2026-10-04T16:00:00+00:00"}
+    now = datetime(2026, 10, 4, 15, 0, tzinfo=timezone.utc)
+    first = inbox.decide(
+        plan_hash,
+        approver_id="google-ada",
+        decision="approve",
+        connection_id="c1",
+        user_id="ada",
+        simulation_passed=True,
+        backup_id="backup-1",
+        allowed_window=window,
+        now=now,
+    )
+    second = inbox.decide(
+        plan_hash,
+        approver_id="microsoft-ada",
+        decision="approve",
+        connection_id="c1",
+        user_id="ada",
+        simulation_passed=True,
+        backup_id="backup-1",
+        allowed_window=window,
+        now=now,
+    )
+    assert first["status"] == "pending"
+    assert second["status"] == "pending"
+    assert "distinct_approvers" in second["r3_blockers"]
 
 
 def test_rt_protected_param_still_forbidden() -> None:

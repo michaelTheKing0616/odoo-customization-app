@@ -1,0 +1,20 @@
+{
+  "kind": "sketch",
+  "source": "photograph",
+  "title": "Visitor Log",
+  "prompt": "Visitor log sketched on paper",
+  "regions": [
+    {
+      "id": "r1",
+      "label": "Visitor name",
+      "hint": "char",
+      "confidence": 0.9
+    },
+    {
+      "id": "r2",
+      "label": "",
+      "hint": "unknown",
+      "confidence": 0.4
+    }
+  ]
+}

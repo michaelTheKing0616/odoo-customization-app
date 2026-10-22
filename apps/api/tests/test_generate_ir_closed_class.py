@@ -52,45 +52,31 @@ _GENERATE_IR_BRIEF_BRANCH_SOURCES = (
 
 def _brief_lexeme_forbidden_in_string(value: str) -> bool:
     low = value.lower()
-    return "maintenance" in low or "service card" in low
+    return (
+        "maintenance" in low
+        or "service card" in low
+        or "service.card" in low
+        or "service_card" in low
+    )
 
 
-def _is_brief_text_expr(node: ast.AST) -> bool:
-    """Expression that likely holds operator brief / prompt text."""
-    if isinstance(node, ast.Name):
-        low = node.id.lower()
-        return "brief" in low or "prompt" in low
-    if isinstance(node, ast.Attribute):
-        if node.attr.lower() in {"lower", "casefold", "strip", "replace"}:
-            return _is_brief_text_expr(node.value)
-        return _is_brief_text_expr(node.value)
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-        if node.func.attr.lower() in {"lower", "casefold", "strip", "get"}:
-            return _is_brief_text_expr(node.func.value)
-    if isinstance(node, ast.Subscript):
-        return _is_brief_text_expr(node.value)
-    return False
+def _forbidden_lexeme_in_identifier(name: str) -> bool:
+    low = name.lower().replace(".", "_")
+    if "maintenance" in low:
+        return True
+    return "service_card" in low or "servicecard" in low
 
 
-def _forbidden_brief_membership(left: ast.AST, right: ast.AST) -> bool:
-    if isinstance(left, ast.Constant) and isinstance(left.value, str):
-        if _brief_lexeme_forbidden_in_string(left.value) and _is_brief_text_expr(right):
-            return True
-    if isinstance(right, ast.Constant) and isinstance(right.value, str):
-        if _brief_lexeme_forbidden_in_string(right.value) and _is_brief_text_expr(left):
-            return True
-    return False
-
-
-def _if_test_branches_on_forbidden_brief_lexeme(test: ast.AST) -> bool:
+def _if_test_mentions_forbidden_lexeme(test: ast.AST) -> bool:
+    """True when an ``if`` / ``elif`` condition (not a comment) names golden siblings."""
     for node in ast.walk(test):
-        if not isinstance(node, ast.Compare):
-            continue
-        cursor = node.left
-        for op, comp in zip(node.ops, node.comparators, strict=False):
-            if isinstance(op, (ast.In, ast.NotIn)) and _forbidden_brief_membership(cursor, comp):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if _brief_lexeme_forbidden_in_string(node.value):
                 return True
-            cursor = comp
+        if isinstance(node, ast.Name) and _forbidden_lexeme_in_identifier(node.id):
+            return True
+        if isinstance(node, ast.Attribute) and _forbidden_lexeme_in_identifier(node.attr):
+            return True
     return False
 
 
@@ -98,13 +84,13 @@ def _brief_lexical_branch_violations(source_path: Path) -> list[str]:
     tree = ast.parse(source_path.read_text(encoding="utf-8"), filename=str(source_path))
     hits: list[str] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.If) and _if_test_branches_on_forbidden_brief_lexeme(node.test):
+        if isinstance(node, ast.If) and _if_test_mentions_forbidden_lexeme(node.test):
             hits.append(f"{source_path.name}:{node.lineno}")
     return hits
 
 
 def test_generate_ir_sources_forbid_brief_maintenance_or_service_card_branch() -> None:
-    """T1-F2: golden siblings must not use brief-name ``if`` / ``elif`` branches."""
+    """T1-GATE: GenerateIR must not ``if`` / ``elif`` on Maintenance or Service cards."""
     violations: list[str] = []
     for path in _GENERATE_IR_BRIEF_BRANCH_SOURCES:
         violations.extend(_brief_lexical_branch_violations(path))

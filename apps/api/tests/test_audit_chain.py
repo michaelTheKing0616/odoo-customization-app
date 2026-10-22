@@ -88,6 +88,22 @@ def test_redaction() -> None:
 
 
 @pytest.mark.no_app_db
+def test_redaction_auth_secret_keys() -> None:
+    out = redact_payload(
+        {
+            "recovery_code": "unused-recovery",
+            "totp_code": "123456",
+            "oauth_code": "oauth-auth-code",
+            "totp_secret": "JBSWY3DPEHPK3PXP",
+        }
+    )
+    assert out["recovery_code"] == "[redacted]"
+    assert out["totp_code"] == "[redacted]"
+    assert out["oauth_code"] == "[redacted]"
+    assert out["totp_secret"] == "[redacted]"
+
+
+@pytest.mark.no_app_db
 def test_redaction_tuple_args_and_private_key() -> None:
     out = redact_payload({"args": ({"password": "x"},)})
     assert out["args"][0]["password"] == "[redacted]"

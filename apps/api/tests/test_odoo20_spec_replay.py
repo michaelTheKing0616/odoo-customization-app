@@ -30,7 +30,7 @@ _CLEAN_19 = """
 version: 1
 project: replay_ok
 settings:
-  - key: sale.auto_done
+  - key: group_auto_done_setting
     xmlid: replay_ok.sale_auto_done
     values:
       value: "True"
@@ -47,7 +47,7 @@ _SAFE_THEN_COMPANY_TYPE = """
 version: 1
 project: replay_half
 settings:
-  - key: sale.auto_done
+  - key: group_auto_done_setting
     xmlid: replay_half.sale_auto_done
     values:
       value: "True"
@@ -63,7 +63,7 @@ _GROUP_RULE = """
 version: 1
 project: replay_rule
 settings:
-  - key: sale.auto_done
+  - key: group_auto_done_setting
     xmlid: replay_rule.sale_auto_done
     values:
       value: "True"
@@ -79,7 +79,7 @@ _PERCENTAGE_PRICELIST = """
 version: 1
 project: replay_price
 settings:
-  - key: sale.auto_done
+  - key: group_auto_done_setting
     xmlid: replay_price.sale_auto_done
     values:
       value: "True"

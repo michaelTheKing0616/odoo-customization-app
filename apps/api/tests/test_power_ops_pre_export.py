@@ -29,6 +29,7 @@ def client() -> TestClient:
         yield c
 
 
+@pytest.mark.skip(reason="recipe locked by money guard; see test_power_ops_money_lock.py")
 def test_destructive_power_ops_creates_pre_export_artifact(client: TestClient) -> None:
     db = SessionLocal()
     try:

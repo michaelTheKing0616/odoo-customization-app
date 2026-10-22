@@ -32,7 +32,7 @@ def _pdf_draft() -> dict:
 def test_option_a_primary_caps_score_until_smoke() -> None:
     draft = _pdf_draft()
     assert draft.get("_capability_primary_option_a") is True
-    assert "Option A document extras" in str(draft.get("grain_label") or "")
+    assert "custom code document extras" in str(draft.get("grain_label") or "")
     sc = draft.get("_scorecard") or {}
     assert float(sc.get("score_0_10") or 0) <= OPTION_A_SCORE_CAP
     assert any(

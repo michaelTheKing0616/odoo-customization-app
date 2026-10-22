@@ -37,7 +37,7 @@ def test_match_car_rental_pack() -> None:
     pack_id, pack = hit
     assert pack_id == "car_rental"
     models = {m["model"] for m in pack["models"]}
-    assert "x_rent_vehicle" in models
+    assert "fleet.vehicle" in models
     assert "x_rent_contract" in models
     assert "res.partner" in models
     assert "x_rent_customer" not in models
@@ -74,10 +74,11 @@ def test_merge_fills_thin_ai_draft() -> None:
     merged, warnings = merge_domain_pack(thin, car_rental_pack())
     assert len(merged["models"]) >= 8
     assert any("domain pack added model" in w for w in warnings)
-    vehicle = next(m for m in merged["models"] if m["model"] == "x_rent_vehicle")
+    # Stock-first: rental cars are stock Fleet vehicles; the pack adds rental fields there.
+    vehicle = next(m for m in merged["models"] if m["model"] == "fleet.vehicle")
     field_names = {f["name"] for f in vehicle["fields"]}
-    assert "x_plate" in field_names
-    assert "x_vin" in field_names
+    assert "x_status" in field_names
+    assert "x_plate" not in field_names
 
 
 def test_draft_module_offline_domain_pack(client: TestClient) -> None:
@@ -217,9 +218,15 @@ def test_car_rental_in_templates(client: TestClient) -> None:
 
 
 def test_module_spec_apply_requires_confirm(client: TestClient) -> None:
+    body = {"spec": {"models": [{"model": "x_demo", "fields": []}]}}
+    preview = client.post(
+        "/api/connections/00000000-0000-0000-0000-000000000000/module-spec/apply",
+        json={**body, "dry_run": True},
+    )
+    assert preview.status_code == 200, preview.text
     res = client.post(
         "/api/connections/00000000-0000-0000-0000-000000000000/module-spec/apply",
-        json={"spec": {"models": [{"model": "x_demo", "fields": []}]}},
+        json=body,
     )
     assert res.status_code in (403, 404)
 

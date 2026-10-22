@@ -295,7 +295,7 @@ def test_oil_gas_pack_matches_drilling_prompt() -> None:
     assert pack_id == "oil_gas_operations"
     models = {m.get("model") for m in pack.get("models") or [] if isinstance(m, dict)}
     assert "x_og_facility" in models
-    assert "x_og_work_order" in models
+    assert "maintenance.request" in models  # work orders are stock Maintenance requests
     assert "x_branch" not in models
 
 
@@ -386,19 +386,19 @@ def test_odoo_app_bar_raises_oil_gas_to_senior_floor() -> None:
     pack = load_domain_pack("oil_gas_operations")
     assert pack is not None
     draft = _run_senior_app_bar(copy.deepcopy(pack), OIL_GAS_PROMPT)
-    _assert_senior_document_floor(
-        draft,
-        workflow_model="x_og_work_order",
-        site_model="x_og_facility",
-        expected_menu="Work Orders",
-    )
+    # Oct 20 pack review: work orders are stock Maintenance requests, so the senior x_ document floor
+    # no longer applies; the pack's work-order lines now hang off maintenance.request.
+    models = {m["model"]: m for m in draft["models"] if isinstance(m, dict)}
+    assert "maintenance.request" in models and "x_og_facility" in models
+    line = models.get("x_og_work_order_line") or {}
+    assert any(f.get("relation") == "maintenance.request" for f in line.get("fields") or [])
     assert len(draft.get("automations") or []) >= 2
     # Stock host smarts are cue/craft-gated (handoff T6/T7) — pack may keep
     # PO/maintenance M2O fields without Find-it buttons when uncued.
     header_fields = {
         str(f.get("relation") or "")
         for m in draft["models"]
-        if isinstance(m, dict) and m.get("model") == "x_og_work_order"
+        if isinstance(m, dict) and m.get("model") == "x_og_permit"
         for f in (m.get("fields") or [])
         if isinstance(f, dict)
     }

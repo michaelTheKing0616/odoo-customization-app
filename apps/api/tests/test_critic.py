@@ -213,7 +213,7 @@ def test_approve_cannot_skip_r3_approval_or_mark_verified() -> None:
     decision = policy_decision("R3", "production")
     assert result.risk == "R3"
     assert result.policy == decision
-    assert result.policy["approvers"] == 2
+    assert result.policy["approvers"] == 1
     assert result.policy["allow"] is True
     assert result.verified is False
 

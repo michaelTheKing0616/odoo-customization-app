@@ -17,7 +17,9 @@ _SKIP_DIR_NAMES = frozenset(
         ".ruff_cache",
     }
 )
-_DIRECT_XMLRPC = re.compile(r"import xmlrpc|xmlrpc\.client|ServerProxy")
+# ServerProxy must look like a constructor call; bare mentions in comments/docstrings
+# are not findings. Imports and xmlrpc.client attribute use remain findings.
+_DIRECT_XMLRPC = re.compile(r"import xmlrpc|xmlrpc\.client|ServerProxy\s*\(")
 _THIS_FILE = Path(__file__).resolve()
 _LEGACY_ADAPTER_ROOT = (_REPO_ROOT / "packages" / "odoo-client").resolve()
 _SANDBOX_MODULE = (_REPO_ROOT / "apps" / "api" / "app" / "sandbox.py").resolve()

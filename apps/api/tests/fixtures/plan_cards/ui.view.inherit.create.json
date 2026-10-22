@@ -71,6 +71,44 @@
       }
     ],
     "environment": "staging",
-    "plan_hash": "a1547826edfdbf5f"
+    "plan_hash": "a1547826edfdbf5f",
+    "sections": [
+      {
+        "title": "goal and assumptions",
+        "body": "Show the delivery note under the partner on the form\nthe form has a partner_id field\nthe inherit anchor matches one node"
+      },
+      {
+        "title": "each change",
+        "body": "view.inherit.create on x_delivery.order: risk R1, reversible E, ddl False"
+      },
+      {
+        "title": "impact",
+        "body": "op_count 1"
+      },
+      {
+        "title": "risk and why",
+        "body": "max R1\nper_op R1\napprovers 1"
+      },
+      {
+        "title": "what is not changing",
+        "body": "data.delete\nmodule.uninstall\nrpc.write"
+      },
+      {
+        "title": "how it will be checked",
+        "body": "postcondition:view.inherit.create"
+      },
+      {
+        "title": "how to undo",
+        "body": "view.inherit.create inverse view.archive"
+      },
+      {
+        "title": "environment",
+        "body": "staging"
+      },
+      {
+        "title": "plan fingerprint and expiry",
+        "body": "a1547826edfdbf5f\n<expires_at>"
+      }
+    ]
   }
 }

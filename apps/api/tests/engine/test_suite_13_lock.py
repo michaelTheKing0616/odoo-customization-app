@@ -1,9 +1,10 @@
-"""T8-S13. One apply per Odoo database.
+"""T8-S13 / 5C-04. One apply per Odoo database (queued, no interleave).
 
 ``apply`` uses the in-process ``DatabaseApplyLock`` when ``odoo_database``
-is set. A second apply for that database does not write while the first
-apply holds the lock. An apply for a different database may write. After
-the holder releases the lock, the next apply for that database may write.
+is set. A second apply for that database waits until the first releases
+the lock; port calls for the two change-sets do not interleave. An apply
+for a different database may run concurrently. After the holder releases
+the lock (or a recovery reclaim), the next apply for that database runs.
 
 The lock is in memory. Alembic revision ``s9t0u1v2w3x4`` declares the
 table ``apply_database_lock``. That revision is not applied. This suite
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -43,15 +45,16 @@ class CountingPort:
     def __init__(self) -> None:
         self.created: list[tuple[str, dict[str, Any]]] = []
         self.writes: list[tuple[str, list[int], dict[str, Any]]] = []
+        self._log: list[str] = []
+        self._guard = threading.Lock()
 
     def names(self) -> list[str]:
-        """Field names recorded by ``create``, in call order.
-
-        Inputs: none.
-        Outputs: the ``name`` of each stored create.
-        Side effects: none.
-        """
+        """Field names recorded by ``create``, in call order."""
         return [str(values.get("name")) for _model, values in self.created]
+
+    def call_log(self) -> list[str]:
+        with self._guard:
+            return list(self._log)
 
     def create(self, model: str, values: dict[str, Any]) -> int:
         """Record one create.
@@ -60,8 +63,10 @@ class CountingPort:
         Outputs: a 1-based id local to this object.
         Side effects: appends a copy of ``values``. Does not open a socket.
         """
-        self.created.append((model, dict(values)))
-        return len(self.created)
+        with self._guard:
+            self.created.append((model, dict(values)))
+            self._log.append(f"create:{values.get('name')}")
+            return len(self.created)
 
     def write(self, model: str, ids: list[int], values: dict[str, Any]) -> None:
         """Record one write.
@@ -70,7 +75,9 @@ class CountingPort:
         Outputs: none.
         Side effects: appends copies. Does not open a socket.
         """
-        self.writes.append((model, list(ids), dict(values)))
+        with self._guard:
+            self.writes.append((model, list(ids), dict(values)))
+            self._log.append(f"write:{model}")
 
 
 class HoldingPort(CountingPort):
@@ -83,23 +90,11 @@ class HoldingPort(CountingPort):
         self._hold_names: set[str] = set()
 
     def hold_on(self, field_name: str) -> None:
-        """Pause the next create of this field until ``may_finish`` is set.
-
-        Inputs: field name stored on the create values.
-        Outputs: none.
-        Side effects: remembers ``field_name``. Does not open a socket.
-        """
+        """Pause the next create of this field until ``may_finish`` is set."""
         self._hold_names.add(field_name)
 
     def create(self, model: str, values: dict[str, Any]) -> int:
-        """Record one create, then wait when this field is held.
-
-        Inputs: model name and values.
-        Outputs: a 1-based id local to this object.
-        Side effects: appends a copy of ``values``. A held field sets
-        ``holding`` and waits. Does not open a socket.
-        Raises TimeoutError when the wait exceeds ``_HOLD_WAIT_SECONDS``.
-        """
+        """Record one create, then wait when this field is held."""
         created_id = super().create(model, values)
         name = str(values.get("name") or "")
         if name in self._hold_names:
@@ -107,6 +102,18 @@ class HoldingPort(CountingPort):
             if not self.may_finish.wait(timeout=_HOLD_WAIT_SECONDS):
                 raise TimeoutError("holding apply was not released")
         return created_id
+
+
+class SlowSharedPort(CountingPort):
+    """Shared port that sleeps briefly on each create so order is observable."""
+
+    def __init__(self, delay: float = 0.05) -> None:
+        super().__init__()
+        self.delay = delay
+
+    def create(self, model: str, values: dict[str, Any]) -> int:
+        time.sleep(self.delay)
+        return super().create(model, values)
 
 
 class _InFlight:
@@ -136,12 +143,7 @@ def _clean_journal() -> None:
 
 
 def _field(name: str) -> dict[str, Any]:
-    """One ``field.create`` on ``x_test.model``.
-
-    Inputs: a field name that starts with ``x_``.
-    Outputs: one op dict.
-    Side effects: none.
-    """
+    """One ``field.create`` on ``x_test.model``."""
     return {
         "type": "field.create",
         "params": {"model": "x_test.model", "name": name, "field_type": "char"},
@@ -149,42 +151,16 @@ def _field(name: str) -> dict[str, Any]:
 
 
 def _plan(name: str) -> list[dict[str, Any]]:
-    """A one-op change-set.
-
-    Inputs: field name.
-    Outputs: a list of one ``field.create``.
-    Side effects: none.
-    """
+    """A one-op change-set."""
     return [_field(name)]
 
 
-def _assert_busy(result: dict[str, Any], database: str, port: CountingPort) -> None:
-    """The apply stopped closed and did not write.
-
-    Inputs: the apply result, the database name, and the port passed to that apply.
-    Outputs: none.
-    Side effects: none.
-    Raises AssertionError when the apply wrote or reported success.
-    """
-    assert result["status"] == "NEEDS_HUMAN"
-    assert result["applied_count"] == 0
-    assert result["report"]["reason"] == "database_busy"
-    assert result["report"]["odoo_database"] == database
-    assert result["report"]["results"] == []
-    assert result["report"]["missing"] == []
-    assert port.created == []
-    assert port.writes == []
+def _plan_two(a: str, b: str) -> list[dict[str, Any]]:
+    return [_field(a), _field(b)]
 
 
 def _assert_holder_finished(flight: _InFlight) -> None:
-    """The in-flight apply finished after releasing its database.
-
-    Inputs: the flight started by ``_apply_holding``.
-    Outputs: none.
-    Side effects: none.
-    Raises AssertionError when that apply did not verify one create, or the
-    in-process lock is still held.
-    """
+    """The in-flight apply finished after releasing its database."""
     assert flight.errors == []
     assert len(flight.results) == 1
     holder = flight.results[0]
@@ -197,15 +173,7 @@ def _assert_holder_finished(flight: _InFlight) -> None:
 
 @contextmanager
 def _apply_holding(database: str, field_name: str, *, mode: str) -> Iterator[_InFlight]:
-    """Start one apply and yield while that call holds the database lock.
-
-    Inputs: Odoo database name, field name, and mode T or C.
-    Outputs: the in-flight apply. Its port is paused inside ``create``.
-    Side effects: starts a thread that calls ``apply`` with ``odoo_database``
-    set. The thread uses the process lock. On exit the port is released and
-    the thread is joined, which releases that lock. Does not open a socket
-    and does not insert a lock row.
-    """
+    """Start one apply and yield while that call holds the database lock."""
     port = HoldingPort()
     port.hold_on(field_name)
     plan = _plan(field_name)
@@ -236,36 +204,52 @@ def _apply_holding(database: str, field_name: str, *, mode: str) -> Iterator[_In
 
 
 @pytest.mark.parametrize("mode", ["T", "C"])
-def test_second_apply_same_database_does_not_write(mode: str) -> None:
-    """A second apply on a held database does not write and fails closed.
+def test_second_apply_same_database_queues_without_interleave(mode: str) -> None:
+    """Two applies on one database: second waits; port log is not interleaved.
 
-    The first apply is inside its port and holds the process lock. The second
-    plan is a different change-set for the same database. Its port stays empty
-    and the journal does not gain that plan.
+    Each change-set has two ops. A shared slow port records creates. The
+    first change-set's two creates finish before the second change-set's
+    first create. Both applies verify.
     """
-    second = CountingPort()
-    second_plan = _plan("x_busy")
-    with _apply_holding("db-a", "x_hold", mode=mode) as flight:
-        journal_before = get_journal()
-        blocked = apply(second_plan, mode=mode, port=second, odoo_database="db-a")
-        _assert_busy(blocked, "db-a", second)
-        assert get_journal() == journal_before
-        assert _APPLY_LOCK.holder("db-a") == changeset_fingerprint(flight.plan)
-        busy_fp = changeset_fingerprint(second_plan)
-        assert not any(
-            entry.get("plan_hash") == busy_fp or entry.get("run_id") == busy_fp
-            for entry in get_journal()
-        )
-    _assert_holder_finished(flight)
+    port = SlowSharedPort(delay=0.04)
+    first_plan = _plan_two("x_a1", "x_a2")
+    second_plan = _plan_two("x_b1", "x_b2")
+    results: dict[str, dict[str, Any]] = {}
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(2)
+
+    def _run(label: str, plan: list[dict[str, Any]]) -> None:
+        try:
+            barrier.wait(timeout=2.0)
+            results[label] = apply(plan, mode=mode, port=port, odoo_database="db-a")
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=_run, args=("first", first_plan))
+    t2 = threading.Thread(target=_run, args=("second", second_plan))
+    t1.start()
+    t2.start()
+    t1.join(timeout=5.0)
+    t2.join(timeout=5.0)
+    assert errors == []
+    assert not t1.is_alive() and not t2.is_alive()
+    assert results["first"]["status"] == "VERIFIED"
+    assert results["second"]["status"] == "VERIFIED"
+    log = port.call_log()
+    assert log.count("create:x_a1") == 1
+    assert log.count("create:x_a2") == 1
+    assert log.count("create:x_b1") == 1
+    assert log.count("create:x_b2") == 1
+    # One change-set fully before the other (no interleave).
+    a_block = ["create:x_a1", "create:x_a2"]
+    b_block = ["create:x_b1", "create:x_b2"]
+    assert log == a_block + b_block or log == b_block + a_block
+    assert _APPLY_LOCK.holder("db-a") is None
 
 
 @pytest.mark.parametrize("mode", ["T", "C"])
 def test_different_database_may_apply_while_lock_is_held(mode: str) -> None:
-    """An apply for another database writes while the first database stays held.
-
-    The in-flight apply keeps ``db-a``. The apply for ``db-b`` verifies one
-    create. ``db-a`` is still held by the first plan afterward.
-    """
+    """An apply for another database writes while the first database stays held."""
     side = CountingPort()
     side_plan = _plan("x_side")
     with _apply_holding("db-a", "x_hold", mode=mode) as flight:
@@ -286,24 +270,34 @@ def test_different_database_may_apply_while_lock_is_held(mode: str) -> None:
 
 
 @pytest.mark.parametrize("mode", ["T", "C"])
-def test_release_allows_the_next_apply(mode: str) -> None:
-    """After the holder finishes, the apply that was blocked writes once.
-
-    While the lock is held the second port stays empty. After the holder
-    releases it, the same plan verifies and that port records one create.
-    """
+def test_queued_apply_runs_after_holder_releases(mode: str) -> None:
+    """A second apply started while the lock is held completes after release."""
     nxt = CountingPort()
     nxt_plan = _plan("x_after")
+    queued: list[dict[str, Any]] = []
+    errors: list[BaseException] = []
+
+    def _queued() -> None:
+        try:
+            queued.append(apply(nxt_plan, mode=mode, port=nxt, odoo_database="db-a"))
+        except BaseException as exc:
+            errors.append(exc)
+
     with _apply_holding("db-a", "x_hold", mode=mode) as flight:
-        blocked = apply(nxt_plan, mode=mode, port=nxt, odoo_database="db-a")
-        _assert_busy(blocked, "db-a", nxt)
+        thread = threading.Thread(target=_queued)
+        thread.start()
+        # Queued apply must not have written yet while holder is mid-port.
+        time.sleep(0.05)
+        assert nxt.created == []
+        assert _APPLY_LOCK.holder("db-a") == changeset_fingerprint(flight.plan)
+    thread.join(timeout=_HOLD_WAIT_SECONDS)
+    assert errors == []
+    assert not thread.is_alive()
     _assert_holder_finished(flight)
-    assert _APPLY_LOCK.holder("db-a") is None
-    released = apply(nxt_plan, mode=mode, port=nxt, odoo_database="db-a")
-    assert released["status"] == "VERIFIED"
-    assert released["applied_count"] == 1
+    assert len(queued) == 1
+    assert queued[0]["status"] == "VERIFIED"
+    assert queued[0]["applied_count"] == 1
     assert nxt.names() == ["x_after"]
-    assert nxt.writes == []
     assert flight.port.names() == ["x_hold"]
     assert _APPLY_LOCK.holder("db-a") is None
 

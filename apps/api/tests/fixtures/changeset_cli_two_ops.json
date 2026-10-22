@@ -1,0 +1,27 @@
+{
+  "goal": "Add a customer reference on sales orders and show it on the form",
+  "assumptions": ["sale.order is already installed."],
+  "environment": "staging",
+  "known_models": ["sale.order"],
+  "requester_id": "operator",
+  "connection_id": "fake",
+  "approvals": [{"approver_id": "operator", "decision": "approve"}],
+  "ops": [
+    {
+      "type": "field.create",
+      "params": {"model": "sale.order", "name": "x_customer_ref", "ttype": "char", "field_description": "Customer Ref"}
+    },
+    {
+      "type": "view.inherit.create",
+      "params": {
+        "model": "sale.order",
+        "name": "sale.order.form.x_customer_ref",
+        "inherit_id": "sale.view_order_form",
+        "xpath": "//field[@name='partner_id']",
+        "position": "after",
+        "arch": "<field name='x_customer_ref'/>",
+        "expect_matches": 1
+      }
+    }
+  ]
+}

@@ -69,6 +69,44 @@
       }
     ],
     "environment": "staging",
-    "plan_hash": "fa00c24f574417bb"
+    "plan_hash": "fa00c24f574417bb",
+    "sections": [
+      {
+        "title": "goal and assumptions",
+        "body": "Set the default delivery note text\nthe key is not a module_ setting\nthe value is plain text"
+      },
+      {
+        "title": "each change",
+        "body": "setting.set on x_delivery.default_note: risk R2, reversible E, ddl False"
+      },
+      {
+        "title": "impact",
+        "body": "op_count 1"
+      },
+      {
+        "title": "risk and why",
+        "body": "max R2\nper_op R2\napprovers 1"
+      },
+      {
+        "title": "what is not changing",
+        "body": "data.delete\nmodule.uninstall\nrpc.write"
+      },
+      {
+        "title": "how it will be checked",
+        "body": "postcondition:setting.set"
+      },
+      {
+        "title": "how to undo",
+        "body": "setting.set irreversible"
+      },
+      {
+        "title": "environment",
+        "body": "staging"
+      },
+      {
+        "title": "plan fingerprint and expiry",
+        "body": "fa00c24f574417bb\n<expires_at>"
+      }
+    ]
   }
 }

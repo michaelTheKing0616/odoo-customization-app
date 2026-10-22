@@ -18,15 +18,15 @@ def test_car_rental_seed_has_vehicles() -> None:
     pack = get_seed_pack("car_rental")
     assert pack is not None
     models = {m["model"] for m in pack["models"]}
-    assert "x_rent_vehicle" in models
-    csv = next(m["csv"] for m in pack["models"] if m["model"] == "x_rent_vehicle")
-    assert "Toyota" in csv
+    assert "fleet.vehicle" in models
+    csv = next(m["csv"] for m in pack["models"] if m["model"] == "fleet.vehicle")
+    assert "license_plate" in csv
     assert "available" in csv
 
 
 def test_template_csv_uses_industry_seeds() -> None:
-    csv = template_csv("x_rent_vehicle")
-    assert "ABC-101-LA" in csv or "Toyota" in csv
+    csv = template_csv("x_rent_vehicle")  # old name aliases to fleet.vehicle
+    assert "ABC-101-LA" in csv
     assert template_csv_for_model("x_lib_book") is not None
 
 

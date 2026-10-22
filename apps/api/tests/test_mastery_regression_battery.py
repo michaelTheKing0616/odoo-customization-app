@@ -48,7 +48,7 @@ from odoo_client.client import OdooClientError  # noqa: E402
 ONLINE_REFUSE_EXACT = (
     "Hosting looks like Odoo Online: metadata customization and data/XML "
     "module import are OK; custom Python modules cannot be installed on Online — "
-    "export install_mode=data or use Odoo.sh / self-host for Option A Python."
+    "export install_mode=data or use Odoo.sh / self-host for custom-code Python."
 )
 
 PROMOTE_ONLINE_SUBSTRING = "Odoo Online cannot install custom Python modules"

@@ -77,7 +77,7 @@ def test_refine_cbn_on_purchase_request_is_refused() -> None:
     pack = purchase_request_pack()
     result = apply_refinement(pack, CBN_PROMPT)
     assert result["ok"] is False
-    assert "Option A" in str(result.get("error") or "")
+    assert "custom code" in str(result.get("error") or "")
     assert result["draft"].get("display_name") == pack.get("display_name")
 
 

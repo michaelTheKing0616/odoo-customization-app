@@ -134,7 +134,9 @@ def test_s1_contacts_diagnosis_prefills_must_do() -> None:
     assert "preferred for delivery" in joined
     assert "delivery notes" in joined
     assert "delivery group" in joined
-    assert "new home-screen app" in joined or "do not create" in joined
+    # Exclusions never become Must do rows; they are listed as left out (out of scope).
+    assert "do not create" not in joined
+    assert "home-screen app" in " | ".join(u.out_of_scope).lower()
     card = diagnosis_clarification(u)
     assert card["kind"] == "diagnosis"
     assert card["understanding"]["constraints"]

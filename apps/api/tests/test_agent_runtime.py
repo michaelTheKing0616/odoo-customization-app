@@ -170,22 +170,28 @@ def test_r4_is_refused_even_with_a_matching_hash() -> None:
     assert state.phase == "AWAITING_APPROVAL"
 
 
-def test_r3_self_approval_is_refused() -> None:
+def test_r3_self_approval_is_allowed() -> None:
     reset_journal()
     runtime = AgentRuntime()
     state = _reach_approval(
         runtime,
         {"type": "access.create", "params": {"model": "sale.order", "group": "sales"}},
     )
+    assert state.plan_hash
     result = runtime.approve(
         state,
-        plan_hash=state.plan_hash or "",
+        plan_hash=state.plan_hash,
         approver_id="u1",
         requester_id="u1",
         known_models={"sale.order"},
     )
-    assert result["applied"] is False
-    assert result["error"] == "SELF_APPROVAL"
+    assert "error" not in result
+    assert result["applied"] is True
+    assert result["status"] == "verified"
+    assert state.phase == "REPORT"
+    status = runtime.call_tool(state, "changeset_status", {})
+    assert status["tainted"] is False
+    assert '"applied": true' in status["untrusted_data"]
 
 
 _PHASES_INTAKE_THROUGH_REPORT = (

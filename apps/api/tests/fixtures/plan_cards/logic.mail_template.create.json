@@ -67,6 +67,44 @@
       }
     ],
     "environment": "staging",
-    "plan_hash": "e5c7b493d9ac6caa"
+    "plan_hash": "e5c7b493d9ac6caa",
+    "sections": [
+      {
+        "title": "goal and assumptions",
+        "body": "Add a mail template for the delivery note\nmail is installed\nthe template name is unused"
+      },
+      {
+        "title": "each change",
+        "body": "mail_template.create on x_delivery.order: risk R1, reversible E, ddl False"
+      },
+      {
+        "title": "impact",
+        "body": "op_count 1"
+      },
+      {
+        "title": "risk and why",
+        "body": "max R1\nper_op R1\napprovers 1"
+      },
+      {
+        "title": "what is not changing",
+        "body": "data.delete\nmodule.uninstall\nrpc.write"
+      },
+      {
+        "title": "how it will be checked",
+        "body": "postcondition:mail_template.create"
+      },
+      {
+        "title": "how to undo",
+        "body": "mail_template.create inverse mail_template.update"
+      },
+      {
+        "title": "environment",
+        "body": "staging"
+      },
+      {
+        "title": "plan fingerprint and expiry",
+        "body": "e5c7b493d9ac6caa\n<expires_at>"
+      }
+    ]
   }
 }

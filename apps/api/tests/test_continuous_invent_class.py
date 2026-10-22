@@ -1,6 +1,6 @@
 """P3 continuous invent — multi-brief class goldens (not Vehicle-only).
 
-AI_INTENT_LLM=off deterministic floor. Completeness ≠ Cert ≠ Autopilot.
+AI_INTENT_LLM=off deterministic floor. A complete draft is not the same as certified ≠ Autopilot.
 """
 
 from __future__ import annotations

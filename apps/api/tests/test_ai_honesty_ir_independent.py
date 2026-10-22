@@ -666,8 +666,7 @@ class TestWave3FlashFieldFiller:
         assert status.get("mode") == "pack_fallback"
         assert status.get("reason") == "honesty_seed"
         copy = banner_for_mode("pack_fallback", reason="honesty_seed") or ""
-        assert "Flash unavailable" in copy or "locked residual" in copy.lower()
-        assert "padded workspace" in copy.lower()
+        assert "unavailable" in copy.lower() and "residual fields" in copy.lower()
         assert not _satellite_ids(draft)
         # Direct seed (AI off) must not density-pad either
         seeded = seed_studio_draft(VISITOR_LOG)

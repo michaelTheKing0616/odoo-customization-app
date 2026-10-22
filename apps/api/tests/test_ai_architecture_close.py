@@ -423,7 +423,8 @@ def test_engagement_and_agreement_menus_are_operations() -> None:
     assert _menu_category("Agreements", "x_agreement") == "Operations"
 
 
-def test_pack_draft_keeps_curated_payment_model() -> None:
+def test_pack_draft_drops_payment_duplicate_of_stock() -> None:
+    # Oct 20 pack review: hospital payments are stock account.payment, so x_payment is not curated.
     draft = {
         "domain_pack": "hospital",
         "depends": ["account"],
@@ -442,7 +443,8 @@ def test_pack_draft_keeps_curated_payment_model() -> None:
     }
     close_odoo_architecture(draft, user_prompt="hospital clinic appointments")
     ids = {m["model"] for m in draft["models"]}
-    assert "x_payment" in ids
+    assert "x_payment" not in ids
+    assert "x_appointment" in ids
 
 
 def test_senior_sequence_prefix_uses_whole_word() -> None:

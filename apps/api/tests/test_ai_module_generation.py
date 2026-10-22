@@ -41,14 +41,13 @@ from odoo_client.models import CreateFieldRequest, CreateModelRequest, FieldType
 
 REQUIRED_CAR_RENTAL_MODELS = {
     "x_rent_branch",
-    "x_rent_vehicle",
+    "fleet.vehicle",  # stock Fleet extended, not a parallel x_rent_vehicle
     "res.partner",
     "x_rent_rate",
     "x_rent_extra",
     "x_rent_contract",
     "x_rent_damage",
-    "x_rent_maintenance",
-}
+}  # maintenance = stock fleet.vehicle.log.services
 
 FORBIDDEN_CAR_RENTAL_CLONES = {"x_rent_customer", "x_rent_payment"}
 
@@ -129,14 +128,14 @@ class TestDomainPacks:
         models = {m["model"] for m in pack["models"]}
         assert REQUIRED_CAR_RENTAL_MODELS.issubset(models)
         assert FORBIDDEN_CAR_RENTAL_CLONES.isdisjoint(models)
-        assert len(pack["models"]) >= 8
+        assert len(pack["models"]) >= 7
 
     def test_car_rental_pack_smart_buttons_and_automations(self) -> None:
         pack = car_rental_pack()
         assert pack["smart_buttons"], "expected smart_buttons metadata"
         assert pack["automations"], "expected automation stubs"
         btn_models = {b["on_model"] for b in pack["smart_buttons"]}
-        assert "x_rent_vehicle" in btn_models
+        assert "fleet.vehicle" in btn_models
         assert "x_rent_contract" in btn_models
         auto_names = {a["name"] for a in pack["automations"]}
         assert any("rented" in n.lower() or "confirm" in n.lower() for n in auto_names)
@@ -155,7 +154,7 @@ class TestDomainPacks:
 
     def test_vehicle_status_selection_values(self) -> None:
         pack = car_rental_pack()
-        vehicle = next(m for m in pack["models"] if m["model"] == "x_rent_vehicle")
+        vehicle = next(m for m in pack["models"] if m["model"] == "fleet.vehicle")
         status = next(f for f in vehicle["fields"] if f["name"] == "x_status")
         assert status["ttype"] == "selection"
         selection = status["selection"]
@@ -321,8 +320,8 @@ class TestEnrich:
         assert meta["smart_button_count"] == len(draft.get("smart_buttons") or [])
         assert meta["automation_count"] == len(draft.get("automations") or [])
         assert meta["domain_pack"] == "car_rental"
-        assert meta["model_count"] >= 8
-        assert meta["view_count"] >= 14  # list+form per residual model
+        assert meta["model_count"] >= 7
+        assert meta["view_count"] >= 12  # list+form per residual model (fleet.vehicle is stock)
 
 
 # ===========================================================================
@@ -343,12 +342,13 @@ class TestMergePack:
         assert "x_rent_customer" not in models
         assert "x_rent_payment" not in models
 
-        vehicle = models["x_rent_vehicle"]
+        # Stock-first: the pack extends stock Fleet (plate/VIN are stock fields), not a new vehicle model.
+        vehicle = models["fleet.vehicle"]
         field_names = {f["name"] for f in vehicle["fields"]}
-        assert "x_plate" in field_names
-        assert "x_vin" in field_names
+        assert "x_plate" not in field_names
         assert "x_status" in field_names
-        assert "x_ai_only" in field_names, "AI extra field must be preserved"
+        ai_vehicle = {f["name"] for f in models["x_rent_vehicle"]["fields"]}
+        assert "x_ai_only" in ai_vehicle, "AI extra field must be preserved"
 
         assert any("domain pack added model" in w for w in warnings)
         assert any("domain pack added field" in w for w in warnings)
@@ -488,7 +488,7 @@ class TestApiContract:
         assert body["draft"]["menus"]
         models = {m["model"] for m in body["draft"]["models"]}
         assert "x_rent_contract" in models
-        assert "x_rent_vehicle" in models
+        assert "fleet.vehicle" in models
 
     def test_draft_module_async_law_firm_skips_1800s_job(self, client: TestClient) -> None:
         """Create draft with async_job must not queue an LLM job when a pack matches."""
@@ -582,11 +582,10 @@ class TestApiContract:
         assert body["domain_pack"] == "car_rental"
         assert len(body["draft"]["models"]) >= 5
         vehicle = next(
-            m for m in body["draft"]["models"] if m["model"] == "x_rent_vehicle"
+            m for m in body["draft"]["models"] if m["model"] == "fleet.vehicle"
         )
         names = {f["name"] for f in vehicle["fields"]}
-        assert "x_plate" in names
-        assert len(names) >= 5
+        assert "x_status" in names and "x_plate" not in names
         assert body["draft"]["views"]
 
     def test_ai_status_includes_domain_packs(self, client: TestClient) -> None:
@@ -602,9 +601,15 @@ class TestApiContract:
         assert "ollama_base_url" in body or "ollama_model" in body or "provider" in body
 
     def test_module_spec_apply_without_confirm(self, client: TestClient) -> None:
+        body = {"spec": {"models": [{"model": "x_demo", "fields": []}]}}
+        preview = client.post(
+            "/api/connections/00000000-0000-0000-0000-000000000000/module-spec/apply",
+            json={**body, "dry_run": True},
+        )
+        assert preview.status_code == 200, preview.text
         res = client.post(
             "/api/connections/00000000-0000-0000-0000-000000000000/module-spec/apply",
-            json={"spec": {"models": [{"model": "x_demo", "fields": []}]}},
+            json=body,
         )
         # Missing connection → 404; if connection existed without confirm → 403
         assert res.status_code in (403, 404), res.text

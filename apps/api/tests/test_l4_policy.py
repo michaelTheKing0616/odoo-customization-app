@@ -4,6 +4,15 @@ from __future__ import annotations
 
 from app.worker_bot.l4_policy import l4_eligible, l4_may_apply
 
+_PLAN_HASH = "a" * 16
+_VERIFIED_STAGING = {
+    "plan_mode": "T",
+    "plan_hash": _PLAN_HASH,
+    "staging_applies": (
+        {"plan_hash": _PLAN_HASH, "verified": True, "environment": "staging"},
+    ),
+}
+
 
 def test_short_history_is_not_eligible() -> None:
     assert l4_eligible(applies=199, days=60, rollback_rate=0.0, verify_failures=0) is False
@@ -17,9 +26,66 @@ def test_full_history_is_eligible() -> None:
 
 
 def test_l4_refuses_r3_modules_and_large_blasts() -> None:
-    assert l4_may_apply(risk="R1", op_type="mail_template.create", rows=1, mode_t=True, staging_verified=True)
-    assert l4_may_apply(risk="R3", op_type="access.create", rows=1, mode_t=True, staging_verified=True) is False
-    assert l4_may_apply(risk="R1", op_type="module.install", rows=1, mode_t=True, staging_verified=True) is False
-    assert l4_may_apply(risk="R1", op_type="mail_template.create", rows=51, mode_t=True, staging_verified=True) is False
-    assert l4_may_apply(risk="R1", op_type="mail_template.create", rows=1, mode_t=False, staging_verified=True) is False
-    assert l4_may_apply(risk="R1", op_type="mail_template.create", rows=1, mode_t=True, staging_verified=False) is False
+    assert l4_may_apply(
+        risk="R1",
+        op_type="mail_template.create",
+        rows=1,
+        mode_t=True,
+        staging_verified=True,
+        **_VERIFIED_STAGING,
+    )
+    assert (
+        l4_may_apply(
+            risk="R3",
+            op_type="access.create",
+            rows=1,
+            mode_t=True,
+            staging_verified=True,
+            **_VERIFIED_STAGING,
+        )
+        is False
+    )
+    assert (
+        l4_may_apply(
+            risk="R1",
+            op_type="module.install",
+            rows=1,
+            mode_t=True,
+            staging_verified=True,
+            **_VERIFIED_STAGING,
+        )
+        is False
+    )
+    assert (
+        l4_may_apply(
+            risk="R1",
+            op_type="mail_template.create",
+            rows=51,
+            mode_t=True,
+            staging_verified=True,
+            **_VERIFIED_STAGING,
+        )
+        is False
+    )
+    assert (
+        l4_may_apply(
+            risk="R1",
+            op_type="mail_template.create",
+            rows=1,
+            mode_t=False,
+            staging_verified=True,
+            **_VERIFIED_STAGING,
+        )
+        is False
+    )
+    assert (
+        l4_may_apply(
+            risk="R1",
+            op_type="mail_template.create",
+            rows=1,
+            mode_t=True,
+            staging_verified=False,
+            **_VERIFIED_STAGING,
+        )
+        is False
+    )

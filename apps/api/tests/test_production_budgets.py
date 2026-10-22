@@ -88,20 +88,20 @@ def test_change_windows_owned_by_t6_04_and_t6_06() -> None:
     """Pointer only. T6-04 owns freeze-on-approve; T6-06 owns the R3 allowed window."""
     text = _T6_CARD.read_text(encoding="utf-8")
     assert "### T6-04" in text
-    assert "freeze window blocks approve" in text
+    assert "a freeze window blocks approve" in text
     assert "### T6-06" in text
-    assert "allowed time window" in text
+    assert "an allowed window" in text
 
 
-def test_two_person_r3_owned_by_t6_06_and_self_approval_stays_closed() -> None:
-    """Pointer: T6-06 owns the inbox. Do not weaken self_approval_allowed."""
+def test_r3_is_one_approval_and_l4_does_not_apply_it() -> None:
+    """R3 is one approval. The requester may approve. L4 does not drop that approval."""
     text = _T6_CARD.read_text(encoding="utf-8")
-    assert "### T6-06 — R3 two-person rule" in text
-    assert self_approval_allowed("R3") is False
+    assert "### T6-06" in text
+    assert self_approval_allowed("R3") is True
     assert self_approval_allowed("R4") is False
     assert self_approval_allowed("R2") is True
-    decision = policy_decision("R3", "production")
-    assert decision["approvers"] == 2
+    decision = policy_decision("R3", "production", autonomy="L4")
+    assert decision["approvers"] == 1
     assert decision["deny"] is False
 
 

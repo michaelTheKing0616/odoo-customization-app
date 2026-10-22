@@ -75,6 +75,44 @@
       }
     ],
     "environment": "staging",
-    "plan_hash": "9cdcdfa7f32a5e68"
+    "plan_hash": "9cdcdfa7f32a5e68",
+    "sections": [
+      {
+        "title": "goal and assumptions",
+        "body": "Let the delivery user group read the delivery order\nthe group x_delivery_user already exists\nthis is not a group-less ACL"
+      },
+      {
+        "title": "each change",
+        "body": "access.update on x_delivery.order: risk R3, reversible E, ddl False"
+      },
+      {
+        "title": "impact",
+        "body": "op_count 1"
+      },
+      {
+        "title": "risk and why",
+        "body": "max R3\nper_op R3\napprovers 1"
+      },
+      {
+        "title": "what is not changing",
+        "body": "data.delete\nmodule.uninstall\nrpc.write"
+      },
+      {
+        "title": "how it will be checked",
+        "body": "postcondition:access.update"
+      },
+      {
+        "title": "how to undo",
+        "body": "access.update inverse access.update"
+      },
+      {
+        "title": "environment",
+        "body": "staging"
+      },
+      {
+        "title": "plan fingerprint and expiry",
+        "body": "9cdcdfa7f32a5e68\n<expires_at>"
+      }
+    ]
   }
 }

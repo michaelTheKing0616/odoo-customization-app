@@ -21,7 +21,7 @@ def test_build_test_enable_argv_contains_flags() -> None:
     assert "-u" in argv
     assert argv[argv.index("-u") + 1] == "x_demo_app"
     assert "-d" in argv
-    assert argv[argv.index("-d") + 1] == "sandbox_test"
+    assert argv[argv.index("-d") + 1] == "ingenium_sandbox_test"
 
 
 def test_parse_odoo_test_output_fail_and_error_lines() -> None:

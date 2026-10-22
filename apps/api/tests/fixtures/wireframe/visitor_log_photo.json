@@ -1,0 +1,37 @@
+{
+  "kind": "sketch",
+  "source": "photograph",
+  "media": "visitor_log_whiteboard.jpg",
+  "notes": "Phone photo of a whiteboard form. Ink is uneven; labels are still readable.",
+  "title": "Visitor Log",
+  "prompt": "Visitor log with visitor name, visit date, host, and photo",
+  "regions": [
+    {
+      "id": "r1",
+      "label": "Visitor name",
+      "hint": "char",
+      "confidence": 0.92
+    },
+    {
+      "id": "r2",
+      "label": "Visit date",
+      "hint": "date",
+      "confidence": 0.88
+    },
+    {
+      "id": "r3",
+      "label": "Host",
+      "hint": "host",
+      "widget": "many2one_avatar_user",
+      "relation": "res.users",
+      "confidence": 0.81
+    },
+    {
+      "id": "r4",
+      "label": "Photo",
+      "hint": "image",
+      "widget": "image",
+      "confidence": 0.79
+    }
+  ]
+}

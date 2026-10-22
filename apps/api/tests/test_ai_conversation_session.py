@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 import os
 
 import pytest
@@ -456,7 +457,8 @@ def test_sync_job_loads_background_job_into_review(client: TestClient) -> None:
     db = SessionLocal()
     try:
         job = BackgroundJob(
-            id="job-sync-test-1",
+            # Unique per run: the test DB persists across runs, a fixed id collides.
+            id=f"job-sync-test-{uuid.uuid4().hex[:12]}",
             kind="ai_draft",
             status="succeeded",
             result_json=json.dumps({"ok": True, "draft": draft}),

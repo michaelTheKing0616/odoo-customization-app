@@ -439,4 +439,4 @@ def test_checklist_letterhead_vs_option_a_qweb() -> None:
         documents=ConfigDocuments(logo_upload_needed=True, option_a_qweb_needed=True)
     )
     labels = [i.label for i in build_checklist(option_a, None) if i.id == "brand"]
-    assert labels and "Option A" in labels[0]
+    assert labels and "Custom-code module" in labels[0]

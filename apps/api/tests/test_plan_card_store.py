@@ -38,6 +38,8 @@ def test_persisted_card_is_scoped_to_the_connection() -> None:
             approver_id="user-2",
             decision="approve",
             connection_id=connection,
+            body_plan_hash=result["card"]["plan_hash"],
+            schema_fp=result["card"]["schema_fp"],
         )
         assert card["status"] == "approved"
     finally:

@@ -450,3 +450,82 @@ def test_menus_delete_requires_confirm(client: TestClient, fake_odoo) -> None:
     )
     assert denied.status_code == 403
     assert denied.json()["detail"]["requires_confirmation"] is True
+
+
+# --- DOC-MAIL: mail.template shares PDF-05 unsafe gate family ---
+
+
+def test_doc_mail_create_refuses_script(client: TestClient, fake_odoo) -> None:
+    cid, _fake = fake_odoo
+    res = client.post(
+        f"/api/connections/{cid}/config/mail-templates",
+        json={
+            "name": "Bad",
+            "model": "res.partner",
+            "subject": "Hi",
+            "body_html": "<p>x</p><script>alert(1)</script>",
+            "email_to": "{{ object.email }}",
+        },
+    )
+    assert res.status_code == 400
+    assert "script" in res.json()["detail"].lower()
+
+
+def test_doc_mail_create_refuses_t_raw(client: TestClient, fake_odoo) -> None:
+    cid, _fake = fake_odoo
+    res = client.post(
+        f"/api/connections/{cid}/config/mail-templates",
+        json={
+            "name": "Bad raw",
+            "model": "res.partner",
+            "subject": "Hi",
+            "body_html": '<div t-raw="object.note"/>',
+            "email_to": "{{ object.email }}",
+        },
+    )
+    assert res.status_code == 400
+    assert "t-raw" in res.json()["detail"].lower()
+
+
+def test_doc_mail_create_allows_jinja_placeholder(client: TestClient, fake_odoo) -> None:
+    cid, _fake = fake_odoo
+    res = client.post(
+        f"/api/connections/{cid}/config/mail-templates",
+        json={
+            "name": "Good",
+            "model": "res.partner",
+            "subject": "Hello {{ object.name }}",
+            "body_html": "<p>Welcome {{ object.name }}</p>",
+            "email_to": "{{ object.email }}",
+        },
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["name"] == "Good"
+
+
+def test_doc_mail_patch_refuses_xxe(client: TestClient, fake_odoo) -> None:
+    cid, _fake = fake_odoo
+    created = client.post(
+        f"/api/connections/{cid}/config/mail-templates",
+        json={
+            "name": "Patch me",
+            "model": "res.partner",
+            "subject": "Hi",
+            "body_html": "<p>ok</p>",
+            "email_to": "{{ object.email }}",
+        },
+    )
+    assert created.status_code == 201
+    tid = created.json()["id"]
+    res = client.patch(
+        f"/api/connections/{cid}/config/mail-templates/{tid}",
+        json={
+            "body_html": (
+                '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
+                "<p>x</p>"
+            )
+        },
+    )
+    assert res.status_code == 400
+    detail = res.json()["detail"].lower()
+    assert "external entities" in detail or "doctype" in detail

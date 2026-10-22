@@ -80,7 +80,7 @@ def test_ensure_modules_installed_skips_already_installed() -> None:
         None,  # button_immediate_install
         [{"state": "installed"}],  # read after install
     ]
-    with patch("app.sandbox._sandbox_rpc", return_value=(2, models)):
+    with patch("app.sandbox._sandbox_client", return_value=models):
         newly = _ensure_modules_installed(["sale", "account"], odoo_major=19)
     assert newly == ["account"]
     # update_list + 2 search_read + install + read

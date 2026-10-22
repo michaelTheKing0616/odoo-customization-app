@@ -216,6 +216,39 @@ class _FakeKw:
         return []
 
 
+_WHT_BLOCK = {
+    "source_file": "models/sale_wht.py",
+    "kind": "python",
+    "content": (
+        "from odoo import api, fields, models\n\n"
+        "class SaleOrder(models.Model):\n"
+        "    _inherit = 'sale.order'\n"
+        "    x_wht_on_markup = fields.Monetary(\n"
+        "        string='WHT on Markup', compute='_compute_wht_on_markup')\n"
+        "\n"
+        "    @api.depends('x_markup_amount')\n"
+        "    def _compute_wht_on_markup(self):\n"
+        "        for order in self:\n"
+        "            order.x_wht_on_markup = (order.x_markup_amount or 0) * 0.05\n"
+    ),
+}
+
+_GOOD_LABELS = {
+    "x_markup_percent": "Markup %",
+    "x_markup_amount": "Markup Amount",
+    "x_wht_on_markup": "WHT on Markup",
+}
+
+
+def _markup_wht_draft() -> dict[str, Any]:
+    """MARKUP brief asks for WHT on the markup (sale markup + WHT CLASS, 67f1535),
+    so a complete module carries a WHT-on-markup compute next to the markup."""
+    draft = _markup_draft()
+    draft["custom_code_blocks"] = [*draft["custom_code_blocks"], dict(_WHT_BLOCK)]
+    rewrite_draft_stock_xpaths(draft)
+    return draft
+
+
 def test_run_acceptance_smoke_fails_unlabeled() -> None:
     draft = _markup_draft()
     # Harden would add string — leave unlabeled and mock registry with technical string.
@@ -227,12 +260,8 @@ def test_run_acceptance_smoke_fails_unlabeled() -> None:
 
 
 def test_run_acceptance_smoke_fails_no_price_effect() -> None:
-    draft = _markup_draft()
-    rewrite_draft_stock_xpaths(draft)
-    execute_kw = _FakeKw(
-        labels={"x_markup_percent": "Markup %", "x_markup_amount": "Markup Amount"},
-        price_after=100.0,
-    )
+    draft = _markup_wht_draft()
+    execute_kw = _FakeKw(labels=dict(_GOOD_LABELS), price_after=100.0)
     # Force amount field to stay 0 by making read return 0 for amount when price unchanged.
     result = run_acceptance_smoke(draft, execute_kw=execute_kw)
     by_id = {c["id"]: c for c in result["checks"]}
@@ -241,24 +270,16 @@ def test_run_acceptance_smoke_fails_no_price_effect() -> None:
 
 
 def test_run_acceptance_smoke_passes_good_module() -> None:
-    draft = _markup_draft()
-    rewrite_draft_stock_xpaths(draft)
-    execute_kw = _FakeKw(
-        labels={"x_markup_percent": "Markup %", "x_markup_amount": "Markup Amount"},
-        price_after=115.0,
-    )
+    draft = _markup_wht_draft()
+    execute_kw = _FakeKw(labels=dict(_GOOD_LABELS), price_after=115.0)
     result = run_acceptance_smoke(draft, execute_kw=execute_kw)
     assert result["ok"] is True
     assert all(c["ok"] for c in result["checks"])
 
 
 def test_rpc_option_a_smoke_merges_acceptance() -> None:
-    draft = _markup_draft()
-    rewrite_draft_stock_xpaths(draft)
-    execute_kw = _FakeKw(
-        labels={"x_markup_percent": "Markup %", "x_markup_amount": "Markup Amount"},
-        price_after=115.0,
-    )
+    draft = _markup_wht_draft()
+    execute_kw = _FakeKw(labels=dict(_GOOD_LABELS), price_after=115.0)
     smoke = rpc_option_a_smoke(draft, execute_kw=execute_kw)
     assert smoke["ok"] is True
     assert smoke.get("acceptance_ok") is True

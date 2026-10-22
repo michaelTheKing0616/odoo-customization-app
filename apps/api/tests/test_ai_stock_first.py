@@ -365,7 +365,8 @@ def test_expert_review_repairs_law_firm_clone_dump() -> None:
     assert str(cert.get("tier") or "") not in {"Gold"}
 
 
-def test_clip_keeps_hotel_pack_bill() -> None:
+def test_clip_drops_hotel_bill_duplicate_of_invoice() -> None:
+    # Oct 20 pack review: hotel bills are stock account.move; x_bill is no longer curated.
     from app.ai_domain_pack_hotel import hotel_pack
     from app.ai_stock_first import clip_to_stock_first_floor
 
@@ -379,6 +380,7 @@ def test_clip_keeps_hotel_pack_bill() -> None:
     pack["_user_prompt"] = "Boutique hotel with room bookings and guest folios."
     notes = clip_to_stock_first_floor(pack, user_prompt=pack["_user_prompt"])
     ids = {m["model"] for m in pack["models"] if isinstance(m, dict)}
-    assert "x_bill" in ids
+    assert "x_bill" not in ids
+    assert "x_booking" in ids
     assert "x_attorney" not in ids
     assert any("clipped" in n for n in notes)

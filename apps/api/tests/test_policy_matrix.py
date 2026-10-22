@@ -67,7 +67,7 @@ _MATRIX = (
         "needs_backup": False,
         "needs_window": False,
         "expiry_hours": _WEEK_HOURS,
-        "self_approval": False,
+        "self_approval": True,
     },
     {
         "risk": "R4",
@@ -121,13 +121,13 @@ _MATRIX = (
         "risk": "R3",
         "environment": "production",
         "allow": True,
-        "approvers": 2,
-        "needs_simulation": True,
+        "approvers": 1,
+        "needs_simulation": False,
         "deny": False,
-        "needs_backup": True,
-        "needs_window": True,
+        "needs_backup": False,
+        "needs_window": False,
         "expiry_hours": _DAY_HOURS,
-        "self_approval": False,
+        "self_approval": True,
     },
     {
         "risk": "R4",
@@ -206,10 +206,37 @@ def test_policy_matrix_cell(cell: dict[str, object]) -> None:
         assert apply_blocked(elevated, frozen=True) is True
 
     if risk == "R3":
-        assert self_approval_allowed(risk) is False
+        assert self_approval_allowed(risk) is True
+        assert decision["approvers"] == 1
+        assert decision["needs_simulation"] is False
+        assert decision["needs_backup"] is False
+        assert decision["needs_window"] is False
         required = int(decision["approvers"])
         assert approval_count_met(required, required) is True
         assert approval_count_met(required - 1, required) is False
+
+
+def test_heavy_r4_keeps_two_people_and_l4_cannot_skip_it() -> None:
+    """Heavy production R4 stays a two-person gate. L4 cannot apply R3 or R4."""
+    staging = policy_decision("R4", "staging", heavy=True, autonomy="L4")
+    assert staging["allow"] is True
+    assert staging["deny"] is False
+    assert staging["approvers"] == 1
+    assert staging["needs_simulation"] is False
+    production = policy_decision("R4", "production", heavy=True, autonomy="L4", elevated=True)
+    assert production["allow"] is True
+    assert production["deny"] is False
+    assert production["approvers"] == 2
+    assert production["needs_simulation"] is True
+    assert production["needs_backup"] is True
+    assert production["needs_window"] is True
+    assert production["domain_owner"] is True
+    hard = policy_decision("R4", "production", autonomy="L4")
+    assert hard["deny"] is True
+    assert hard["allow"] is False
+    r3 = policy_decision("R3", "production", autonomy="L4")
+    assert r3["approvers"] == 1
+    assert r3["needs_simulation"] is False
 
 
 def test_equal_approver_count_meets_the_requirement() -> None:

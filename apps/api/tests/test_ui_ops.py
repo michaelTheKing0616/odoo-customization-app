@@ -5,10 +5,11 @@ from __future__ import annotations
 import pytest
 
 from app.changeset.dispatch import DispatchError, dispatch_op
+from app.changeset.executor import _protocol, apply, reset_journal
 from app.changeset.handlers import apply_memory, handler_for
 from app.changeset.ops import OP_CATALOG
 from app.changeset.policy import risk_of
-from app.changeset.ui_ops import XPATH_REPLACES_ROOT_OR_LARGE_SUBTREE
+from app.changeset.ui_ops import UI_OP_TYPES, XPATH_REPLACES_ROOT_OR_LARGE_SUBTREE, ui_target_model, ui_write_op
 
 pytestmark = pytest.mark.no_app_db
 
@@ -59,10 +60,18 @@ class _Port:
 
     def __init__(self) -> None:
         self.created: list[tuple[str, dict]] = []
+        self.writes: list[tuple[str, list[int], dict]] = []
 
     def create(self, model: str, values: dict) -> int:
         self.created.append((model, values))
         return len(self.created)
+
+    def write(self, model: str, ids: list[int], values: dict) -> None:
+        self.writes.append((model, list(ids), dict(values)))
+
+
+class _RefuseWritePort(_Port):
+    """Port used only to prove a refused inherit never writes."""
 
     def write(self, model: str, ids: list[int], values: dict) -> None:
         raise AssertionError("write")
@@ -126,10 +135,11 @@ def test_xpath_that_replaces_root_or_large_subtree_is_refused(op_type: str, expr
     with pytest.raises(PermissionError, match="root or a large subtree"):
         apply_memory(store, {"type": op_type, "params": params})
     assert store == {}
-    port = _Port()
+    port = _RefuseWritePort()
     with pytest.raises(DispatchError, match="root or a large subtree"):
         dispatch_op(port, {"type": op_type, "params": params})
     assert port.created == []
+    assert port.writes == []
 
 
 @pytest.mark.parametrize("op_type", _INHERIT_OPS)
@@ -147,10 +157,11 @@ def test_arch_replace_of_root_is_refused_when_position_param_is_safe(op_type: st
     )
     assert handler.issues(params) == [XPATH_REPLACES_ROOT_OR_LARGE_SUBTREE]
     assert handler.refuse_reason(params) == XPATH_REPLACES_ROOT_OR_LARGE_SUBTREE
-    port = _Port()
+    port = _RefuseWritePort()
     with pytest.raises(DispatchError, match="large subtree"):
         dispatch_op(port, {"type": op_type, "params": params})
     assert port.created == []
+    assert port.writes == []
 
 
 def test_view_position_replace_of_one_field_stays_forbidden_and_is_not_rt22() -> None:
@@ -200,3 +211,99 @@ def test_safe_view_inherit_is_recorded_in_memory() -> None:
         {"type": "report.inherit", "params": {"xpath": "//div[@class='page']", "position": "inside"}},
     )
     assert len(store) == 2
+
+
+def _ui_params(op_type: str) -> dict:
+    """Benign params the executor and dispatcher accept for one UI op."""
+    params: dict = {"model": "sale.order", "name": "x_ticket_form"}
+    if op_type in _INHERIT_OPS:
+        params["xpath"] = "//field[@name='partner_id']"
+        params["position"] = "after"
+    if ui_write_op(op_type):
+        params["id"] = 1
+    if op_type == "view.create_base":
+        params["arch"] = "<form><sheet><group/></sheet></form>"
+    return params
+
+
+def test_reports_are_r2_through_the_executor() -> None:
+    reset_journal()
+    port = _Port()
+    error = _protocol().BridgeError
+    report = {
+        "type": "report.inherit",
+        "params": {"xpath": "//span[@t-field='o.name']", "position": "inside"},
+    }
+    with pytest.raises(error) as blocked:
+        apply([report], mode="T", port=port, max_risk="R1")
+    assert blocked.value.code == "max_risk"
+    assert port.created == []
+    assert port.writes == []
+    for op_type in _R2_OPS:
+        reset_journal()
+        admitted = apply(
+            [{"type": op_type, "params": _ui_params(op_type)}],
+            mode="T",
+            port=_Port(),
+            max_risk="R2",
+        )
+        assert admitted["status"] == "VERIFIED"
+    view = {
+        "type": "view.inherit.create",
+        "params": {"model": "sale.order", "xpath": "//field[@name='partner_id']"},
+    }
+    reset_journal()
+    allowed = apply([view], mode="T", port=port, max_risk="R1")
+    assert allowed["status"] == "VERIFIED"
+    assert port.created[0][0] == "ir.ui.view"
+    reset_journal()
+
+
+def test_view_inherit_requires_exactly_one_anchor_through_the_executor() -> None:
+    reset_journal()
+    port = _Port()
+    missing = {"type": "view.inherit.create", "params": {"model": "sale.order"}}
+    counted = {
+        "type": "view.inherit.create",
+        "params": {"model": "sale.order", "xpath": "//field[@name='partner_id']", "expect_matches": 2},
+    }
+    report_missing = {"type": "report.inherit", "params": {"report": "sale.report_saleorder"}}
+    with pytest.raises(DispatchError, match="anchor"):
+        apply([missing], mode="T", port=port)
+    with pytest.raises(DispatchError, match="exactly one"):
+        apply([counted], mode="T", port=port)
+    with pytest.raises(DispatchError, match="anchor"):
+        apply([report_missing], mode="T", port=port)
+    assert port.created == []
+    assert port.writes == []
+    reset_journal()
+
+
+@pytest.mark.parametrize("op_type", _INHERIT_OPS)
+def test_xpath_that_replaces_root_or_large_subtree_is_refused_through_the_executor(
+    op_type: str,
+) -> None:
+    reset_journal()
+    port = _Port()
+    params = _inherit_params(op_type, xpath="//form", position="replace")
+    with pytest.raises(DispatchError, match="root or a large subtree"):
+        apply([{"type": op_type, "params": params}], mode="T", port=port)
+    assert port.created == []
+    assert port.writes == []
+    reset_journal()
+
+
+@pytest.mark.parametrize("op_type", UI_OP_TYPES)
+def test_ui_ops_apply_through_the_existing_executor(op_type: str) -> None:
+    reset_journal()
+    port = _Port()
+    result = apply([{"type": op_type, "params": _ui_params(op_type)}], mode="T", port=port)
+    assert result["status"] == "VERIFIED"
+    target = ui_target_model(op_type)
+    if ui_write_op(op_type):
+        assert port.writes[0][0] == target
+        assert port.created == []
+    else:
+        assert port.created[0][0] == target
+        assert port.writes == []
+    reset_journal()

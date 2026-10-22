@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import os
 import uuid
+import zipfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,7 +23,14 @@ os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "0")
 
 from app.account_models import User, WorkspaceMembership  # noqa: E402
 from app.account_service import hash_password, signup_user  # noqa: E402
-from app.code_studio_service import validate_code  # noqa: E402
+from app.code_studio_service import (  # noqa: E402
+    CodeStudioRuleError,
+    bind_code_action,
+    export_option_a_zip,
+    test_run_code as run_code_action,
+    validate_code,
+)
+from app.snapshots import CONFIRM_PHRASE, ConfirmationRequired  # noqa: E402
 from app.crypto import encrypt_secret  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.db_models import AuditLog, OdooConnection  # noqa: E402
@@ -233,3 +243,285 @@ def test_observer_mode_refuses_bind(client: TestClient) -> None:
     )
     assert res.status_code == 403
     assert res.json()["detail"]["error"] == "observer_mode"
+
+
+def _bind_body(**overrides):
+    body = {
+        "name": "Test",
+        "model": "res.partner",
+        "code": "x = 1",
+        "bind_kind": "standalone",
+        "bind_to_model": False,
+        "confirm_advanced": True,
+        "confirm_phrase": CONFIRM_PHRASE,
+    }
+    body.update(overrides)
+    return body
+
+
+@patch("app.routers.code_studio.client_from_connection")
+def test_import_refuses_bind_and_writes_no_state_code(
+    mock_client_from,
+    client: TestClient,
+) -> None:
+    conn = _conn(probe={"supported": True})
+    odoo = MagicMock()
+    mock_client_from.return_value = odoo
+    res = client.post(
+        f"/api/connections/{conn.id}/code-studio/bind",
+        json=_bind_body(code="import os\nx = 1"),
+    )
+    assert res.status_code == 400, res.text
+    detail = res.json()["detail"]
+    assert detail["error"] == "imports_forbidden"
+    assert "imports_forbidden" in detail["message"]
+    odoo.execute_kw.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "code,rule",
+    [
+        ("for rec in records:\n    rec.sudo()", "sudo_pattern"),
+        ("for rec in records:\n    rec.unlink()", "unlink_pattern"),
+    ],
+)
+@patch("app.routers.code_studio.client_from_connection")
+def test_sudo_and_unlink_refuse_bind(
+    mock_client_from,
+    client: TestClient,
+    code: str,
+    rule: str,
+) -> None:
+    conn = _conn(probe={"supported": True})
+    odoo = MagicMock()
+    mock_client_from.return_value = odoo
+    res = client.post(
+        f"/api/connections/{conn.id}/code-studio/bind",
+        json=_bind_body(code=code),
+    )
+    assert res.status_code == 400, res.text
+    assert res.json()["detail"]["error"] == rule
+    odoo.execute_kw.assert_not_called()
+
+
+@patch("app.routers.code_studio.client_from_connection")
+def test_missing_confirm_phrase_refuses_bind(
+    mock_client_from,
+    client: TestClient,
+) -> None:
+    conn = _conn(probe={"supported": True})
+    odoo = MagicMock()
+    mock_client_from.return_value = odoo
+    res = client.post(
+        f"/api/connections/{conn.id}/code-studio/bind",
+        json=_bind_body(confirm_advanced=False, confirm_phrase=None),
+    )
+    assert res.status_code == 403, res.text
+    assert res.json()["detail"]["requires_confirmation"] is True
+    odoo.execute_kw.assert_not_called()
+
+
+@patch("app.routers.code_studio.client_from_connection")
+def test_failed_probe_refuses_bind(
+    mock_client_from,
+    client: TestClient,
+) -> None:
+    conn = _conn(probe={"supported": False, "error": "probe failed"})
+    res = client.post(
+        f"/api/connections/{conn.id}/code-studio/bind",
+        json=_bind_body(),
+    )
+    assert res.status_code == 409, res.text
+    mock_client_from.assert_not_called()
+
+
+def test_bind_saves_snapshot_before_state_code_create() -> None:
+    conn = _conn(probe={"supported": True})
+    odoo = MagicMock()
+    created_after_snapshot = {"ok": False}
+
+    def execute_kw(model, method, args, kwargs=None):
+        if method == "search":
+            return [3]
+        if method == "create":
+            db = SessionLocal()
+            try:
+                from app.db_models import MetadataSnapshot
+
+                rows = (
+                    db.query(MetadataSnapshot)
+                    .filter(MetadataSnapshot.connection_id == conn.id)
+                    .all()
+                )
+                pending = [
+                    row
+                    for row in rows
+                    if json.loads(row.payload_json).get("pending") is True
+                ]
+                created_after_snapshot["ok"] = bool(pending)
+            finally:
+                db.close()
+            assert args[0]["state"] == "code"
+            return 44
+        if method == "read":
+            return [
+                {
+                    "id": 44,
+                    "name": "N",
+                    "state": "code",
+                    "code": "x = 1",
+                    "model_id": [3, "res.partner"],
+                    "binding_model_id": False,
+                    "binding_type": False,
+                }
+            ]
+        return None
+
+    odoo.execute_kw.side_effect = execute_kw
+    db = SessionLocal()
+    try:
+        result = bind_code_action(
+            db,
+            odoo,
+            connection_id=conn.id,
+            name="N",
+            model="res.partner",
+            code="x = 1",
+            bind_kind="standalone",
+            confirm_advanced=True,
+            confirm_phrase=CONFIRM_PHRASE,
+            bind_to_model=False,
+        )
+    finally:
+        db.close()
+    assert created_after_snapshot["ok"] is True
+    assert result["snapshot_id"]
+    assert result["server_action_id"] == 44
+
+
+def test_failed_test_run_refuses_bind_and_names_snapshot() -> None:
+    conn = _conn(probe={"supported": True})
+    odoo = MagicMock()
+
+    def execute_kw(model, method, args, kwargs=None):
+        if method == "search":
+            return [1]
+        if method == "create":
+            return 9
+        if method == "run":
+            raise RuntimeError("boom")
+        if method == "unlink":
+            return True
+        return None
+
+    odoo.execute_kw.side_effect = execute_kw
+    db = SessionLocal()
+    try:
+        ran = run_code_action(
+            odoo,
+            db=db,
+            connection_id=conn.id,
+            model="res.partner",
+            record_id=None,
+            code="x = 1",
+        )
+        assert ran["ok"] is False
+        assert ran["snapshot_id"]
+        odoo.execute_kw.reset_mock()
+        with pytest.raises(CodeStudioRuleError) as caught:
+            bind_code_action(
+                db,
+                odoo,
+                connection_id=conn.id,
+                name="N",
+                model="res.partner",
+                code="x = 1",
+                bind_kind="standalone",
+                confirm_advanced=True,
+                confirm_phrase=CONFIRM_PHRASE,
+                bind_to_model=False,
+            )
+    finally:
+        db.close()
+    assert caught.value.rule == "test_run_failed"
+    assert caught.value.snapshot_id == ran["snapshot_id"]
+    odoo.execute_kw.assert_not_called()
+
+
+def test_missing_confirm_raises_before_odoo() -> None:
+    conn = _conn(probe={"supported": True})
+    odoo = MagicMock()
+    db = SessionLocal()
+    try:
+        with pytest.raises(ConfirmationRequired):
+            bind_code_action(
+                db,
+                odoo,
+                connection_id=conn.id,
+                name="N",
+                model="res.partner",
+                code="x = 1",
+                bind_kind="standalone",
+                confirm_advanced=False,
+                confirm_phrase="",
+                bind_to_model=False,
+            )
+    finally:
+        db.close()
+    odoo.execute_kw.assert_not_called()
+
+
+@patch("app.routers.code_studio.client_from_connection")
+def test_option_a_zip_is_not_installed(mock_client_from, client: TestClient) -> None:
+    conn = _conn(probe={"supported": False, "error": "probe failed"})
+    res = client.post(
+        f"/api/connections/{conn.id}/code-studio/option-a",
+        json={
+            "name": "Custom action",
+            "model": "res.partner",
+            "code": "for rec in records:\n    pass\n",
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["installed"] is False
+    assert body["promoted"] is False
+    assert "not installed" in body["note"]
+    raw = base64.b64decode(body["content_base64"])
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        names = zf.namelist()
+        assert not any(name.endswith("ir.model.access.csv") for name in names)
+        snippet = next(name for name in names if name.endswith("code_studio_snippet.py"))
+        text = zf.read(snippet).decode()
+        assert "for rec in records:" in text
+        assert 'state">code' not in text
+    mock_client_from.assert_not_called()
+    from app.db_models import AuditChainEntry
+
+    db = SessionLocal()
+    try:
+        kinds = {
+            row.kind
+            for row in db.query(AuditChainEntry)
+            .filter(AuditChainEntry.kind == "module")
+            .order_by(AuditChainEntry.ts.desc())
+            .limit(5)
+        }
+    finally:
+        db.close()
+    assert "module" in kinds
+
+
+def test_export_option_a_zip_has_no_install_side_effect() -> None:
+    exported = export_option_a_zip(
+        name="Shelf count",
+        model="stock.quant",
+        code="log('ready')\n",
+    )
+    assert exported["installed"] is False
+    assert exported["promoted"] is False
+    raw = base64.b64decode(exported["content_base64"])
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        blob = "\n".join(zf.read(name).decode(errors="replace") for name in zf.namelist())
+    assert "button_immediate_install" not in blob
+    assert "log('ready')" in blob
