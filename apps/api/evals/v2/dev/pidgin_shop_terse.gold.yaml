@@ -1,0 +1,34 @@
+id: pidgin_shop_terse
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: terse/Pidgin
+note: ''
+needs:
+- need: keep Debt records (customer, amount, due date, paid...)
+  kind: records
+  realizations:
+  - custom record ~Debt
+  - stock Invoicing (account) for receivables
+  stock_obvious: true
+- need: overdue reminder after due date
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+entities:
+- name: Debt
+  attributes:
+  - customer
+  - amount
+  - due date
+  - paid
+relations: []
+automations:
+- overdue reminder after due date
+access_rules: []
+exclusions: []
+ambiguity_points:
+- partial payments?
+acceptable_alternates:
+- stock Invoicing (account) for receivables
+lexical_lures: []

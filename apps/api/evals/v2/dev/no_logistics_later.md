@@ -1,0 +1,1 @@
+We run 6 delivery vans in Abuja. Need to log each delivery: client, address, driver, van, status and proof of delivery photo. If a delivery is still pending at 6pm the dispatcher should get a to-do. Skip the website and customer portal for now, maybe next year. Fuel tracking - we've got that covered with the fuel card company.

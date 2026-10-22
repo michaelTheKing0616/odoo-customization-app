@@ -1,0 +1,49 @@
+id: courier_followup
+status: DRAFT - needs Tope review
+style: casual
+note: 'unseen split: untouched-N-days, notify on condition, field-level group hiding'
+needs:
+- need: keep Delivery Job records (sender, receiver phone, pickup area, drop area,
+    rider, fee, status)
+  kind: records
+  realizations:
+  - custom record ~Delivery Job
+  stock_obvious: false
+- need: remind dispatcher when untouched 3 days
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: notify operations manager when job failed
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  stock_obvious: false
+- need: riders cannot see fee
+  kind: access
+  realizations:
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Delivery Job
+  attributes:
+  - sender
+  - receiver phone
+  - pickup area
+  - drop area
+  - rider
+  - fee
+  - status
+relations: []
+automations:
+- remind dispatcher when untouched 3 days
+- notify operations manager when job failed
+access_rules:
+- riders cannot see fee
+exclusions:
+- invoicing
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures:
+- accountant

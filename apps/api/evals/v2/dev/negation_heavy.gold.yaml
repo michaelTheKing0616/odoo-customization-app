@@ -1,0 +1,28 @@
+id: negation_heavy
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/negations
+note: ''
+needs:
+- need: keep Visit records (visitor name, host (user/employee), time in, time out...)
+  kind: records
+  realizations:
+  - custom record ~Visit
+  stock_obvious: false
+entities:
+- name: Visit
+  attributes:
+  - visitor name
+  - host (user/employee)
+  - time in
+  - time out
+relations: []
+automations: []
+access_rules: []
+exclusions:
+- approvals
+- email
+- notifications
+- photo
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

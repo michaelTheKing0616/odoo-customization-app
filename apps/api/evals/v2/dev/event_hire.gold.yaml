@@ -1,0 +1,65 @@
+id: event_hire
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: rambling/voice-transcript
+note: 'RECONSTRUCTED: replace with the exact event-hire brief given to Tope.'
+needs:
+- need: keep Booking records (customer, event date, venue, booking lines...)
+  kind: records
+  realizations:
+  - custom record ~Booking
+  - stock Rental app (sale_renting) on Enterprise
+  stock_obvious: false
+- need: keep Booking Line records (item, quantity...)
+  kind: records
+  realizations:
+  - custom record ~Booking Line
+  - stock Rental app (sale_renting) on Enterprise
+  stock_obvious: false
+- need: keep Rental Item records (name, stock quantity...)
+  kind: records
+  realizations:
+  - custom record ~Rental Item
+  - stock Rental app (sale_renting) on Enterprise
+  stock_obvious: false
+- need: keep Return Check records (booking, damage noted, damage description...)
+  kind: records
+  realizations:
+  - custom record ~Return Check
+  - stock Rental app (sale_renting) on Enterprise
+  stock_obvious: false
+entities:
+- name: Booking
+  attributes:
+  - customer
+  - event date
+  - venue
+  - booking lines
+  - status
+- name: Booking Line
+  attributes:
+  - item
+  - quantity
+- name: Rental Item
+  attributes:
+  - name
+  - stock quantity
+- name: Return Check
+  attributes:
+  - booking
+  - damage noted
+  - damage description
+relations:
+- Booking -> Booking Line
+- Booking Line -> Rental Item
+automations: []
+access_rules: []
+exclusions:
+- website/self-booking (future wish)
+- charging for damage (done outside)
+ambiguity_points:
+- 'availability check: calendar view vs blocking constraint'
+acceptable_alternates:
+- stock Rental app (sale_renting) on Enterprise
+- damage fields on Booking instead of Return Check
+lexical_lures:
+- charge the customer (retracted)

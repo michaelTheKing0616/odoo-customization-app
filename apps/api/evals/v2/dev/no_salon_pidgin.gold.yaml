@@ -1,0 +1,18 @@
+id: no_salon_pidgin
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: pidgin
+needs:
+- need: keep Appointment records (customer, stylist, service, time, paid)
+  kind: records
+  realizations: [custom record ~Appointment, use stock Calendar (calendar.event) instead]
+  stock_obvious: false
+- need: remind customer one day before appointment (scheduled)
+  kind: automation
+  realizations: [stock automation (base.automation)]
+  stock_obvious: false
+entities:
+- name: Appointment
+exclusions:
+- inventory (abeg no add stock/inventory)
+- payroll (another story)
+ambiguity_points: []

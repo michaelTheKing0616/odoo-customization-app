@@ -1,0 +1,32 @@
+id: pharmacy_pidgin
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: Pidgin
+note: ''
+needs:
+- need: keep Drug Batch records (drug, batch, expiry date, quantity...)
+  kind: records
+  realizations:
+  - custom record ~Drug Batch
+  stock_obvious: false
+- need: alert 30 days before expiry
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+entities:
+- name: Drug Batch
+  attributes:
+  - drug
+  - batch
+  - expiry date
+  - quantity
+relations: []
+automations:
+- alert 30 days before expiry
+access_rules: []
+exclusions:
+- sales
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

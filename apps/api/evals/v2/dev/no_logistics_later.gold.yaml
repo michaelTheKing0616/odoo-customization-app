@@ -1,0 +1,20 @@
+id: no_logistics_later
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: structured
+needs:
+- need: keep Delivery records (client, address, driver, van, status, photo)
+  kind: records
+  realizations: [custom record ~Delivery, use stock Inventory (stock.picking) instead]
+  stock_obvious: false
+- need: dispatcher to-do when delivery pending at 6pm
+  kind: automation
+  realizations: [stock automation (base.automation)]
+  stock_obvious: false
+entities:
+- name: Delivery
+- name: Van
+exclusions:
+- website (skip for now)
+- customer portal (maybe next year)
+- fuel tracking (covered by fuel card company)
+ambiguity_points: []

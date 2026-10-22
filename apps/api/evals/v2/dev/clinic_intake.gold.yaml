@@ -1,0 +1,75 @@
+id: clinic_intake
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: structured
+note: 'RECONSTRUCTED: replace with the exact clinic brief given to Tope.'
+needs:
+- need: keep Patient records (name, phone, date of birth, sex...)
+  kind: records
+  realizations:
+  - custom record ~Patient
+  stock_obvious: false
+- need: keep Visit records (patient, date, complaint, blood pressure...)
+  kind: records
+  realizations:
+  - custom record ~Visit
+  stock_obvious: false
+- need: follow-up reminder 1 day before follow-up date
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: diagnosis field writable only by Doctor
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+- need: Doctor sees own visits
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+- need: Medical Director sees all
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Patient
+  attributes:
+  - name
+  - phone
+  - date of birth
+  - sex
+  - allergies
+  - next of kin
+- name: Visit
+  attributes:
+  - patient
+  - date
+  - complaint
+  - blood pressure
+  - temperature
+  - weight
+  - doctor
+  - diagnosis
+  - prescription notes
+  - follow-up date
+relations:
+- Visit -> Patient
+- Visit -> res.users (doctor)
+automations:
+- follow-up reminder 1 day before follow-up date
+access_rules:
+- diagnosis field writable only by Doctor
+- Doctor sees own visits
+- Medical Director sees all
+exclusions:
+- billing
+- insurance claims
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

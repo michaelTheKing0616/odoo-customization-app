@@ -1,0 +1,26 @@
+id: generator_lure
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/lure
+note: ''
+needs:
+- need: keep Fuel Purchase records (litres, cost, date, paid by...)
+  kind: records
+  realizations:
+  - custom record ~Fuel Purchase
+  stock_obvious: false
+entities:
+- name: Fuel Purchase
+  attributes:
+  - litres
+  - cost
+  - date
+  - paid by
+relations: []
+automations: []
+access_rules: []
+exclusions:
+- maintenance/servicing
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures:
+- serviced (negated)

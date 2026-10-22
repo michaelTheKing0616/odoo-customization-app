@@ -1,0 +1,50 @@
+id: church_pledges_rambling
+status: DRAFT - needs Tope review
+style: rambling
+note: 'unseen split: later item excluded, untouched/no-payment N days, field hiding'
+needs:
+- need: keep Pledge records (member, amount, fund, frequency, paid so far)
+  kind: records
+  realizations:
+  - custom record ~Pledge
+  stock_obvious: false
+- need: keep Payment records (pledge, amount, date)
+  kind: records
+  realizations:
+  - custom record ~Payment
+  - custom record ~Pledge Payment
+  stock_obvious: false
+- need: to-do to welfare secretary when no payment for 60 days on monthly pledge
+  kind: automation
+  realizations:
+  - scheduled action
+  - stock automation (base.automation)
+  stock_obvious: false
+- need: ushers cannot see total pledged amount
+  kind: access
+  realizations:
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Pledge
+  attributes:
+  - member
+  - amount
+  - fund
+  - frequency
+  - paid so far
+- name: Payment
+  attributes:
+  - pledge
+  - amount
+  - date
+relations: []
+automations:
+- to-do to welfare secretary when no payment for 60 days
+access_rules:
+- ushers cannot see total pledged amount
+exclusions:
+- SMS receipts
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

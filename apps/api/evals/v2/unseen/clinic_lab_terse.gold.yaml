@@ -1,0 +1,39 @@
+id: clinic_lab_terse
+status: DRAFT - needs Tope review
+style: terse
+note: 'unseen split: notify on condition + edit rights by group'
+needs:
+- need: keep Lab Request records (patient, test type, result, date)
+  kind: records
+  realizations:
+  - custom record ~Lab Request
+  stock_obvious: false
+- need: alert doctor when result abnormal
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  stock_obvious: false
+- need: only lab staff edit results
+  kind: access
+  realizations:
+  - field/view groups
+  - record rule
+  stock_obvious: false
+entities:
+- name: Lab Request
+  attributes:
+  - patient
+  - test type
+  - result
+  - date
+relations: []
+automations:
+- alert doctor when result abnormal
+access_rules:
+- only lab staff edit results
+exclusions:
+- billing
+ambiguity_points:
+- what counts as abnormal
+acceptable_alternates: []
+lexical_lures: []

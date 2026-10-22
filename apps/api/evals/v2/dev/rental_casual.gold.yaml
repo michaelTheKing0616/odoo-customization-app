@@ -1,0 +1,77 @@
+id: rental_casual
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: casual
+note: ''
+needs:
+- need: keep Equipment records (name, category, status, next service date...)
+  kind: records
+  realizations:
+  - custom record ~Equipment
+  - stock Rental + Maintenance apps
+  stock_obvious: false
+- need: keep Booking records (customer, equipment, start, return date...)
+  kind: records
+  realizations:
+  - custom record ~Booking
+  - stock Rental + Maintenance apps
+  stock_obvious: false
+- need: keep Maintenance Log records (equipment, service date, next due, notes...)
+  kind: records
+  realizations:
+  - custom record ~Maintenance Log
+  - stock Rental + Maintenance apps
+  stock_obvious: false
+- need: servicing due reminder
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: damaged return flags/activity
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: only managers cancel booking
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Equipment
+  attributes:
+  - name
+  - category
+  - status
+  - next service date
+- name: Booking
+  attributes:
+  - customer
+  - equipment
+  - start
+  - return date
+  - status
+  - return condition
+- name: Maintenance Log
+  attributes:
+  - equipment
+  - service date
+  - next due
+  - notes
+relations:
+- Booking -> Equipment
+- Booking -> res.partner
+automations:
+- servicing due reminder
+- damaged return flags/activity
+access_rules:
+- only managers cancel booking
+exclusions: []
+ambiguity_points: []
+# WhatsApp is how orders arrive today, not something to connect.
+routes: {}
+acceptable_alternates:
+- stock Rental + Maintenance apps
+lexical_lures: []

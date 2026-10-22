@@ -1,0 +1,34 @@
+id: unsupported_integration
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/unsupported integration
+note: ''
+needs:
+- need: keep Delivery records (rider, package, address, delivered time...)
+  kind: records
+  realizations:
+  - custom record ~Delivery
+  stock_obvious: false
+entities:
+- name: Delivery
+  attributes:
+  - rider
+  - package
+  - address
+  - delivered time
+  - status
+relations: []
+automations: []
+access_rules: []
+exclusions: []
+# Asked for but not buildable here: should be declined with a reason, not treated as an owner "no".
+declined:
+- Paystack sync (unsupported integration - name it)
+- GIG Logistics API (unsupported)
+# Expected integration route per outside service (live-verified on 17-20 Community: no paystack/GIG module; sms installed).
+routes:
+  Paystack: decline
+  GIG Logistics: decline
+  SMS: stock  # stock sms module (IAP credits); a route, not a decline (DRAFT gold fix S6)
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

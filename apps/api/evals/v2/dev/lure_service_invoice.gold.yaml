@@ -1,0 +1,37 @@
+id: lure_service_invoice
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/lexical lure
+note: ''
+needs:
+- need: keep Choir Member records (name, voice part...)
+  kind: records
+  realizations:
+  - custom record ~Choir Member
+  stock_obvious: false
+- need: keep Attendance records (member, date, event type (rehearsal/service), present...)
+  kind: records
+  realizations:
+  - custom record ~Attendance
+  stock_obvious: false
+entities:
+- name: Choir Member
+  attributes:
+  - name
+  - voice part
+- name: Attendance
+  attributes:
+  - member
+  - date
+  - event type (rehearsal/service)
+  - present
+relations: []
+automations: []
+access_rules: []
+exclusions:
+- invoicing
+- maintenance/service app
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures:
+- service (church service, not Maintenance)
+- invoice (negated)

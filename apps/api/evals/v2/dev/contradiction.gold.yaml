@@ -1,0 +1,32 @@
+id: contradiction
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/contradiction
+note: ''
+needs:
+- need: keep Purchase Request records (requester, amount, status, approver...)
+  kind: records
+  realizations:
+  - custom record ~Purchase Request
+  stock_obvious: false
+- need: finance manager approves >500k
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Purchase Request
+  attributes:
+  - requester
+  - amount
+  - status
+  - approver
+relations: []
+automations: []
+access_rules:
+- finance manager approves >500k
+exclusions: []
+ambiguity_points:
+- self-approval vs finance approval above 500k (contradiction - must ask)
+acceptable_alternates: []
+lexical_lures: []

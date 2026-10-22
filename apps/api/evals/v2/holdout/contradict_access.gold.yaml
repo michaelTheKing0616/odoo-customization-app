@@ -1,0 +1,14 @@
+id: contradict_access
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/contradiction
+note: ''
+needs: []
+entities: []
+relations: []
+automations: []
+access_rules: []
+exclusions: []
+ambiguity_points:
+- 'contradiction: must ask'
+acceptable_alternates: []
+lexical_lures: []

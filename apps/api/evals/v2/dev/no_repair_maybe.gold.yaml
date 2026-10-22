@@ -1,0 +1,18 @@
+id: no_repair_maybe
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: casual
+needs:
+- need: keep Repair Job records (customer, phone model, fault, technician, price, status)
+  kind: records
+  realizations: [custom record ~Repair Job, use stock Repairs (repair.order) instead]
+  stock_obvious: true
+- need: remind customer when job ready (event)
+  kind: automation
+  realizations: [stock automation (base.automation)]
+  stock_obvious: false
+entities:
+- name: Repair Job
+exclusions:
+- accounting (quickbooks)
+ambiguity_points:
+- loyalty (maybe, not sure) - should be a choice, not built silently and not excluded

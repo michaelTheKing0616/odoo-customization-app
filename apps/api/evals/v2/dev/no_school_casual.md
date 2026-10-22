@@ -1,0 +1,1 @@
+small school here, about 300 kids. we need fees tracking per student per term, who has paid, who is owing, and remind parents when fees are 2 weeks late. results and report cards are handled by another software so leave that. maybe later we do the school bus thing but not now. hostel we dont have.

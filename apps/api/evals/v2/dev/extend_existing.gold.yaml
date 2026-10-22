@@ -1,0 +1,22 @@
+id: extend_existing
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: extend existing app
+note: Expect extension of crm.lead, not new models.
+needs:
+- need: activity 7 days before decision date on crm.lead
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+entities: []
+relations:
+- crm.lead extension
+automations:
+- activity 7 days before decision date on crm.lead
+access_rules: []
+exclusions: []
+ambiguity_points: []
+acceptable_alternates:
+- stock_extensions on crm.lead with x_source_event, x_decision_date
+lexical_lures: []

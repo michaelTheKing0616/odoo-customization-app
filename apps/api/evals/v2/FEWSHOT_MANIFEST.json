@@ -1,0 +1,2 @@
+{"note": "Domains used in prompt few-shot examples (app_design.FEW_SHOT_V2). Eval briefs must not use these domains.",
+ "domains": ["beekeeping (hives, harvests, queens, honey)", "tailoring (fabric, orders, loyalty)"]}

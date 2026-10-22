@@ -1,0 +1,1 @@
+we are an NGO distributing food packs, um, each beneficiary household, how many people, community, and each distribution day what they collected. donors want report per community monthly. we will maybe integrate with UN system someday.

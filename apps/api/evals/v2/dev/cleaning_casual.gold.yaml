@@ -1,0 +1,84 @@
+id: cleaning_casual
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: casual
+note: ''
+needs:
+- need: keep Cleaning Job records (client, address, date, cleaner...)
+  kind: records
+  realizations:
+  - custom record ~Cleaning Job
+  - stock Field Service (Enterprise) for jobs
+  - stock Helpdesk for complaints
+  - stock Planning for rosters
+  stock_obvious: false
+- need: keep Recurring Plan records (client, frequency...)
+  kind: records
+  realizations:
+  - custom record ~Recurring Plan
+  - stock Field Service (Enterprise) for jobs
+  - stock Helpdesk for complaints
+  - stock Planning for rosters
+  stock_obvious: false
+- need: keep Quality Check records (job, supervisor, score 1-5...)
+  kind: records
+  realizations:
+  - custom record ~Quality Check
+  - stock Field Service (Enterprise) for jobs
+  - stock Helpdesk for complaints
+  - stock Planning for rosters
+  stock_obvious: false
+- need: keep Complaint records (job, description...)
+  kind: records
+  realizations:
+  - custom record ~Complaint
+  - stock Field Service (Enterprise) for jobs
+  - stock Helpdesk for complaints
+  - stock Planning for rosters
+  stock_obvious: false
+- need: generate jobs from recurring plan (scheduled)
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: supervisors score quality checks
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Cleaning Job
+  attributes:
+  - client
+  - address
+  - date
+  - cleaner
+  - notes
+  - status
+- name: Recurring Plan
+  attributes:
+  - client
+  - frequency
+- name: Quality Check
+  attributes:
+  - job
+  - supervisor
+  - score 1-5
+- name: Complaint
+  attributes:
+  - job
+  - description
+relations: []
+automations:
+- generate jobs from recurring plan (scheduled)
+access_rules:
+- supervisors score quality checks
+exclusions: []
+ambiguity_points:
+- are cleaners Odoo users or employees only
+acceptable_alternates:
+- stock Field Service (Enterprise) for jobs
+- stock Helpdesk for complaints
+- stock Planning for rosters
+lexical_lures: []

@@ -1,0 +1,1 @@
+phone repair shop. log each job: customer, phone model, fault, technician, price, status. when a job is ready, text or remind the customer. maybe we'll want a loyalty thing? not sure. don't bother with accounting, my accountant does it in quickbooks.

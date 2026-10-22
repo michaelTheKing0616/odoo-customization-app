@@ -1,0 +1,97 @@
+id: rental_structured
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: structured
+note: 'Attributes: see brief; gold to be expanded by Tope.'
+needs:
+- need: keep Asset records
+  kind: records
+  realizations:
+  - custom record ~Asset
+  stock_obvious: false
+- need: keep Asset Category records
+  kind: records
+  realizations:
+  - custom record ~Asset Category
+  stock_obvious: false
+- need: keep Booking records
+  kind: records
+  realizations:
+  - custom record ~Booking
+  stock_obvious: false
+- need: keep Booking Line records
+  kind: records
+  realizations:
+  - custom record ~Booking Line
+  stock_obvious: false
+- need: keep Inspection records
+  kind: records
+  realizations:
+  - custom record ~Inspection
+  stock_obvious: false
+- need: keep Maintenance Log records
+  kind: records
+  realizations:
+  - custom record ~Maintenance Log
+  stock_obvious: false
+- need: booking out -> assets out
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: returned -> check-in inspection activity
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: damage -> needs repair + activity
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: overdue bookings daily
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: Rental User sees own bookings
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+- need: Rental Manager all
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Asset
+  attributes: []
+- name: Asset Category
+  attributes: []
+- name: Booking
+  attributes: []
+- name: Booking Line
+  attributes: []
+- name: Inspection
+  attributes: []
+- name: Maintenance Log
+  attributes: []
+relations: []
+automations:
+- booking out -> assets out
+- returned -> check-in inspection activity
+- damage -> needs repair + activity
+- overdue bookings daily
+access_rules:
+- Rental User sees own bookings
+- Rental Manager all
+exclusions: []
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

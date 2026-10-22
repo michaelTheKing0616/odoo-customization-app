@@ -1,0 +1,35 @@
+id: school_fees_structured
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: structured
+note: ''
+needs:
+- need: keep Student records
+  kind: records
+  realizations:
+  - custom record ~Student
+  stock_obvious: false
+- need: keep Term Fee records
+  kind: records
+  realizations:
+  - custom record ~Term Fee
+  stock_obvious: false
+- need: weekly unpaid reminder
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+entities:
+- name: Student
+  attributes: []
+- name: Term Fee
+  attributes: []
+relations: []
+automations:
+- weekly unpaid reminder
+access_rules: []
+exclusions:
+- online payment
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

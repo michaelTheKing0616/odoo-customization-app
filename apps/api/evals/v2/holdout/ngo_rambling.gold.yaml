@@ -1,0 +1,28 @@
+id: ngo_rambling
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: rambling
+note: ''
+needs:
+- need: keep Household records
+  kind: records
+  realizations:
+  - custom record ~Household
+  stock_obvious: false
+- need: keep Distribution records
+  kind: records
+  realizations:
+  - custom record ~Distribution
+  stock_obvious: false
+entities:
+- name: Household
+  attributes: []
+- name: Distribution
+  attributes: []
+relations: []
+automations: []
+access_rules: []
+exclusions:
+- UN integration (future)
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

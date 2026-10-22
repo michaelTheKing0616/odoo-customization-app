@@ -1,0 +1,21 @@
+id: extend_sales
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: extend existing app
+note: ''
+needs:
+- need: discount editable by Sales Manager only
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities: []
+relations:
+- sale.order extension
+automations: []
+access_rules:
+- discount editable by Sales Manager only
+exclusions: []
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures: []

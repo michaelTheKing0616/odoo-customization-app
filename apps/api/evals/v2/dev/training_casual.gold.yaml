@@ -1,0 +1,32 @@
+id: training_casual
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: casual
+note: ''
+needs:
+- need: keep Training Session records
+  kind: records
+  realizations:
+  - custom record ~Training Session
+  - stock Employees + Events
+  stock_obvious: false
+- need: keep Attendance records
+  kind: records
+  realizations:
+  - custom record ~Attendance
+  - stock Employees + Events
+  stock_obvious: false
+entities:
+- name: Training Session
+  attributes: []
+- name: Attendance
+  attributes: []
+relations: []
+automations: []
+access_rules: []
+exclusions: []
+# DRAFT (S11): owner is unsure who signs off training (supervisors vs cleaners) -> a real decision.
+ambiguity_points:
+- "who signs off training - supervisors or the cleaners themselves (must ask)"
+acceptable_alternates:
+- stock Employees + Events
+lexical_lures: []

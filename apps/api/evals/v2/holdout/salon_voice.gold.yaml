@@ -1,0 +1,27 @@
+id: salon_voice
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: voice-transcript
+note: ''
+needs:
+- need: keep Appointment records (customer, stylist, service, time...)
+  kind: records
+  realizations:
+  - custom record ~Appointment
+  stock_obvious: false
+entities:
+- name: Appointment
+  attributes:
+  - customer
+  - stylist
+  - service
+  - time
+  - no-show
+relations: []
+automations: []
+access_rules: []
+exclusions:
+- loyalty points (future)
+ambiguity_points: []
+acceptable_alternates: []
+lexical_lures:
+- service (salon service)

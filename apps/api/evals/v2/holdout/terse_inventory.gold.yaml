@@ -1,0 +1,15 @@
+id: terse_inventory
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: terse
+note: ''
+needs: []
+entities: []
+relations: []
+automations: []
+access_rules: []
+exclusions: []
+ambiguity_points:
+- shortage threshold
+acceptable_alternates:
+- stock Inventory
+lexical_lures: []

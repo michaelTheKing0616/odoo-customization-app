@@ -1,0 +1,1 @@
+We run a small courier business in Ibadan. I want to track each delivery job: sender, receiver phone, pickup area, drop area, rider, fee and status. If a job sits untouched for 3 days, remind the dispatcher. When a job is marked failed, tell the operations manager straight away. Riders shouldn't see the fee. We don't need invoicing in here, our accountant handles that.

@@ -1,0 +1,16 @@
+id: financial_model
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: hostile/financial model ask
+note: ''
+needs: []
+entities: []
+relations: []
+automations: []
+access_rules: []
+exclusions:
+- forecasting/financial modelling (out of scope - say so)
+ambiguity_points:
+- nothing buildable as records; expect out-of-scope message
+acceptable_alternates:
+- stock Accounting reports
+lexical_lures: []

@@ -1,0 +1,64 @@
+id: bakery_ng
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: casual/Nigerian-English
+note: 'RECONSTRUCTED: replace with the exact bakery brief given to Tope.'
+needs:
+- need: keep Order records (customer, order lines, quantity, pickup date...)
+  kind: records
+  realizations:
+  - custom record ~Order
+  - use stock Sales (sale.order) instead of custom Order
+  stock_obvious: false
+- need: keep Order Line records (product, quantity, price...)
+  kind: records
+  realizations:
+  - custom record ~Order Line
+  - use stock Sales (sale.order) instead of custom Order
+  stock_obvious: false
+- need: daily evening list/reminder of tomorrow's orders (scheduled)
+  kind: automation
+  realizations:
+  - stock automation (base.automation)
+  - scheduled action
+  stock_obvious: false
+- need: only owner group can edit price
+  kind: access
+  realizations:
+  - record rule
+  - field/view groups
+  stock_obvious: false
+entities:
+- name: Order
+  attributes:
+  - customer
+  - order lines
+  - quantity
+  - pickup date
+  - deposit paid
+  - design notes
+  - design photo
+- name: Order Line
+  attributes:
+  - product
+  - quantity
+  - price
+relations:
+- Order -> res.partner
+- Order -> Order Line (one2many)
+automations:
+- daily evening list/reminder of tomorrow's orders (scheduled)
+access_rules:
+- only owner group can edit price
+exclusions:
+- payroll
+# WhatsApp is where orders come from (context), not an owner "no".
+context_only:
+- whatsapp integration (source only)
+ambiguity_points:
+- 'deposit: amount or yes/no'
+# WhatsApp is how orders arrive today, not something to connect.
+routes: {}
+acceptable_alternates:
+- use stock Sales (sale.order) instead of custom Order
+lexical_lures:
+- whatsapp

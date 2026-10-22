@@ -1,0 +1,26 @@
+id: complaints_casual
+status: ACCEPTED - accepted as-is by Tope 2026-10-19
+style: casual
+note: ''
+needs:
+- need: keep Complaint records (customer, description, status, assigned to...)
+  kind: records
+  realizations:
+  - custom record ~Complaint
+  - stock Helpdesk
+  stock_obvious: true
+entities:
+- name: Complaint
+  attributes:
+  - customer
+  - description
+  - status
+  - assigned to
+relations: []
+automations: []
+access_rules: []
+exclusions: []
+ambiguity_points: []
+acceptable_alternates:
+- stock Helpdesk
+lexical_lures: []

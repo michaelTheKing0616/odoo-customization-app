@@ -1,0 +1,26 @@
+id: no_school_casual
+status: ACCEPTED - accepted as-is by Tope 2026-10-19; EDITED 2026-10-19 (Term entity -> acceptable alternate, needs Tope re-check)
+style: casual/Nigerian-English
+needs:
+- need: keep Student records
+  kind: records
+  realizations: [custom record ~Student, use stock Contacts (res.partner) instead]
+  stock_obvious: false
+- need: keep Fee records per student per term (paid, owing)
+  kind: records
+  realizations: [custom record ~Fee, use stock Invoicing (account.move) instead]
+  stock_obvious: false
+- need: remind parents when fees are 2 weeks late (scheduled)
+  kind: automation
+  realizations: [stock automation (base.automation)]
+  stock_obvious: false
+entities:
+- name: Student
+- name: Fee
+term_note: 'Brief says only "fees tracking per student per term": no facts about a term itself (no dates, no per-term fee list), so Term is a per-___ grouping (a field on Fee). A Term model is allowed (acceptable alternate) but not required.'
+exclusions:
+- results/report cards (handled by another software)
+- school bus (maybe later, not now)
+- hostel (we dont have)
+ambiguity_points: []
+acceptable_alternates: [Term]

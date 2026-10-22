@@ -1,0 +1,1 @@
+abeg we get salon for Lekki. i wan track appointments: customer, which stylist, service, time and if dem don pay. remind customer one day before. abeg no add stock/inventory, we dey manage am for excel. payroll na another story entirely.
