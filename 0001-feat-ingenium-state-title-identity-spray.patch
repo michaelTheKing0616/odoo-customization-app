@@ -1,0 +1,848 @@
+From e3617f072c42815b6293b9f903ca02bbbd198898 Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 15:49:07 +0100
+Subject: [PATCH] feat(ingenium): State Must-do + Build-title + Identity spray
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Class-wide (not Maintenance one-offs): wire state Draft→Done / Draft to Done
+range cues into Must-do + residual selection (no Cancel invent); Diagnosis/
+canvas title from business noun (never Build Maintenance); drop uncued
+x_company_id / Contact / Purchase Order / Invoice Identity M2Os; Online-honest
+stock moves → honesty stamp (Parts stay product+qty). Install grammar +
+first-try + Prefer Project + Vehicle stay green.
+---
+ apps/api/app/ai_brief_cues.py                 |  36 ++-
+ apps/api/app/ai_constraint_ast.py             |  35 ++-
+ apps/api/app/ai_conversation/understand.py    |   9 +-
+ apps/api/app/ai_depth.py                      |  69 ++++-
+ apps/api/app/ai_odoo_app_bar.py               | 180 ++++++++++-
+ apps/api/app/ai_residual_identity.py          |  17 +-
+ ...ate_title_identity_spray_rubric_battery.sh |  49 +++
+ .../test_state_title_identity_spray_class.py  | 287 ++++++++++++++++++
+ 8 files changed, 657 insertions(+), 25 deletions(-)
+ create mode 100755 apps/api/scripts/run_state_title_identity_spray_rubric_battery.sh
+ create mode 100644 apps/api/tests/test_state_title_identity_spray_class.py
+
+diff --git a/apps/api/app/ai_brief_cues.py b/apps/api/app/ai_brief_cues.py
+index 295e036..d050d28 100644
+--- a/apps/api/app/ai_brief_cues.py
++++ b/apps/api/app/ai_brief_cues.py
+@@ -323,7 +323,12 @@ def _snake_state(label: str) -> str:
+ 
+ 
+ def stated_workflow_states(prompt: str) -> list[str]:
+-    """Ordered workflow keys when the brief enumerates them (incl. terminal Done)."""
++    """Ordered workflow keys when the brief enumerates them (incl. terminal Done).
++
++    Class-wide range cues — not parentheses-only:
++    ``state Draft→Done``, ``Draft to Done``, ``Draft → Scheduled → …``,
++    ``State (Draft → … → Done)``, ``state selection (…)``.
++    """
+     text = prompt or ""
+     raw = ""
+     # Prefer constraint AST machine (handles Approved/Refused → Done).
+@@ -347,14 +352,39 @@ def stated_workflow_states(prompt: str) -> list[str]:
+         )
+         if m:
+             raw = m.group(1)
++    if not raw:
++        # Bare ``state Draft→Done`` / ``status Draft to Done`` (no parens).
++        m = _STATE_CHAIN_RE.search(text)
++        if m:
++            raw = m.group(1)
++    if not raw:
++        # Bare arrow / "to" chain starting at Draft … terminal Done (range cue).
++        m = re.search(
++            r"(?i)\b(Draft(?:\s*(?:→|->|—|–|>|to|/)\s*[A-Za-z][A-Za-z0-9_ ]*?)+?"
++            r"(?:\s*(?:→|->|—|–|>|to|/)\s*)?"
++            r"(?:Done|Cancelled|Canceled|Closed|Completed|Refused|Rejected|Approved|Invoiced))\b",
++            text,
++        )
++        if m:
++            raw = m.group(1)
+     if not raw:
+         return []
+-    # Approved/Refused → two states; arrows → separators
++    try:
++        from app.ai_constraint_ast import _normalize_state_options
++
++        raw = _normalize_state_options(raw)
++    except Exception:  # noqa: BLE001
++        pass
++    # Approved/Refused → two states; arrows / "to" → separators
+     chunk = re.sub(r"(?i)\b([A-Za-z]+)/([A-Za-z]+)\b", r"\1 / \2", raw)
+-    chunk = re.sub(r"\s*[→\-–>]+\s*", " / ", chunk)
++    chunk = re.sub(r"\s*(?:→|->|—|–|>)+\s*", " / ", chunk)
++    chunk = re.sub(r"(?i)\s+to\s+", " / ", chunk)
+     parts = [p.strip(" .") for p in re.split(r"\s*/\s*", chunk) if p.strip(" .")]
+     keys: list[str] = []
+     for part in parts:
++        # Multi-word labels ("In progress") stay one key; skip junk "to".
++        if part.lower() in {"to", "and", "or", "then"}:
++            continue
+         key = _snake_state(part)
+         if key and key not in keys:
+             keys.append(key)
+diff --git a/apps/api/app/ai_constraint_ast.py b/apps/api/app/ai_constraint_ast.py
+index 300d932..41846c9 100644
+--- a/apps/api/app/ai_constraint_ast.py
++++ b/apps/api/app/ai_constraint_ast.py
+@@ -338,7 +338,9 @@ def _resolve_menu_parent(text: str) -> str | None:
+ 
+ def _normalize_state_options(raw: str) -> str:
+     text = re.sub(r"\s+", " ", (raw or "")).strip(" .")
+-    text = re.sub(r"\s*[→\-–]+\s*", " / ", text)
++    text = re.sub(r"\s*(?:→|->|—|–|>)+\s*", " / ", text)
++    # ``Draft to Done`` range cue (not the label "In progress").
++    text = re.sub(r"(?i)\s+to\s+", " / ", text)
+     # Approved/Refused → Approved / Refused
+     text = re.sub(r"(?i)\b([A-Za-z]+)/([A-Za-z]+)\b", r"\1 / \2", text)
+     text = re.sub(r"\s*/\s*", " / ", text)
+@@ -432,9 +434,34 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+         fields.append(ConstraintField(label="Start Date", ttype="date", bare=True))
+         fields.append(ConstraintField(label="End Date", ttype="date", bare=True))
+ 
+-    sm = _STATE_MACHINE_RE.search(text or "")
+-    if sm:
+-        opts = _normalize_state_options(sm.group(1))
++    # State range cues class-wide (parens, ``state Draft→Done``, ``Draft to Done``).
++    stated_keys: list[str] = []
++    try:
++        from app.ai_brief_cues import stated_workflow_states
++
++        stated_keys = stated_workflow_states(text or "")
++    except Exception:  # noqa: BLE001
++        stated_keys = []
++    if stated_keys:
++        # Prefer parenthetical / normalized brief labels when present.
++        sm = _STATE_MACHINE_RE.search(text or "")
++        if sm:
++            opts = _normalize_state_options(sm.group(1))
++        else:
++            _LABEL = {
++                "draft": "Draft",
++                "done": "Done",
++                "scheduled": "Scheduled",
++                "in_progress": "In progress",
++                "submitted": "Submitted",
++                "approved": "Approved",
++                "refused": "Refused",
++                "cancelled": "Cancelled",
++                "invoiced": "Invoiced",
++            }
++            opts = " / ".join(
++                _LABEL.get(k, k.replace("_", " ").title()) for k in stated_keys
++            )
+         if opts:
+             fields.append(
+                 ConstraintField(
+diff --git a/apps/api/app/ai_conversation/understand.py b/apps/api/app/ai_conversation/understand.py
+index ed49545..3d084f7 100644
+--- a/apps/api/app/ai_conversation/understand.py
++++ b/apps/api/app/ai_conversation/understand.py
+@@ -1039,7 +1039,14 @@ def _deterministic_understanding(prompt: str) -> Understanding:
+             _brief_must_do_constraints(text, host=host, inherit=True)
+         )
+     else:
+-        title = title or (text.split(".")[0].strip()[:48] or "Custom draft")
++        # Never seed Diagnosis/canvas title from «Build …» imperative crumbs.
++        raw_slice = (text.split(".")[0].strip()[:48] or "Custom draft")
++        raw_slice = re.sub(
++            r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
++            "",
++            raw_slice,
++        ).strip() or "Custom draft"
++        title = title or raw_slice
+         if len(title) > 48 or title.lower().startswith("the client"):
+             title = "Custom draft"
+         summary = summary or "A custom record people will open from the home screen."
+diff --git a/apps/api/app/ai_depth.py b/apps/api/app/ai_depth.py
+index a3cd364..c21b5ce 100644
+--- a/apps/api/app/ai_depth.py
++++ b/apps/api/app/ai_depth.py
+@@ -490,8 +490,22 @@ def _ensure_currency_on_amounts(draft: dict[str, Any]) -> list[str]:
+ def _ensure_company_on_transactional(
+     draft: dict[str, Any], ambition: Ambition
+ ) -> list[str]:
++    """Add x_company_id only when the brief cues multi-company / legal-entity split.
++
++    Thin residuals (Maintenance tickets, Field work) must not spray Company on
++    Identity — class-wide, not Maintenance-only.
++    """
+     if ambition != "comprehensive":
+         return []
++    prompt = str(draft.get("_user_prompt") or "")
++    try:
++        from app.multi_company_pack import prompt_asks_multi_company
++
++        if not prompt_asks_multi_company(prompt):
++            return []
++    except Exception:  # noqa: BLE001
++        if not re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", prompt):
++            return []
+     notes: list[str] = []
+     for m in _models(draft):
+         names = _field_names(m)
+@@ -517,27 +531,62 @@ def _ensure_company_on_transactional(
+ 
+ 
+ def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
+-    """Workflow models should carry status + code."""
++    """Workflow models should carry status + code.
++
++    When the brief cues a state range (Draft→Done), honor those endpoints —
++    never invent Cancel / extra junk that the brief did not list.
++    """
+     notes: list[str] = []
++    prompt = str(draft.get("_user_prompt") or "")
++    stated: list[str] = []
++    selection = "[('draft','Draft'),('done','Done'),('cancelled','Cancelled')]"
++    try:
++        from app.ai_brief_cues import selection_literal_from_keys, stated_workflow_states
++
++        stated = stated_workflow_states(prompt)
++        if stated:
++            selection = selection_literal_from_keys(stated)
++    except Exception:  # noqa: BLE001
++        stated = []
+     for m in _models(draft):
+         names = _field_names(m)
+-        if "x_status" not in names and not m.get("is_workflow"):
++        if (
++            "x_status" not in names
++            and "x_state" not in names
++            and not m.get("is_workflow")
++        ):
+             continue
+         fields = list(m.get("fields") or [])
+-        if "x_status" not in names:
++        if "x_status" not in names and "x_state" not in names:
++            fname = "x_state" if stated else "x_status"
+             fields.append(
+                 {
+-                    "name": "x_status",
++                    "name": fname,
+                     "ttype": "selection",
+-                    "string": "Status",
+-                    "selection": (
+-                        "[('draft','Draft'),('done','Done'),('cancelled','Cancelled')]"
+-                    ),
++                    "string": "State" if fname == "x_state" else "Status",
++                    "selection": selection,
+                     "required": True,
++                    "default": stated[0] if stated else "draft",
+                 }
+             )
+-            notes.append(f"depth: status on {m.get('model')}")
+-            names.add("x_status")
++            notes.append(
++                f"depth: {fname} on {m.get('model')}"
++                + (f" ({', '.join(stated)})" if stated else "")
++            )
++            names.add(fname)
++        elif stated:
++            # Overwrite Cancel-invented / truncated selections with brief range.
++            for field in fields:
++                if not isinstance(field, dict):
++                    continue
++                if str(field.get("name") or "") not in {"x_state", "x_status"}:
++                    continue
++                field["selection"] = selection
++                field.setdefault("default", stated[0])
++                notes.append(
++                    f"depth: aligned {m.get('model')}.{field.get('name')} → "
++                    f"{', '.join(stated)}"
++                )
+         if "x_code" not in names and "x_reference" not in names:
+             fields.insert(
+                 1 if fields and fields[0].get("name") == "x_name" else 0,
+diff --git a/apps/api/app/ai_odoo_app_bar.py b/apps/api/app/ai_odoo_app_bar.py
+index 43a41eb..0b07039 100644
+--- a/apps/api/app/ai_odoo_app_bar.py
++++ b/apps/api/app/ai_odoo_app_bar.py
+@@ -766,7 +766,14 @@ def wire_stock_apps_from_depends(draft: dict[str, Any]) -> list[str]:
+         _add_m2o(asset or ops, "x_equipment_id", "maintenance.equipment", "Equipment")
+         _add_m2o(ops, "x_maintenance_request_id", "maintenance.request", "Maintenance request")
+     if "purchase" in depends:
+-        _add_m2o(ops, "x_purchase_order_id", "purchase.order", "Purchase order")
++        prompt = str(draft.get("_user_prompt") or "")
++        # Online-honest stock / parts qty alone ≠ Purchase Order Identity M2O.
++        if re.search(
++            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
++            r"\bRFQ\b|\bvendor\s+bill",
++            prompt,
++        ):
++            _add_m2o(ops, "x_purchase_order_id", "purchase.order", "Purchase order")
+     if "project" in depends and not _skip_stock_project_on_residual(draft, by_id):
+         _add_m2o(ops or site, "x_project_id", "project.project", "Project / turnaround")
+     if "stock" in depends:
+@@ -1244,6 +1251,175 @@ def _is_residual_full_app_draft(draft: dict[str, Any]) -> bool:
+         return grain in {"", "full_app"} and not draft.get("domain_pack")
+ 
+ 
++def scrub_uncued_identity_link_m2os(
++    draft: dict[str, Any], *, prompt: str = ""
++) -> list[str]:
++    """Drop uncued Purchase Order / Invoice Identity M2Os on residual headers.
++
++    Class-wide: Related Sales Order / Online-honest stock / Invoiced *state*
++    are not cues for Purchase Order or Invoice M2O fields. Keep when the brief
++    clearly asks for those links.
++    """
++    notes: list[str] = []
++    text = prompt or str(draft.get("_user_prompt") or "")
++    if not isinstance(draft, dict):
++        return notes
++    wants_po = bool(
++        re.search(
++            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
++            r"\bRFQ\b|\bvendor\s+bill",
++            text,
++        )
++    )
++    # Invoiced *state* / Online-honest stock ≠ Invoice M2O Identity field.
++    wants_invoice = bool(
++        re.search(
++            r"(?i)\b(?:related|linked|optional)\s+invoices?\b|"
++            r"\binvoice\s+(?:link|field|m2o|many2one)\b|"
++            r"\blink(?:ed)?\s+(?:an?\s+)?invoices?\b|"
++            r"\bcustomer\s+invoices?\b",
++            text,
++        )
++    )
++
++    drop_rels: set[str] = set()
++    drop_names: set[str] = set()
++    if not wants_po:
++        drop_rels.add("purchase.order")
++        drop_names.update({"x_purchase_order_id", "x_po_id", "x_purchase_id"})
++    if not wants_invoice:
++        drop_rels.add("account.move")
++        drop_names.update({"x_invoice_id", "x_bill_id", "x_move_id"})
++
++    wants_company = False
++    try:
++        from app.multi_company_pack import prompt_asks_multi_company
++
++        wants_company = prompt_asks_multi_company(text)
++    except Exception:  # noqa: BLE001
++        wants_company = bool(
++            re.search(r"(?i)\bmulti[\s-]?compan|legal[\s-]?entit", text)
++        )
++    if not wants_company:
++        drop_rels.add("res.company")
++        drop_names.update({"x_company_id", "company_id"})
++
++    # Uncued Contact spray on Identity — only keep when brief cues Contact/Customer/Partner.
++    wants_contact = bool(
++        re.search(
++            r"(?i)\b(?:customer|contact|partner|vendor|client)\b",
++            text,
++        )
++    )
++    if not wants_contact:
++        drop_rels.add("res.partner")
++        drop_names.update(
++            {"x_partner_id", "x_contact_id", "x_customer_id", "x_client_id"}
++        )
++
++    if not drop_rels and not drop_names:
++        return notes
++
++    by_id = _models_index(draft)
++    for mid, model in by_id.items():
++        if not str(mid).startswith("x_"):
++            continue
++        if str(mid).endswith("_line") or str(mid).endswith("_party"):
++            continue
++        if str(model.get("mode") or "new") == "inherit":
++            continue
++        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
++        kept: list[dict[str, Any]] = []
++        dropped: list[str] = []
++        for field in fields:
++            name = str(field.get("name") or "")
++            rel = str(field.get("relation") or "")
++            lab = str(field.get("string") or "").strip().lower()
++            if name in drop_names or rel in drop_rels:
++                dropped.append(name or lab)
++                continue
++            if lab in {"purchase order", "purchase orders", "invoice", "invoices"} and (
++                (lab.startswith("purchase") and not wants_po)
++                or (lab.startswith("invoice") and not wants_invoice)
++            ):
++                dropped.append(name or lab)
++                continue
++            kept.append(field)
++        if dropped:
++            model["fields"] = kept
++            notes.append(
++                f"app_bar: dropped uncued Identity link on {mid}: "
++                + ", ".join(dropped)
++            )
++    return notes
++
++
++def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
++    """Brief «Online-honest on stock moves» → honesty stamp; Parts stay structured data.
++
++    Do not invent deep stock.move / PO as a substitute for honesty.
++    """
++    notes: list[str] = []
++    text = prompt or str(draft.get("_user_prompt") or "")
++    if not re.search(
++        r"(?i)\bonline[\s-]?honest(?:y)?\b[^.]{0,40}\bstock\b|"
++        r"\bstock\s+moves?\b[^.]{0,40}\bonline|"
++        r"\bhonest(?:y)?\b[^.]{0,30}\bstock\s+moves?",
++        text,
++    ):
++        return notes
++    meta = draft.get("_honesty") if isinstance(draft.get("_honesty"), dict) else {}
++    meta = {
++        **meta,
++        "online_stock_moves": True,
++        "note": (
++            "Online-honest on stock moves — Parts used stay structured product+qty; "
++            "do not invent deep stock.move / Purchase Order as a substitute. "
++            "Completeness ≠ Cert ≠ Autopilot. Promote stays human."
++        ),
++    }
++    draft["_honesty"] = meta
++    # Consultant-facing stamp on draft chrome (non-field).
++    stamps = draft.get("_consultant_notes")
++    if not isinstance(stamps, list):
++        stamps = []
++    note = (
++        "Online-honest on stock moves: Parts used = product + qty structured data; "
++        "no fake stock.move / PO invent."
++    )
++    if note not in stamps:
++        stamps.append(note)
++        draft["_consultant_notes"] = stamps
++        notes.append("app_bar: stamped Online-honest stock moves")
++    # Never add stock/purchase depends from honesty alone.
++    depends = [str(d) for d in (draft.get("depends") or []) if d]
++    cleaned = [d for d in depends if d.lower() not in {"stock", "purchase", "mrp"}]
++    # Keep product when Parts used / product.product fields exist.
++    if cleaned != depends:
++        # Only drop stock/purchase if no field actually needs them beyond honesty.
++        by_id = _models_index(draft)
++        needs_purchase = any(
++            isinstance(f, dict) and str(f.get("relation") or "") == "purchase.order"
++            for m in by_id.values()
++            for f in (m.get("fields") or [])
++        )
++        needs_stock = any(
++            isinstance(f, dict)
++            and str(f.get("relation") or "").startswith("stock.")
++            for m in by_id.values()
++            for f in (m.get("fields") or [])
++        )
++        keep = list(depends)
++        if not needs_purchase:
++            keep = [d for d in keep if d.lower() != "purchase"]
++        if not needs_stock:
++            keep = [d for d in keep if d.lower() not in {"stock", "mrp"}]
++        if keep != depends:
++            draft["depends"] = keep
++            notes.append("app_bar: clipped stock/purchase depends (Online-honest only)")
++    return notes
++
++
+ def scrub_uncued_residual_stock_smart_buttons(
+     draft: dict[str, Any], *, prompt: str = ""
+ ) -> list[str]:
+@@ -5490,6 +5666,8 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
+     notes.extend(ensure_residual_satellites(draft))
+     notes.extend(ensure_stock_inherit_bridges(draft))
+     notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
++    notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
++    notes.extend(stamp_online_stock_honesty(draft, prompt=prompt))
+     notes.extend(ensure_invoice_link_on_headers(draft))
+     notes.extend(ensure_relational_smart_buttons(draft))
+     notes.extend(drop_hollow_automations(draft))
+diff --git a/apps/api/app/ai_residual_identity.py b/apps/api/app/ai_residual_identity.py
+index f57232e..8d39462 100644
+--- a/apps/api/app/ai_residual_identity.py
++++ b/apps/api/app/ai_residual_identity.py
+@@ -31,16 +31,21 @@ def scrub_residual_display_name(title: str) -> str:
+ 
+     Also drops an accidental stock-parent prefix («Fleet Vehicle Request» →
+     Vehicle Request) when a following primary noun remains. Bare «Fleet» alone
+-    is preserved.
++    is preserved. Never leave a Build-verb title («Build Maintenance»).
+     """
+     text = (title or "").strip()
+     if not text:
+         return ""
+-    text = re.sub(
+-        r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+-        "",
+-        text,
+-    ).strip()
++    # Peel Build/Create/… repeatedly (canvas sometimes glues the verb twice).
++    while True:
++        nxt = re.sub(
++            r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
++            "",
++            text,
++        ).strip()
++        if nxt == text:
++            break
++        text = nxt
+     text = re.sub(
+         r"(?i)^(tiny|simple|small|new|mini|full|light(?:weight)?|basic|minimal)\s+",
+         "",
+diff --git a/apps/api/scripts/run_state_title_identity_spray_rubric_battery.sh b/apps/api/scripts/run_state_title_identity_spray_rubric_battery.sh
+new file mode 100755
+index 0000000..1c05e8b
+--- /dev/null
++++ b/apps/api/scripts/run_state_title_identity_spray_rubric_battery.sh
+@@ -0,0 +1,49 @@
++#!/usr/bin/env bash
++# State Must-do + Build-title + Identity spray rubric battery (ingenium).
++# Extends Install grammar with Draft→Done Must-do, Build-verb title scrub,
++# uncued company/PO/Invoice Identity spray, Online-honest stock stamp.
++# AI_INTENT_LLM=off deterministic floor. Unit/no_app_db only.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== State / title / identity-spray rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_state_title_identity_spray_class.py \
++  tests/test_install_grammar_o2m_preview_class.py \
++  tests/test_first_try_generate_repair_class.py \
++  tests/test_prefer_host_fullapp_noun_class.py \
++  tests/test_continuous_invent_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_notes_surface_class.py \
++  tests/test_residual_optional_satellite_primary.py \
++  tests/test_residual_full_app_generate_ir.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_vehicle_request_must_do.py \
++  tests/test_date_vs_datetime_classifier.py \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_hosting_m1.py \
++  tests/test_atlas_elite_p4.py \
++  tests/test_batch_os_atlas_recipes.py \
++  tests/test_batch_os_order_dry_run.py \
++  tests/test_batch_os_document_dry_run.py \
++  tests/test_batch_os_new_recipes.py \
++  2>&1 | tee /tmp/ingenium-state-title-identity-spray-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-state-title-identity-spray-rubric.txt"
+diff --git a/apps/api/tests/test_state_title_identity_spray_class.py b/apps/api/tests/test_state_title_identity_spray_class.py
+new file mode 100644
+index 0000000..5114387
+--- /dev/null
++++ b/apps/api/tests/test_state_title_identity_spray_class.py
+@@ -0,0 +1,287 @@
++"""Class-wide State Must-do + Build-title + Identity spray (Tope mandate).
++
++Failure classes (architectural — not Maintenance-only):
++A) state Draft→Done / Draft to Done range cues → State in Must-do + matching selection
++B) Build-verb / grain title pollution — Diagnosis/canvas from business noun
++C) Uncued x_company_id / Purchase Order / Invoice Identity M2O never invent
++D) Online-honest on stock moves → honesty stamp; Parts stay structured data
++"""
++
++from __future__ import annotations
++
++import os
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_brief_cues import (  # noqa: E402
++    honor_stated_brief_cues,
++    stated_workflow_states,
++)
++from app.ai_constraint_ast import ast_to_must_do, parse_det  # noqa: E402
++from app.ai_conversation.understand import build_understanding  # noqa: E402
++from app.ai_document_shape import naming_from_residual  # noqa: E402
++from app.ai_generation_engine import attach_generation_engine  # noqa: E402
++from app.ai_odoo_app_bar import (  # noqa: E402
++    run_odoo_app_bar_pass,
++    scrub_uncued_identity_link_m2os,
++    stamp_online_stock_honesty,
++)
++from app.ai_residual_identity import scrub_residual_display_name  # noqa: E402
++from app.preview_views import build_form_preview  # noqa: E402
++
++# Exact Maintenance brief from Tope grades
++MAINTENANCE_EXACT = (
++    "Build Maintenance tickets: checklist lines with done flags, parts used (product + qty), "
++    "state Draft→Done; Online-honest on stock moves."
++)
++
++FIELD_WORK_ORDERS = (
++    "Build Field work orders a mid-market firm could sell next to Odoo: "
++    "Work order: Customer (Contact), Related Sales Order (optional), "
++    "Asset/Vehicle (Fleet, optional), Scheduled slot, Priority, State "
++    "(Draft → Scheduled → In progress → Done → Invoiced); Checklist lines; "
++    "Parts used; Sign-off; Menus list/kanban/calendar; consultant handoff note; "
++    "prefer working Online metadata over fake Studio parity."
++)
++
++# Unseen thin residual with Draft→Done
++SERVICE_CARDS = (
++    "Build Service cards: technician; state Draft→Done; "
++    "checklist lines with done flags; Online-honest on stock moves."
++)
++
++VEHICLE_REQUEST = (
++    "Build Vehicle request: employees request a fleet vehicle for a date range; "
++    "manager approve/refuse; on approve, optionally link/create a Fleet vehicle "
++    "assignment note. List/kanban by state (Draft → Submitted → Approved/Refused → Done). "
++    "Menu under Fleet or HR — pick the more natural parent."
++)
++
++
++def _seed(brief: str) -> dict:
++    display, slug = naming_from_residual(brief)
++    return {
++        "display_name": display,
++        "technical_name": slug,
++        "grain": "full_app",
++        "_user_prompt": brief,
++        "models": [
++            {
++                "model": f"x_{slug}",
++                "description": display,
++                "mode": "new",
++                "is_workflow": True,
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name", "required": True}
++                ],
++            }
++        ],
++        "views": [],
++        "menus": [],
++        "smart_buttons": [],
++        "depends": ["base", "mail"],
++    }
++
++
++def _generate(brief: str) -> dict:
++    from app.ai_document_shape import stamp_document_shape
++
++    draft = _seed(brief)
++    stamp_document_shape(draft, prompt=brief)
++    attach_generation_engine(draft, prompt=brief)
++    run_odoo_app_bar_pass(draft, user_prompt=brief)
++    honor_stated_brief_cues(draft, prompt=brief)
++    return draft
++
++
++def _header(draft: dict) -> dict:
++    slug = str(draft.get("technical_name") or "")
++    want = f"x_{slug}"
++    for m in draft.get("models") or []:
++        if str(m.get("model")) == want:
++            return m
++    return next(m for m in draft["models"] if str(m.get("model", "")).startswith("x_"))
++
++
++# --- A: State Must-do from range cues ---
++
++
++def test_stated_workflow_states_draft_arrow_done() -> None:
++    assert stated_workflow_states(MAINTENANCE_EXACT) == ["draft", "done"]
++    assert stated_workflow_states("state Draft to Done") == ["draft", "done"]
++    assert stated_workflow_states(
++        "State (Draft → Scheduled → In progress → Done)"
++    ) == ["draft", "scheduled", "in_progress", "done"]
++
++
++def test_maintenance_exact_must_do_includes_state_draft_done() -> None:
++    rows = ast_to_must_do(parse_det(MAINTENANCE_EXACT, grain="full_app"))
++    joined = " | ".join(rows)
++    assert "State selection" in joined
++    assert "Draft" in joined and "Done" in joined
++    assert "Cancel" not in joined
++    # Only model + State + two O2Ms — not Contact/Company spray
++    assert "Company" not in joined
++    assert "Purchase" not in joined
++
++
++def test_unseen_service_cards_state_in_must_do() -> None:
++    rows = ast_to_must_do(parse_det(SERVICE_CARDS, grain="full_app"))
++    joined = " | ".join(rows)
++    assert "State selection" in joined
++    assert "Draft" in joined and "Done" in joined
++
++
++def test_maintenance_generate_carries_draft_done_selection() -> None:
++    draft = _generate(MAINTENANCE_EXACT)
++    header = _header(draft)
++    state = next(
++        (
++            f
++            for f in header.get("fields") or []
++            if str(f.get("name")) in {"x_state", "x_status"}
++        ),
++        None,
++    )
++    assert state is not None, "State field missing on residual"
++    sel = str(state.get("selection") or "")
++    assert "draft" in sel.lower() and "done" in sel.lower()
++    assert "cancel" not in sel.lower()
++
++
++# --- B: Build-verb / grain title pollution ---
++
++
++def test_maintenance_title_not_build_maintenance() -> None:
++    display, slug = naming_from_residual(MAINTENANCE_EXACT)
++    assert display == "Maintenance Tickets"
++    assert "build" not in display.lower()
++    assert slug == "maintenance_tickets"
++    u = build_understanding(MAINTENANCE_EXACT)
++    assert u.title == "Maintenance Tickets"
++    assert not u.title.lower().startswith("build")
++
++
++def test_scrub_strips_build_verb_title() -> None:
++    assert scrub_residual_display_name("Build Maintenance") == "Maintenance"
++    assert scrub_residual_display_name("Build Build Maintenance Tickets") == (
++        "Maintenance Tickets"
++    )
++
++
++def test_canvas_preview_title_is_business_noun() -> None:
++    draft = _generate(MAINTENANCE_EXACT)
++    assert draft["display_name"] == "Maintenance Tickets"
++    prev = build_form_preview(draft)
++    assert prev.get("title") == "Maintenance Tickets"
++    assert "build" not in str(prev.get("title") or "").lower()
++
++
++# --- C: Identity spray + uncued PO/Invoice ---
++
++
++def test_maintenance_no_company_po_invoice_spray() -> None:
++    draft = _generate(MAINTENANCE_EXACT)
++    header = _header(draft)
++    names = {str(f.get("name") or "") for f in header.get("fields") or []}
++    rels = {str(f.get("relation") or "") for f in header.get("fields") or []}
++    assert "x_company_id" not in names
++    assert "company_id" not in names
++    assert "res.company" not in rels
++    assert "purchase.order" not in rels
++    assert "account.move" not in rels
++    assert "x_purchase_order_id" not in names
++    assert "x_invoice_id" not in names
++    # Thin Maintenance brief did not cue Contact
++    assert "res.partner" not in rels
++
++
++def test_field_work_keeps_customer_so_no_uncued_invoice_po() -> None:
++    draft = _generate(FIELD_WORK_ORDERS)
++    header = _header(draft)
++    names = {str(f.get("name") or "") for f in header.get("fields") or []}
++    rels = {str(f.get("relation") or "") for f in header.get("fields") or []}
++    assert "res.partner" in rels  # Customer cued
++    assert any("sale" in n for n in names) or "sale.order" in rels
++    assert "purchase.order" not in rels
++    assert "x_purchase_order_id" not in names
++    assert "x_invoice_id" not in names
++    assert "account.move" not in rels
++
++
++def test_scrub_drops_invented_po_invoice_company() -> None:
++    draft = _seed(MAINTENANCE_EXACT)
++    header = draft["models"][0]
++    header["fields"].extend(
++        [
++            {
++                "name": "x_company_id",
++                "ttype": "many2one",
++                "relation": "res.company",
++                "string": "Company",
++            },
++            {
++                "name": "x_purchase_order_id",
++                "ttype": "many2one",
++                "relation": "purchase.order",
++                "string": "Purchase order",
++            },
++            {
++                "name": "x_invoice_id",
++                "ttype": "many2one",
++                "relation": "account.move",
++                "string": "Invoice",
++            },
++        ]
++    )
++    notes = scrub_uncued_identity_link_m2os(draft, prompt=MAINTENANCE_EXACT)
++    assert notes
++    names = {str(f.get("name") or "") for f in header["fields"]}
++    assert "x_company_id" not in names
++    assert "x_purchase_order_id" not in names
++    assert "x_invoice_id" not in names
++
++
++# --- D: Online stock honesty ---
++
++
++def test_online_honest_stock_stamp_no_po_invent() -> None:
++    draft = _generate(MAINTENANCE_EXACT)
++    honesty = draft.get("_honesty") or {}
++    assert honesty.get("online_stock_moves") is True
++    notes = draft.get("_consultant_notes") or []
++    assert any("stock" in str(n).lower() for n in notes)
++    depends = {str(d).lower() for d in (draft.get("depends") or [])}
++    assert "purchase" not in depends
++    assert "stock" not in depends
++    # Parts still structured
++    mids = {str(m.get("model") or "") for m in draft.get("models") or []}
++    assert any("parts" in mid for mid in mids)
++
++
++def test_stamp_online_stock_honesty_idempotent() -> None:
++    draft = _seed(MAINTENANCE_EXACT)
++    n1 = stamp_online_stock_honesty(draft, prompt=MAINTENANCE_EXACT)
++    n2 = stamp_online_stock_honesty(draft, prompt=MAINTENANCE_EXACT)
++    assert n1
++    assert draft["_honesty"]["online_stock_moves"] is True
++    # Second pass should not duplicate consultant notes
++    assert len(draft["_consultant_notes"]) == 1
++    assert n2 == [] or "clipped" in " ".join(n2)
++
++
++# --- Regressions: Vehicle + Field Work Must-do stay green ---
++
++
++def test_vehicle_and_field_must_do_regressions() -> None:
++    v = " | ".join(ast_to_must_do(parse_det(VEHICLE_REQUEST, grain="full_app")))
++    assert "State selection" in v
++    assert "Approved" in v and "Refused" in v
++    f = " | ".join(ast_to_must_do(parse_det(FIELD_WORK_ORDERS, grain="full_app")))
++    assert "State selection" in f
++    assert "Invoiced" in f
++    assert "Related Sales Order" in f
+-- 
+2.47.3
+

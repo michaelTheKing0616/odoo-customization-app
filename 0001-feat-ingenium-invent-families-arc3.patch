@@ -1,0 +1,1221 @@
+From f47bd337663f59ef4ef191bcf45833bd4c28b3c9 Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 14:05:12 +0100
+Subject: [PATCH] =?UTF-8?q?feat(ingenium):=20Arc3=20invent=20families=20?=
+ =?UTF-8?q?=E2=80=94=20Severity/Channel/Stage=20+=20Flash-on=20honor?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Expand class-wide uncued Selection invent gates beyond Type/Priority/Rate to
+Severity, Channel, and Stage (State/Status ≠ Stage). Brief must cue them
+before they appear. Flash/LLM AST proposals may suggest invents; honor/apply
+plus AST/Must-do scrub still drop uncued fields (closes P3 Flash-on gap).
+Additive Flash-on goldens; AI_INTENT_LLM=off floor still green. Completeness ≠
+Cert ≠ Autopilot. Promote stays human.
+---
+ APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh          |  47 ++
+ DOCKET.md                                     |  34 +-
+ MEMORY.md                                     |   6 +
+ apps/api/app/ai_brief_cues.py                 | 497 ++++++++++++++----
+ apps/api/app/ai_continuous_invent.py          |  37 +-
+ apps/api/app/ai_conversation/understand.py    |  30 ++
+ ...run_arc3_invent_families_rubric_battery.sh |  45 ++
+ .../api/tests/test_continuous_invent_class.py | 264 ++++++++++
+ 8 files changed, 832 insertions(+), 128 deletions(-)
+ create mode 100755 APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh
+ create mode 100755 apps/api/scripts/run_arc3_invent_families_rubric_battery.sh
+
+diff --git a/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh b/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh
+new file mode 100755
+index 0000000..5a8c025
+--- /dev/null
++++ b/APPLY_INVENT_FAMILIES_ARC3_ON_MAC.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++# Apply Arc3 invent families + Flash-on honor onto Tope's Mac checkout.
++# machineId: 4fc0d119-8958-4a46-954b-7411355d96ce
++set -euo pipefail
++REPO="${1:-/Users/temitopeolaitanmichael/Odoo_Customization_App}"
++PATCH="${2:-/workspace/0001-feat-ingenium-invent-families-arc3.patch}"
++cd "$REPO"
++git checkout premium-local-tip
++git status -sb
++
++STASHED=0
++if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
++  echo "Local WIP present — stashing before apply"
++  git stash push -u -m "pre-invent-families-arc3-apply"
++  STASHED=1
++fi
++
++git fetch origin premium-local-tip || true
++
++if [ -f "$PATCH" ]; then
++  git am --3way "$PATCH" || {
++    git am --abort 2>/dev/null || true
++    git apply --check "$PATCH" && git apply "$PATCH"
++    git add -A
++    git commit -m "feat(ingenium): Arc3 invent families — Severity/Channel/Stage + Flash-on honor"
++  }
++else
++  echo "WARN: patch missing at $PATCH — pull/cherry-pick from tip instead"
++  git pull --ff-only origin premium-local-tip || true
++fi
++
++git push origin premium-local-tip || echo "WARN: push failed — push manually"
++
++if [ "$STASHED" = "1" ]; then
++  git stash pop || echo "WARN: stash pop conflict — resolve manually"
++fi
++
++pkill -f "uvicorn .*8001" 2>/dev/null || true
++sleep 1
++cd "$REPO/apps/api"
++if [ -f ../../.venv/bin/uvicorn ]; then UV=../../.venv/bin/uvicorn
++elif [ -f .venv/bin/uvicorn ]; then UV=.venv/bin/uvicorn
++else UV=uvicorn; fi
++nohup env AI_INTENT_LLM=off "$UV" app.main:app --host 127.0.0.1 --port 8001 --reload \
++  > /tmp/ingenium-api-8001.log 2>&1 &
++echo "API restarting on :8001 — log /tmp/ingenium-api-8001.log"
++echo "Done. ingenium Arc3 invent families + Flash-on honor. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+diff --git a/DOCKET.md b/DOCKET.md
+index 7802f8b..74d6f5f 100644
+--- a/DOCKET.md
++++ b/DOCKET.md
+@@ -40,6 +40,9 @@ Never Prefer when Option A required; never Online Python promote.
+ - [x] **P4 Config Atlas elite** — 2026-09-22  
+   Closed last Atlas stub (`docs.orders` → `document_batch.orders` CSV→draft SO/PO). Expert/Intent → Atlas → recipe → Apply continuity with atlas_class/recipe/risk/delivery_lane handoff. Build spine Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas goldens + L3/preview honesty. Rubric battery green (`run_p4_atlas_elite_rubric_battery.sh`, AI_INTENT_LLM=off).
+ 
++- [x] **Arc3 invent families + Flash-on honor** — 2026-09-22  
++  Class-wide Selection invent gates expand beyond Type/Priority/Rate to **Severity**, **Channel**, and **Stage** (workflow State/Status ≠ Stage). Brief must cue them before they appear. Flash/LLM proposals may suggest invents; honor/apply + Flash AST scrub still drop uncued fields (closes P3 Flash-on gap). Goldens fail if Flash-on lets Severity/Channel/Stage/Type through without cues. `AI_INTENT_LLM=off` floor still green. Rubric `run_arc3_invent_families_rubric_battery.sh`.
++
+ - [x] **P2 Build spine** — 2026-09-22  
+   One Build entry with mode chips (Prefer / Residual / Option A / Stock Autopilot / Report / Connector). Handoff Draft↔App↔Autopilot carries brief + Diagnosis/Contract + delivery_lane stamps. Capability gaps always propose Option A scaffold when Live cannot finish. Expert routes into spine. Rubric battery green (184 no_app_db).
+ 
+@@ -67,7 +70,7 @@ Release gates for Build spine — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p2_
+ |------|--------|
+ | Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
+ | Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
+-| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
++| Invent gates: uncued Type/Priority/Rate/Severity/Channel/Stage; one cue→one field; notes | **pass** |
+ | Pack adoption: positive product cues; shared workflow tokens ≠ pack identity | **pass** |
+ | Grain + delivery_lane stamps Prefer / residual / Option A / report / FX | **pass** |
+ | Online + Python Option A: promote blocked + honest alternatives | **pass** |
+@@ -89,7 +92,7 @@ Release gates for continuous invent — `AI_INTENT_LLM=off`, `apps/api/scripts/r
+ |------|--------|
+ | Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
+ | Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
+-| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
++| Invent gates: uncued Type/Priority/Rate/Severity/Channel/Stage; one cue→one field; notes | **pass** |
+ | Multi-brief goldens: Vehicle / Leave / Incident / Ticket / Visitor / Dining / Asset | **pass** |
+ | Optional note label follows brief noun (Assignment Note vs Calendar Block Note) | **pass** |
+ | Thin residual ≠ pack workspace party/line invent | **pass** |
+@@ -113,7 +116,7 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
+ |------|--------|
+ | Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
+ | Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
+-| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
++| Invent gates: uncued Type/Priority/Rate/Severity/Channel/Stage; one cue→one field; notes | **pass** |
+ | Invent/pack bleed; grain+delivery_lane; Online+Python honesty | **pass** |
+ | Completeness ≠ Cert ≠ Autopilot | **pass** |
+ | Job1–3 class goldens | **pass** |
+@@ -133,3 +136,28 @@ Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/
+ 
+ **Tip SHAs:** feat `0b9f9bd` · APPLY `35c9fb8`. Mac APPLY: `/workspace/odoo-mac-tip/APPLY_ATLAS_ELITE_P4_ON_MAC.sh` with patch `0001-feat-ingenium-atlas-elite-p4.patch`.
+ 
++
++## Arc3 invent families rubric matrix (2026-09-22)
++
++Release gates for invent families + Flash-on honor — `AI_INTENT_LLM=off` floor + additive Flash-on goldens. `apps/api/scripts/run_arc3_invent_families_rubric_battery.sh`.
++
++| Gate | Result |
++|------|--------|
++| Prefer Sales / Prefer Contacts stay Prefer | **pass** |
++| Residual full_app identity lock | **pass** |
++| Invent gates: uncued Type/Priority/Rate/**Severity/Channel/Stage**; one cue→one field; notes | **pass** |
++| Multi-brief goldens: uncued Severity/Channel/Stage never land; cued ones may | **pass** |
++| Flash-on + honor gate drops uncued invents (AST scrub + source=llm/flash) | **pass** |
++| Pack bleed; grain+delivery_lane; Online+Python honesty | **pass** |
++| Completeness ≠ Cert ≠ Autopilot | **pass** |
++| Job1–3 class goldens | **pass** |
++| Atlas elite continuity (P4 battery retained) | **pass** |
++| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
++
++**Battery:** 282 pytest passed (`no_app_db`). Web: 8 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
++
++### Arc3 remaining gaps (honest)
++- Live Odoo order-batch dry-run/apply still mock-only (unchanged from P4).
++- ConfigCommandCenter vitest still hits pre-existing jsdom/undici env error on this box.
++- Packs that intentionally ship Severity (hospital/oil_gas) still rely on brief cues + honor drop when those packs bleed onto uncued residuals.
++
+diff --git a/MEMORY.md b/MEMORY.md
+index 90bd712..7e7687c 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -1,3 +1,9 @@
++### 2026-09-22 — Arc3 invent families + Flash-on honor (Severity/Channel/Stage)
++**Decided:** Expand class-wide uncued Selection invent gates beyond Type/Priority/Rate to Severity, Channel, and Stage (same pattern as continuous invent / studio). Brief must cue them before they appear; workflow State/Status ≠ Stage invent. Flash/LLM may propose invents into ConstraintAST/Must-do, but honor/apply gates + `scrub_uncued_invent_from_llm_ast` / `scrub_uncued_invent_must_do_rows` still drop uncued fields (closes pre-existing P3 Flash-on gap). Additive Flash-on goldens; `AI_INTENT_LLM=off` floor unchanged. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++**Why:** Packs/density/Flash still invented Severity/Channel/Stage (and Type via source=llm) on uncued residuals; P3 honor covered Type/Priority/Rate floor but not the broader family or Flash-on AST merge path.
++**Rejected:** Vehicle-only patches; treating State workflow as Stage; letting Flash-on bypass honor; Online Python Autopilot; redoing P4 Atlas / Mac apply of P0–P4.
++**Arc3:** done this tip.
++
+ ### 2026-09-22 — P4 Config Atlas elite closed (Stock/Config/Batch craft)
+ **Decided:** Elevate Config Atlas + Batch OS from seed-complete / zero-stub-recipes to elite operator craft. Root fixes: (1) close last Atlas stub `docs.orders` with CE-safe public-RPC `document_batch.orders` (CSV→draft sale.order/purchase.order; Preview ≠ confirmed; never auto-confirm); (2) `ai_atlas_elite` multi-brief class goldens route lock dates / tax pack / partners CSV / invoice+order batch / settings board onto atlas_class+recipe+risk with `stock_config`/`online_metadata`; (3) Build spine handoff + Expert Go carry atlas_class/recipe_id/risk/delivery_lane and deep-link Config Atlas / journal tabs without re-brief; (4) L3 lock + stub/complete badge honesty; (5) Prefer/Option A never stolen by Atlas. Rubric `run_p4_atlas_elite_rubric_battery.sh` green (275 no_app_db). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+ **Why:** Operators needed class-wide Stock/Config/Batch grain continuity after P3 invent — one remaining Atlas stub + spine not first-class for config/batch briefs.
+diff --git a/apps/api/app/ai_brief_cues.py b/apps/api/app/ai_brief_cues.py
+index f5416f8..295e036 100644
+--- a/apps/api/app/ai_brief_cues.py
++++ b/apps/api/app/ai_brief_cues.py
+@@ -17,8 +17,15 @@ without a clear brief cue.
+ Same invent family for Rate/Unit/UOM Selection compounds (Rate Unit, UoM, …) —
+ rental/pricing domain bleed must not land on a request doc with no pricing language.
+ 
++Same invent family for Severity / Channel / Stage Selection compounds — packs,
++density, and Flash/LLM proposals must not land them without a clear brief cue.
++Workflow State/Status (Draft→…→Done) is not Stage invent.
++
+ Type gate covers compound labels («Vehicle Type», «Request Category», …) — not only
+ bare Type/Category/Kind/Class.
++
++Flash-on: proposals may suggest invents; honor/apply gates still drop uncued
++fields (same floor as AI_INTENT_LLM=off).
+ """
+ 
+ from __future__ import annotations
+@@ -125,6 +132,92 @@ _RATE_INVENT_STRING_RE = re.compile(
+     r"|^(?:rate\s*unit|unit|uom)$"
+ )
+ 
++# Brief Severity cue — invent only when clearly asked (Type family).
++_SEVERITY_CUE_RE = re.compile(
++    r"(?i)\b("
++    r"severity\s*(?:selection|field|dropdown|column|level)?"
++    r"|severity\s+level"
++    r"|set\s+(?:a\s+)?severity"
++    r"|incident\s+severity"
++    r"|criticality"
++    r")\b"
++)
++
++# Brief Channel cue — support/intake channel, not payment/sales "channel partner".
++_CHANNEL_CUE_RE = re.compile(
++    r"(?i)\b("
++    r"channel\s*(?:selection|field|dropdown|column)?"
++    r"|support\s+channel"
++    r"|contact\s+channel"
++    r"|intake\s+channel"
++    r"|ticket\s+channel"
++    r"|via\s+(?:email|phone|chat|whatsapp|web\s*form)"
++    r")\b"
++)
++
++# Brief Stage cue — pipeline/kanban Stage invent (NOT workflow State/Status).
++_STAGE_CUE_RE = re.compile(
++    r"(?i)\b("
++    r"(?:pipeline\s+)?stage\s*(?:selection|field|dropdown|column)?"
++    r"|kanban\s+stage"
++    r"|crm\s+stage"
++    r"|deal\s+stage"
++    r"|ticket\s+stage"
++    r"|pipeline\s+stages?"
++    r")\b"
++)
++
++# Compound Severity invent family.
++_SEVERITY_INVENT_NAME_RE = re.compile(
++    r"(?i)^x_(?:\w+_)?severity$"
++    r"|^x_severity_\w+$"
++)
++_SEVERITY_INVENT_STRING_RE = re.compile(
++    r"(?i)^(?:[\w/&-]+\s+)*severity$"
++    r"|^severity$"
++)
++
++# Compound Channel invent family.
++_CHANNEL_INVENT_NAME_RE = re.compile(
++    r"(?i)^x_(?:\w+_)?channel$"
++    r"|^x_channel_\w+$"
++)
++_CHANNEL_INVENT_STRING_RE = re.compile(
++    r"(?i)^(?:[\w/&-]+\s+)*channel$"
++    r"|^channel$"
++)
++
++# Compound Stage invent family — never match State/Status workflow fields.
++_STAGE_INVENT_NAME_RE = re.compile(
++    r"(?i)^x_(?:\w+_)?stage$"
++    r"|^x_stage_\w+$"
++)
++_STAGE_INVENT_STRING_RE = re.compile(
++    r"(?i)^(?:[\w/&-]+\s+)*stage$"
++    r"|^stage$"
++)
++
++# Sources that densify/pad/Flash invent without an operator cue.
++_INVENT_DROP_SOURCES = frozenset(
++    {
++        "domain_briefing",
++        "density",
++        "pack_default",
++        "domain_density",
++        "pad",
++        "senior_shape",
++        "apply_readiness",
++        "llm",
++        "flash",
++        "enrich",
++        "ai",
++        "must_do",
++        "proposal",
++        "constraint_ast",
++        "",
++    }
++)
++
+ 
+ # Stock app label → (module, preferred parent menu xml id).
+ _STOCK_MENU_PARENTS: dict[str, tuple[str, str]] = {
+@@ -283,6 +376,21 @@ def brief_has_rate_cue(prompt: str) -> bool:
+     return bool(_RATE_CUE_RE.search(prompt or ""))
+ 
+ 
++def brief_has_severity_cue(prompt: str) -> bool:
++    """True when the brief clearly asks for Severity Selection."""
++    return bool(_SEVERITY_CUE_RE.search(prompt or ""))
++
++
++def brief_has_channel_cue(prompt: str) -> bool:
++    """True when the brief clearly asks for Channel Selection."""
++    return bool(_CHANNEL_CUE_RE.search(prompt or ""))
++
++
++def brief_has_stage_cue(prompt: str) -> bool:
++    """True when the brief clearly asks for Stage Selection (not State/Status)."""
++    return bool(_STAGE_CUE_RE.search(prompt or ""))
++
++
+ def model_is_equipment_roster(mid: str) -> bool:
+     """Equipment/asset roster models may carry Type; request/order docs must not."""
+     hay = (mid or "").replace("x_", "").replace(".", "_").lower()
+@@ -476,7 +584,11 @@ def should_skip_generic_notes_pad(
+ 
+ 
+ def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
+-    """Materialize stated states, stock menu parent, no-invent Type/Priority/Rate, one notes surface."""
++    """Materialize stated states, stock menu parent, no-invent Selection families, one notes surface.
++
++    Invent families: Type / Priority / Rate / Severity / Channel / Stage.
++    Flash-on proposals may suggest invents; this gate still drops uncued fields.
++    """
+     notes: list[str] = []
+     text = prompt or str(draft.get("_user_prompt") or "")
+     if not text or not isinstance(draft, dict):
+@@ -486,6 +598,9 @@ def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[
+     notes.extend(_drop_uncued_type_fields(draft, text))
+     notes.extend(_drop_uncued_priority_fields(draft, text))
+     notes.extend(_drop_uncued_rate_unit_fields(draft, text))
++    notes.extend(_drop_uncued_severity_fields(draft, text))
++    notes.extend(_drop_uncued_channel_fields(draft, text))
++    notes.extend(_drop_uncued_stage_fields(draft, text))
+     notes.extend(dedupe_notes_surfaces(draft, prompt=text))
+     return notes
+ 
+@@ -888,16 +1003,105 @@ def _is_rate_invent_field(field: dict[str, Any]) -> bool:
+     return False
+ 
+ 
+-def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
++def _is_priority_invent_field(field: dict[str, Any]) -> bool:
++    """True for Priority/Urgency/Importance invent family."""
++    name = str(field.get("name") or "").strip()
++    string = str(field.get("string") or "").strip()
++    if name in {"x_priority", "x_urgency", "x_importance"}:
++        return True
++    if string.lower() in {"priority", "urgency", "importance"}:
++        return True
++    if re.match(r"(?i)^x_(?:\w+_)?(?:priority|urgency|importance)$", name):
++        return True
++    if string and re.match(
++        r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$",
++        string,
++    ):
++        return True
++    return False
++
++
++def _is_severity_invent_field(field: dict[str, Any]) -> bool:
++    """True for Severity invent family."""
++    name = str(field.get("name") or "").strip()
++    string = str(field.get("string") or "").strip()
++    if name in {"x_severity"}:
++        return True
++    if string.lower() in {"severity"}:
++        return True
++    if _SEVERITY_INVENT_NAME_RE.match(name):
++        return True
++    if string and _SEVERITY_INVENT_STRING_RE.match(string):
++        return True
++    return False
++
++
++def _is_channel_invent_field(field: dict[str, Any]) -> bool:
++    """True for Channel invent family."""
++    name = str(field.get("name") or "").strip()
++    string = str(field.get("string") or "").strip()
++    if name in {"x_channel"}:
++        return True
++    if string.lower() in {"channel"}:
++        return True
++    if _CHANNEL_INVENT_NAME_RE.match(name):
++        return True
++    if string and _CHANNEL_INVENT_STRING_RE.match(string):
++        return True
++    return False
++
++
++def _is_stage_invent_field(field: dict[str, Any]) -> bool:
++    """True for Stage invent — never State/Status workflow fields."""
++    name = str(field.get("name") or "").strip()
++    string = str(field.get("string") or "").strip()
++    low = string.lower()
++    if name in {"state", "x_state", "x_status", "status"} or low in {
++        "state",
++        "status",
++        "workflow state",
++        "workflow status",
++    }:
++        return False
++    if name in {"x_stage"}:
++        return True
++    if low in {"stage"}:
++        return True
++    if _STAGE_INVENT_NAME_RE.match(name):
++        return True
++    if string and _STAGE_INVENT_STRING_RE.match(string):
++        return True
++    return False
++
++
++def _should_drop_invent_field(field: dict[str, Any]) -> bool:
++    """Drop invent-family fields from density/pack/Flash/empty-source or Selection."""
++    source = str(field.get("source") or "")
++    if source in _INVENT_DROP_SOURCES:
++        return True
++    if str(field.get("ttype") or "") == "selection":
++        return True
++    return False
++
++
++def _drop_uncued_invent_family(
++    draft: dict[str, Any],
++    text: str,
++    *,
++    family: str,
++    has_cue,
++    is_invent,
++    skip_model=None,
++) -> list[str]:
++    """Shared dropper for Type/Priority/Rate/Severity/Channel/Stage invent families."""
+     notes: list[str] = []
+-    if brief_has_type_cue(text):
++    if has_cue(text):
+         return notes
+     for model in draft.get("models") or []:
+         if not isinstance(model, dict):
+             continue
+         mid = str(model.get("model") or "")
+-        # Roster equipment may keep Type only when the model truly is a roster.
+-        if model_is_equipment_roster(mid):
++        if skip_model is not None and skip_model(mid, model):
+             continue
+         fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+         keep: list[dict[str, Any]] = []
+@@ -905,130 +1109,198 @@ def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
+         for field in fields:
+             name = str(field.get("name") or "")
+             string = str(field.get("string") or "").strip().lower()
+-            source = str(field.get("source") or "")
+-            is_type = _is_type_invent_field(field)
+-            if is_type and (
+-                source
+-                in {
+-                    "domain_briefing",
+-                    "density",
+-                    "pack_default",
+-                    "domain_density",
+-                    "pad",
+-                    "senior_shape",
+-                    "apply_readiness",
+-                    "",
+-                }
+-                or str(field.get("ttype") or "") == "selection"
+-            ):
++            if is_invent(field) and _should_drop_invent_field(field):
+                 dropped.append(name or string)
+                 continue
+             keep.append(field)
+         if dropped:
+             model["fields"] = keep
+             notes.append(
+-                f"brief_cues: dropped unsolicited Type on {mid} "
+-                f"({', '.join(dropped)}) — no Type cue in brief"
++                f"brief_cues: dropped unsolicited {family} on {mid} "
++                f"({', '.join(dropped)}) — no {family} cue in brief"
+             )
+     return notes
+ 
+ 
++def _drop_uncued_type_fields(draft: dict[str, Any], text: str) -> list[str]:
++    def _skip(mid: str, model: dict[str, Any]) -> bool:
++        return model_is_equipment_roster(mid)
++
++    return _drop_uncued_invent_family(
++        draft,
++        text,
++        family="Type",
++        has_cue=brief_has_type_cue,
++        is_invent=_is_type_invent_field,
++        skip_model=_skip,
++    )
++
++
+ def _drop_uncued_priority_fields(draft: dict[str, Any], text: str) -> list[str]:
+-    """Drop Priority/Urgency/Importance Selection when the brief has no such cue.
++    """Drop Priority/Urgency/Importance when the brief has no such cue."""
++    return _drop_uncued_invent_family(
++        draft,
++        text,
++        family="Priority",
++        has_cue=brief_has_priority_cue,
++        is_invent=_is_priority_invent_field,
++    )
+ 
+-    Same invent family as Type — packs/density/pads must not invent without a cue.
++
++def _drop_uncued_rate_unit_fields(draft: dict[str, Any], text: str) -> list[str]:
++    """Drop Rate Unit / UOM / Unit when the brief has no pricing cue."""
++
++    def _skip(mid: str, model: dict[str, Any]) -> bool:
++        hay = mid.replace("x_", "").replace(".", "_").lower()
++        if any(tok in hay for tok in ("rate", "tariff", "pricelist", "price_list")):
++            if not any(tok in hay for tok in _DOCUMENT_MODEL_TOKENS):
++                return True
++        return False
++
++    return _drop_uncued_invent_family(
++        draft,
++        text,
++        family="Rate/Unit",
++        has_cue=brief_has_rate_cue,
++        is_invent=_is_rate_invent_field,
++        skip_model=_skip,
++    )
++
++
++def _drop_uncued_severity_fields(draft: dict[str, Any], text: str) -> list[str]:
++    return _drop_uncued_invent_family(
++        draft,
++        text,
++        family="Severity",
++        has_cue=brief_has_severity_cue,
++        is_invent=_is_severity_invent_field,
++    )
++
++
++def _drop_uncued_channel_fields(draft: dict[str, Any], text: str) -> list[str]:
++    return _drop_uncued_invent_family(
++        draft,
++        text,
++        family="Channel",
++        has_cue=brief_has_channel_cue,
++        is_invent=_is_channel_invent_field,
++    )
++
++
++def _drop_uncued_stage_fields(draft: dict[str, Any], text: str) -> list[str]:
++    return _drop_uncued_invent_family(
++        draft,
++        text,
++        family="Stage",
++        has_cue=brief_has_stage_cue,
++        is_invent=_is_stage_invent_field,
++    )
++
++
++_INVENT_LABEL_DROP_RES: tuple[tuple[str, object, object], ...] = (
++    (
++        "Type",
++        brief_has_type_cue,
++        re.compile(r"(?i)^(?:[\w/&-]+\s+)*(?:type|category|kind|class)$"),
++    ),
++    (
++        "Priority",
++        brief_has_priority_cue,
++        re.compile(r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$"),
++    ),
++    (
++        "Rate/Unit",
++        brief_has_rate_cue,
++        re.compile(
++            r"(?i)^(?:[\w/&-]+\s+)*(?:rate\s*unit|rate\s*uom|rate\s*type|uom|"
++            r"unit\s+of\s+measure|billing\s+unit|unit)$"
++        ),
++    ),
++    (
++        "Severity",
++        brief_has_severity_cue,
++        re.compile(r"(?i)^(?:[\w/&-]+\s+)*severity$"),
++    ),
++    (
++        "Channel",
++        brief_has_channel_cue,
++        re.compile(r"(?i)^(?:[\w/&-]+\s+)*channel$"),
++    ),
++    (
++        "Stage",
++        brief_has_stage_cue,
++        re.compile(r"(?i)^(?:[\w/&-]+\s+)*stage$"),
++    ),
++)
++
++
++def _label_is_uncued_invent(label: str, prompt: str) -> str | None:
++    """Return invent family name when label is uncued invent, else None."""
++    lab = re.sub(r"\s+", " ", (label or "").strip()).strip(" .:,-")
++    lab = re.sub(
++        r"(?i)^(field|selection(?:\s+field)?|text\s+field|add(?:\s+a|\s+an)?)\s*[:\-]?\s*",
++        "",
++        lab,
++    ).strip()
++    if not lab:
++        return None
++    low = lab.lower()
++    if low in {"state", "status", "workflow state", "workflow status"}:
++        return None
++    for family, has_cue, pat in _INVENT_LABEL_DROP_RES:
++        if has_cue(prompt):  # type: ignore[operator]
++            continue
++        if pat.match(lab):  # type: ignore[union-attr]
++            return family
++    return None
++
++
++def scrub_uncued_invent_must_do_rows(rows: list[str], *, prompt: str = "") -> list[str]:
++    """Drop Flash/LLM Must-do bullets that invent uncued Selection families.
++
++    Flash-on proposals may suggest invents; honor/apply still drops them.
+     """
+-    notes: list[str] = []
+-    if brief_has_priority_cue(text):
+-        return notes
+-    for model in draft.get("models") or []:
+-        if not isinstance(model, dict):
++    if not rows:
++        return []
++    kept: list[str] = []
++    for row in rows:
++        s = str(row or "").strip()
++        if not s:
+             continue
+-        mid = str(model.get("model") or "")
+-        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+-        keep: list[dict[str, Any]] = []
+-        dropped: list[str] = []
+-        for field in fields:
+-            name = str(field.get("name") or "")
+-            string = str(field.get("string") or "").strip().lower()
+-            source = str(field.get("source") or "")
+-            is_priority = (
+-                name in {"x_priority", "x_urgency", "x_importance"}
+-                or string in {"priority", "urgency", "importance"}
+-                or bool(re.match(r"(?i)^x_(?:\w+_)?(?:priority|urgency|importance)$", name))
+-                or bool(
+-                    re.match(
+-                        r"(?i)^(?:[\w/&-]+\s+)*(?:priority|urgency|importance)$",
+-                        string,
+-                    )
+-                )
+-            )
+-            if is_priority and (
+-                source in {"domain_briefing", "density", "pack_default", ""}
+-                or str(field.get("ttype") or "") == "selection"
+-            ):
+-                dropped.append(name or string)
+-                continue
+-            keep.append(field)
+-        if dropped:
+-            model["fields"] = keep
+-            notes.append(
+-                f"brief_cues: dropped unsolicited Priority on {mid} "
+-                f"({', '.join(dropped)}) — no Priority cue in brief"
+-            )
+-    return notes
++        m = re.match(
++            r"(?i)^(?:field|selection(?:\s+field)?|text\s+field|add(?:\s+a|\s+an)?)\s*[:\-]?\s*(.+)$",
++            s,
++        )
++        label = m.group(1).strip() if m else s
++        if _label_is_uncued_invent(label, prompt):
++            continue
++        kept.append(s)
++    return kept
+ 
+ 
+-def _drop_uncued_rate_unit_fields(draft: dict[str, Any], text: str) -> list[str]:
+-    """Drop Rate Unit / UOM / Unit Selection when the brief has no pricing cue.
++def scrub_uncued_invent_from_llm_ast(llm_ast: Any, *, prompt: str = "") -> Any:
++    """Strip uncued invent-family fields from a Flash/LLM ConstraintAST.
+ 
+-    Same invent family as Type/Priority — rental/density/pads must not invent
+-    Rate Unit on a vehicle request (or any residual) without rate/pricing language.
++    Returns the same object (mutated). Det floor is never passed here — only LLM fill.
+     """
+-    notes: list[str] = []
+-    if brief_has_rate_cue(text):
+-        return notes
+-    for model in draft.get("models") or []:
+-        if not isinstance(model, dict):
++    if llm_ast is None:
++        return None
++    fields = list(getattr(llm_ast, "fields", None) or [])
++    if not fields:
++        return llm_ast
++    kept = []
++    for f in fields:
++        label = str(getattr(f, "label", "") or "")
++        if _label_is_uncued_invent(label, prompt):
+             continue
+-        mid = str(model.get("model") or "")
+-        # Dedicated rate-card / tariff models may keep UOM when the model is a rate.
+-        hay = mid.replace("x_", "").replace(".", "_").lower()
+-        if any(tok in hay for tok in ("rate", "tariff", "pricelist", "price_list")):
+-            if not any(tok in hay for tok in _DOCUMENT_MODEL_TOKENS):
+-                continue
+-        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
+-        keep: list[dict[str, Any]] = []
+-        dropped: list[str] = []
+-        for field in fields:
+-            name = str(field.get("name") or "")
+-            string = str(field.get("string") or "").strip().lower()
+-            source = str(field.get("source") or "")
+-            is_rate = _is_rate_invent_field(field)
+-            if is_rate and (
+-                source
+-                in {
+-                    "domain_briefing",
+-                    "density",
+-                    "pack_default",
+-                    "domain_density",
+-                    "pad",
+-                    "senior_shape",
+-                    "apply_readiness",
+-                    "",
+-                }
+-                or str(field.get("ttype") or "") == "selection"
+-            ):
+-                dropped.append(name or string)
+-                continue
+-            keep.append(field)
+-        if dropped:
+-            model["fields"] = keep
+-            notes.append(
+-                f"brief_cues: dropped unsolicited Rate/Unit on {mid} "
+-                f"({', '.join(dropped)}) — no Rate cue in brief"
+-            )
+-    return notes
++        kept.append(f)
++    try:
++        llm_ast.fields = kept
++    except Exception:  # noqa: BLE001
++        return llm_ast
++    return llm_ast
++
++
+ 
+ 
+ 
+@@ -1039,12 +1311,17 @@ __all__ = [
+     "brief_has_type_cue",
+     "brief_has_priority_cue",
+     "brief_has_rate_cue",
++    "brief_has_severity_cue",
++    "brief_has_channel_cue",
++    "brief_has_stage_cue",
+     "dedupe_notes_surfaces",
+     "honor_stated_brief_cues",
+     "is_bare_generic_notes_field",
+     "is_named_notes_field",
+     "model_has_notes_surface",
+     "model_is_equipment_roster",
++    "scrub_uncued_invent_from_llm_ast",
++    "scrub_uncued_invent_must_do_rows",
+     "selection_literal_from_keys",
+     "should_skip_generic_notes_pad",
+     "stated_menu_parent",
+diff --git a/apps/api/app/ai_continuous_invent.py b/apps/api/app/ai_continuous_invent.py
+index 4ebe6e0..8000636 100644
+--- a/apps/api/app/ai_continuous_invent.py
++++ b/apps/api/app/ai_continuous_invent.py
+@@ -2,7 +2,7 @@
+ 
+ Class-wide (not Vehicle-only). Any residual / Prefer brief must stay honest:
+ 
+-1. Uncued Selection invent — never invent Type/Priority/Rate Unit/… without cues
++1. Uncued Selection invent — never invent Type/Priority/Rate/Severity/Channel/Stage without cues
+ 2. One cue → one field — no duplicate Notes/Assignment Note parallels
+ 3. Satellite ≠ primary — optional peers never steal canvas; no uncued party/line
+ 4. Pack bleed — packs only when prompt clearly asks (shape + adoption cues)
+@@ -47,7 +47,7 @@ def assert_no_uncued_selection_invent(
+     *,
+     allowed_names: set[str] | None = None,
+ ) -> list[str]:
+-    """Return invent findings for Type/Priority/Rate Selection without cues."""
++    """Return invent findings for Type/Priority/Rate/Severity/Channel/Stage without cues."""
+     allowed = allowed_names or set()
+     findings: list[str] = []
+     banned_exact = {
+@@ -62,6 +62,25 @@ def assert_no_uncued_selection_invent(
+         "x_rate_uom",
+         "x_uom",
+         "x_unit",
++        "x_severity",
++        "x_channel",
++        "x_stage",
++    }
++    banned_strings = {
++        "type",
++        "category",
++        "kind",
++        "class",
++        "priority",
++        "urgency",
++        "importance",
++        "rate unit",
++        "rate uom",
++        "uom",
++        "unit",
++        "severity",
++        "channel",
++        "stage",
+     }
+     for field in fields or []:
+         if not isinstance(field, dict):
+@@ -70,19 +89,7 @@ def assert_no_uncued_selection_invent(
+         string = str(field.get("string") or "").strip().lower()
+         if name in allowed or name in {a for a in allowed}:
+             continue
+-        if name in banned_exact or string in {
+-            "type",
+-            "category",
+-            "kind",
+-            "class",
+-            "priority",
+-            "urgency",
+-            "importance",
+-            "rate unit",
+-            "rate uom",
+-            "uom",
+-            "unit",
+-        }:
++        if name in banned_exact or string in banned_strings:
+             if str(field.get("ttype") or "") == "selection" or not field.get("source"):
+                 findings.append(f"uncued_selection:{name or string}")
+     return findings
+diff --git a/apps/api/app/ai_conversation/understand.py b/apps/api/app/ai_conversation/understand.py
+index f563695..6526045 100644
+--- a/apps/api/app/ai_conversation/understand.py
++++ b/apps/api/app/ai_conversation/understand.py
+@@ -1279,7 +1279,21 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
+         )
+         llm_ast = expert_gate_llm_ast(det_ast, llm_ast)
+         if llm_ast is not None:
++            try:
++                from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
++
++                llm_ast = scrub_uncued_invent_from_llm_ast(llm_ast, prompt=prompt)
++            except Exception:  # noqa: BLE001
++                pass
+             llm_constraints = _dedupe(ast_to_must_do(llm_ast) + llm_constraints)
++            try:
++                from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
++
++                llm_constraints = scrub_uncued_invent_must_do_rows(
++                    llm_constraints, prompt=prompt
++                )
++            except Exception:  # noqa: BLE001
++                pass
+     except Exception:  # noqa: BLE001
+         pass
+ 
+@@ -1328,7 +1342,23 @@ def _llm_enrich(prompt: str, det: Understanding) -> Understanding:
+                     parse_llm(repaired),
+                 )
+                 if repair_ast is not None:
++                    try:
++                        from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
++
++                        repair_ast = scrub_uncued_invent_from_llm_ast(
++                            repair_ast, prompt=prompt
++                        )
++                    except Exception:  # noqa: BLE001
++                        pass
+                     repair_rows = _dedupe(ast_to_must_do(repair_ast) + repair_rows)
++                    try:
++                        from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
++
++                        repair_rows = scrub_uncued_invent_must_do_rows(
++                            repair_rows, prompt=prompt
++                        )
++                    except Exception:  # noqa: BLE001
++                        pass
+             except Exception:  # noqa: BLE001
+                 pass
+             if repair_rows:
+diff --git a/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh b/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh
+new file mode 100755
+index 0000000..a32d6b7
+--- /dev/null
++++ b/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh
+@@ -0,0 +1,45 @@
++#!/usr/bin/env bash
++# Arc3 invent families + Flash-on honor rubric battery (ingenium).
++# AI_INTENT_LLM=off deterministic floor must still pass; Flash-on goldens are additive.
++# Extends P4 Atlas elite battery with Severity/Channel/Stage + Flash honor invent gates.
++# Unit/no_app_db only — App Postgres not required on the box.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== Arc3 invent families + Flash-on honor rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_continuous_invent_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_notes_surface_class.py \
++  tests/test_residual_optional_satellite_primary.py \
++  tests/test_residual_full_app_generate_ir.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_vehicle_request_must_do.py \
++  tests/test_date_vs_datetime_classifier.py \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_hosting_m1.py \
++  tests/test_atlas_elite_p4.py \
++  tests/test_batch_os_atlas_recipes.py \
++  tests/test_batch_os_order_dry_run.py \
++  tests/test_batch_os_document_dry_run.py \
++  tests/test_batch_os_new_recipes.py \
++  2>&1 | tee /tmp/ingenium-arc3-invent-families-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-arc3-invent-families-rubric.txt"
+diff --git a/apps/api/tests/test_continuous_invent_class.py b/apps/api/tests/test_continuous_invent_class.py
+index e255eb9..154d382 100644
+--- a/apps/api/tests/test_continuous_invent_class.py
++++ b/apps/api/tests/test_continuous_invent_class.py
+@@ -15,11 +15,17 @@ os.environ["AI_INTENT_LLM"] = "off"
+ pytestmark = pytest.mark.no_app_db
+ 
+ from app.ai_brief_cues import (  # noqa: E402
++    brief_has_channel_cue,
+     brief_has_priority_cue,
+     brief_has_rate_cue,
++    brief_has_severity_cue,
++    brief_has_stage_cue,
+     brief_has_type_cue,
+     honor_stated_brief_cues,
++    scrub_uncued_invent_from_llm_ast,
++    scrub_uncued_invent_must_do_rows,
+ )
++from app.ai_constraint_ast import ConstraintAST, ConstraintField  # noqa: E402
+ from app.ai_continuous_invent import continuous_invent_stamp  # noqa: E402
+ from app.ai_conversation.understand import build_understanding  # noqa: E402
+ from app.ai_document_shape import (  # noqa: E402
+@@ -261,8 +267,14 @@ def test_no_uncued_type_priority_rate(prompt: str) -> None:
+         "uom",
+         "unit",
+         "vehicle type",
++        "severity",
++        "channel",
++        "stage",
+     }
+     assert not (sels & banned), sels
++    assert not brief_has_severity_cue(prompt)
++    assert not brief_has_channel_cue(prompt)
++    assert not brief_has_stage_cue(prompt)
+ 
+ 
+ @pytest.mark.parametrize("prompt", [VEHICLE, LEAVE, ASSET])
+@@ -332,3 +344,255 @@ def test_honor_drops_injected_uncued_priority_on_leave() -> None:
+     names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
+     assert "x_priority" not in names
+     assert "x_calendar_block_note" in names
++
++
++SEVERITY_CUE = (
++    "Build Incident Log: Name, Date, Severity (selection: Low / Medium / High / Critical), "
++    "and notes. Simple list + form. Menu under Employees."
++)
++CHANNEL_CUE = (
++    "Build Support Ticket: Name, Subject, Channel (selection: Email / Phone / Chat / Web), "
++    "Description. Simple list + form. Menu under Helpdesk."
++)
++STAGE_CUE = (
++    "Build Deal Tracker: Name, Amount, Stage (selection: New / Qualified / Won / Lost). "
++    "Simple list + form. Menu under CRM."
++)
++
++
++def test_honor_drops_uncued_severity_channel_stage_on_ticket() -> None:
++    """Class-wide invent family — Severity/Channel/Stage drop when uncued."""
++    draft = {
++        "display_name": "Support Ticket",
++        "_user_prompt": TICKET,
++        "models": [
++            {
++                "model": "x_support_ticket",
++                "mode": "new",
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name"},
++                    {
++                        "name": "x_severity",
++                        "ttype": "selection",
++                        "string": "Severity",
++                        "selection": "[('low','Low'),('high','High')]",
++                        "source": "pack_default",
++                    },
++                    {
++                        "name": "x_channel",
++                        "ttype": "selection",
++                        "string": "Channel",
++                        "selection": "[('email','Email'),('phone','Phone')]",
++                        "source": "density",
++                    },
++                    {
++                        "name": "x_stage",
++                        "ttype": "selection",
++                        "string": "Stage",
++                        "selection": "[('new','New'),('won','Won')]",
++                        "source": "llm",
++                    },
++                    {
++                        "name": "x_description",
++                        "ttype": "text",
++                        "string": "Description",
++                    },
++                ],
++            }
++        ],
++    }
++    notes = honor_stated_brief_cues(draft, prompt=TICKET)
++    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
++    assert "x_severity" not in names
++    assert "x_channel" not in names
++    assert "x_stage" not in names
++    assert "x_description" in names
++    blob = " | ".join(notes).lower()
++    assert "severity" in blob and "channel" in blob and "stage" in blob
++
++
++def test_severity_cue_keeps_severity() -> None:
++    assert brief_has_severity_cue(SEVERITY_CUE)
++    draft = {
++        "display_name": "Incident Log",
++        "_user_prompt": SEVERITY_CUE,
++        "models": [
++            {
++                "model": "x_incident_log",
++                "mode": "new",
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name"},
++                    {
++                        "name": "x_severity",
++                        "ttype": "selection",
++                        "string": "Severity",
++                        "selection": "[('low','Low'),('critical','Critical')]",
++                    },
++                ],
++            }
++        ],
++    }
++    honor_stated_brief_cues(draft, prompt=SEVERITY_CUE)
++    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
++    assert "x_severity" in names
++
++
++def test_channel_cue_keeps_channel() -> None:
++    assert brief_has_channel_cue(CHANNEL_CUE)
++    draft = {
++        "display_name": "Support Ticket",
++        "_user_prompt": CHANNEL_CUE,
++        "models": [
++            {
++                "model": "x_support_ticket",
++                "mode": "new",
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name"},
++                    {
++                        "name": "x_channel",
++                        "ttype": "selection",
++                        "string": "Channel",
++                        "selection": "[('email','Email'),('phone','Phone')]",
++                    },
++                ],
++            }
++        ],
++    }
++    honor_stated_brief_cues(draft, prompt=CHANNEL_CUE)
++    assert "x_channel" in {str(f.get("name")) for f in draft["models"][0]["fields"]}
++
++
++def test_stage_cue_keeps_stage_not_confused_with_state() -> None:
++    assert brief_has_stage_cue(STAGE_CUE)
++    assert not brief_has_stage_cue(VEHICLE)  # by state ≠ Stage invent
++    draft = {
++        "display_name": "Deal Tracker",
++        "_user_prompt": STAGE_CUE,
++        "models": [
++            {
++                "model": "x_deal_tracker",
++                "mode": "new",
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name"},
++                    {
++                        "name": "x_stage",
++                        "ttype": "selection",
++                        "string": "Stage",
++                        "selection": "[('new','New'),('won','Won')]",
++                    },
++                ],
++            }
++        ],
++    }
++    honor_stated_brief_cues(draft, prompt=STAGE_CUE)
++    assert "x_stage" in {str(f.get("name")) for f in draft["models"][0]["fields"]}
++
++
++def test_flash_on_honor_drops_uncued_invent_source_llm() -> None:
++    """Flash-on path: source=llm/flash still dropped when cues absent (P3 gap)."""
++    draft = {
++        "display_name": "Leave Request",
++        "_user_prompt": LEAVE,
++        "models": [
++            {
++                "model": "x_leave_request",
++                "mode": "new",
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name"},
++                    {
++                        "name": "x_type",
++                        "ttype": "selection",
++                        "string": "Type",
++                        "selection": "[('a','A'),('b','B')]",
++                        "source": "flash",
++                    },
++                    {
++                        "name": "x_severity",
++                        "ttype": "char",
++                        "string": "Severity",
++                        "source": "llm",
++                    },
++                    {
++                        "name": "x_channel",
++                        "ttype": "selection",
++                        "string": "Channel",
++                        "source": "enrich",
++                    },
++                    {
++                        "name": "x_stage",
++                        "ttype": "selection",
++                        "string": "Stage",
++                        "source": "proposal",
++                    },
++                    {
++                        "name": "x_calendar_block_note",
++                        "ttype": "text",
++                        "string": "Calendar Block Note",
++                    },
++                ],
++            }
++        ],
++    }
++    notes = honor_stated_brief_cues(draft, prompt=LEAVE)
++    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
++    assert "x_type" not in names
++    assert "x_severity" not in names
++    assert "x_channel" not in names
++    assert "x_stage" not in names
++    assert "x_calendar_block_note" in names
++    assert notes
++
++
++def test_flash_ast_scrub_drops_uncued_severity_channel_stage_type() -> None:
++    """Flash ConstraintAST invent fields scrubbed before Must-do merge."""
++    llm = ConstraintAST(
++        grain="full_app",
++        fields=[
++            ConstraintField(label="Name", ttype="char"),
++            ConstraintField(label="Severity", ttype="selection"),
++            ConstraintField(label="Channel", ttype="selection"),
++            ConstraintField(label="Stage", ttype="selection"),
++            ConstraintField(label="Type", ttype="selection"),
++            ConstraintField(label="Subject", ttype="char"),
++        ],
++        source="llm",
++    )
++    scrubbed = scrub_uncued_invent_from_llm_ast(llm, prompt=TICKET)
++    labels = {f.label.lower() for f in scrubbed.fields}
++    assert "severity" not in labels
++    assert "channel" not in labels
++    assert "stage" not in labels
++    assert "type" not in labels
++    assert "name" in labels and "subject" in labels
++
++    rows = scrub_uncued_invent_must_do_rows(
++        [
++            "Field: Name",
++            "Field: Severity",
++            "Selection field: Channel",
++            "Field: Stage",
++            "Field: Type",
++            "Field: Subject",
++        ],
++        prompt=TICKET,
++    )
++    joined = " | ".join(rows).lower()
++    assert "severity" not in joined
++    assert "channel" not in joined
++    assert "stage" not in joined
++    assert "type" not in joined
++    assert "name" in joined and "subject" in joined
++
++
++def test_flash_ast_keeps_cued_severity() -> None:
++    llm = ConstraintAST(
++        grain="full_app",
++        fields=[
++            ConstraintField(label="Name", ttype="char"),
++            ConstraintField(label="Severity", ttype="selection"),
++        ],
++        source="llm",
++    )
++    scrubbed = scrub_uncued_invent_from_llm_ast(llm, prompt=SEVERITY_CUE)
++    labels = {f.label.lower() for f in scrubbed.fields}
++    assert "severity" in labels
+-- 
+2.47.3
+

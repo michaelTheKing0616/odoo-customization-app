@@ -1,0 +1,873 @@
+From c2962ce8f02d8c2e8e7d6e817920c3fd2efe2de8 Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 12:33:47 +0100
+Subject: [PATCH] =?UTF-8?q?feat(ingenium):=20P3=20continuous=20invent=20?=
+ =?UTF-8?q?=E2=80=94=20class-wide=20quality=20gates?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Close invent holes so any residual / Prefer brief stays honest under
+AI_INTENT_LLM=off: optional note cue follows brief noun (not hardcoded
+Assignment Note), strip leading and/or on field lists, line/party
+satellites require positive cues, pack shape gated by adoption cues +
+thin residual, calendar stock_reuse ignores calendar-block / Meeting
+selection bleed. Multi-brief goldens + P3 rubric battery. DOCKET remaps
+real P3 (Job1 stays under P1). P4 Atlas elite still next. Completeness ≠
+Cert ≠ Autopilot. Promote stays human.
+---
+ APPLY_CONTINUOUS_INVENT_P3_ON_MAC.sh          |  47 +++
+ DOCKET.md                                     |  33 +-
+ MEMORY.md                                     |   8 +-
+ apps/api/app/ai_constraint_ast.py             |  82 ++++-
+ apps/api/app/ai_continuous_invent.py          |  95 +++++
+ apps/api/app/ai_document_shape.py             |  28 +-
+ apps/api/app/ai_operator_brief.py             |  10 +-
+ .../scripts/run_p3_invent_rubric_battery.sh   |  39 ++
+ .../api/tests/test_continuous_invent_class.py | 334 ++++++++++++++++++
+ 9 files changed, 650 insertions(+), 26 deletions(-)
+ create mode 100755 APPLY_CONTINUOUS_INVENT_P3_ON_MAC.sh
+ create mode 100644 apps/api/app/ai_continuous_invent.py
+ create mode 100755 apps/api/scripts/run_p3_invent_rubric_battery.sh
+ create mode 100644 apps/api/tests/test_continuous_invent_class.py
+
+diff --git a/APPLY_CONTINUOUS_INVENT_P3_ON_MAC.sh b/APPLY_CONTINUOUS_INVENT_P3_ON_MAC.sh
+new file mode 100755
+index 0000000..dd48008
+--- /dev/null
++++ b/APPLY_CONTINUOUS_INVENT_P3_ON_MAC.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++# Apply P3 continuous invent hardening onto Tope's Mac checkout.
++# machineId: 4fc0d119-8958-4a46-954b-7411355d96ce
++set -euo pipefail
++REPO="${1:-/Users/temitopeolaitanmichael/Odoo_Customization_App}"
++PATCH="${2:-/workspace/0001-feat-ingenium-continuous-invent-p3.patch}"
++cd "$REPO"
++git checkout premium-local-tip
++git status -sb
++
++STASHED=0
++if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
++  echo "Local WIP present — stashing before apply"
++  git stash push -u -m "pre-continuous-invent-p3-apply"
++  STASHED=1
++fi
++
++git fetch origin premium-local-tip || true
++
++if [ -f "$PATCH" ]; then
++  git am --3way "$PATCH" || {
++    git am --abort 2>/dev/null || true
++    git apply --check "$PATCH" && git apply "$PATCH"
++    git add -A
++    git commit -m "feat(ingenium): P3 continuous invent — class-wide quality gates"
++  }
++else
++  echo "WARN: patch missing at $PATCH — pull/cherry-pick from tip instead"
++  git pull --ff-only origin premium-local-tip || true
++fi
++
++git push origin premium-local-tip || echo "WARN: push failed — push manually"
++
++if [ "$STASHED" = "1" ]; then
++  git stash pop || echo "WARN: stash pop conflict — resolve manually"
++fi
++
++pkill -f "uvicorn .*8001" 2>/dev/null || true
++sleep 1
++cd "$REPO/apps/api"
++if [ -f ../../.venv/bin/uvicorn ]; then UV=../../.venv/bin/uvicorn
++elif [ -f .venv/bin/uvicorn ]; then UV=.venv/bin/uvicorn
++else UV=uvicorn; fi
++nohup env AI_INTENT_LLM=off "$UV" app.main:app --host 127.0.0.1 --port 8001 --reload \
++  > /tmp/ingenium-api-8001.log 2>&1 &
++echo "API restarting on :8001 — log /tmp/ingenium-api-8001.log"
++echo "Done. ingenium P3 continuous invent. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+diff --git a/DOCKET.md b/DOCKET.md
+index 5c887f5..2e35d9b 100644
+--- a/DOCKET.md
++++ b/DOCKET.md
+@@ -25,14 +25,18 @@ Never Prefer when Option A required; never Online Python promote.
+ | **P0** | Contract docs · intent class routes · `delivery_lane`/`artifact_kind`/`prove_status` stamps · Online+Python host gate · goldens | **done** (this tip) |
+ | **P1** | Job 1 FX/CBN rate CLASS + Job 2 markup+WHT + Job 3 report scrub | **done** |
+ | **P2** | Build spine — one entry, mode chips, handoff without re-briefing | **done** |
+-| **P3** | (was Job1) — closed under P1 | **done** |
+-| **P4** | Atlas elite | out of scope this tip |
++| **P3** | Continuous invent hardening — Studio/Draft/Generate quality gates | **done** (this tip) |
++| **P4** | Atlas elite | out of scope this tip — still next |
+ 
+ ## Done
+ 
+ - [x] **Intent → feature router (Expert)** — 2026-09-21  
+   Plain language → best-fitting feature + can/can't. Expert UI (`IntentRouterPanel`), `POST /connections/{id}/expert/route` (+ `/batch-os/intent-route`). Deterministic catalog (YAML/JSON + Atlas + recipes); `AI_INTENT_LLM` optional only.
+ 
++
++- [x] **P3 continuous invent hardening** — 2026-09-22  
++  Class-wide invent/pack/residual gates (not Vehicle-only): uncued Selection, one-cue→one-field note labels from brief noun, thin residual never pack-workspace party/line bleed, calendar block note ≠ calendar.event, Diagnosis Name scrub, Date≠Datetime. Rubric battery green (`run_p3_invent_rubric_battery.sh`, AI_INTENT_LLM=off).
++
+ - [x] **P2 Build spine** — 2026-09-22  
+   One Build entry with mode chips (Prefer / Residual / Option A / Stock Autopilot / Report / Connector). Handoff Draft↔App↔Autopilot carries brief + Diagnosis/Contract + delivery_lane stamps. Capability gaps always propose Option A scaffold when Live cannot finish. Expert routes into spine. Rubric battery green (184 no_app_db).
+ 
+@@ -72,3 +76,28 @@ Release gates for Build spine — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p2_
+ | Build spine handoff without re-briefing (brief + stamps) | **pass** |
+ 
+ **Battery:** 184 pytest passed (`no_app_db`). Web: 9 vitest passed (build-spine + handoff + bar).
++
++
++## P3 continuous invent rubric matrix (2026-09-22)
++
++Release gates for continuous invent — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p3_invent_rubric_battery.sh` (+ web vitest build-spine retained).
++
++| Gate | Result |
++|------|--------|
++| Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
++| Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
++| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
++| Multi-brief goldens: Vehicle / Leave / Incident / Ticket / Visitor / Dining / Asset | **pass** |
++| Optional note label follows brief noun (Assignment Note vs Calendar Block Note) | **pass** |
++| Thin residual ≠ pack workspace party/line invent | **pass** |
++| Pack adoption: positive product cues; shared workflow tokens ≠ pack identity | **pass** |
++| Grain + delivery_lane stamps Prefer / residual / Option A / report / FX | **pass** |
++| Online + Python Option A: promote blocked + honest alternatives | **pass** |
++| Completeness ≠ Cert ≠ Autopilot | **pass** (honesty copy + stamps) |
++| Job1/2/3 class acceptance goldens | **pass** |
++| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
++| Prefer Must-do constraint AST | **pass** |
++| Build spine handoff without re-briefing (brief + stamps) | **pass** |
++
++**Battery:** 236 pytest passed (`no_app_db`). Web: 5 vitest passed (build-spine retained).
++
+diff --git a/MEMORY.md b/MEMORY.md
+index 96c2f0c..629c78d 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -1,8 +1,14 @@
++### 2026-09-22 — P3 continuous invent hardening closed (class-wide quality gates)
++**Decided:** Continuous invent is a class-wide Studio/Draft/Generate quality-gate arc — not Vehicle Request keyword patches. Root fixes: (1) optional note cue extracts brief noun (Assignment Note vs Calendar Block Note) — never hardcode Assignment Note for every optionally link/create; (2) conjunction field lists strip leading and/or so «Name, Date, and notes» → Notes (text); (3) line/party satellites always require positive cues (workspace pack lexical match alone never invents _line/_party on thin residuals); (4) pack shape adoption gated by positive cues + not thin simple residual; (5) calendar stock_reuse ignores «calendar block note» and Purpose «Meeting / …». Multi-brief goldens in `test_continuous_invent_class.py`. Battery `run_p3_invent_rubric_battery.sh`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++**Why:** Leave invented Assignment Note + calendar.event; Incident parsed «and notes»; Support Ticket exploded party/line via helpdesk pack workspace shape; DOCKET wrongly remapped P3→Job1.
++**Rejected:** Vehicle-only patches; Prefer-reshaping locked residual; inventing EE-only as CE defaults; Online Python Autopilot; starting P4 Atlas elite.
++**P3:** done. P4 Atlas elite still next.
++
+ ### 2026-09-22 — P2 Build spine closed (mode chips + handoff + rubric battery)
+ **Decided:** One Build front door — App Studio / Draft Studio / Job Autopilot are modes, not rival homes. Mode chips: Prefer pack, Residual app, Option A, Stock Autopilot, Report layout, Connector (as applicable). Handoff IR (`build-spine-handoff` + `ai_build_spine.build_spine_payload`) carries brief + Diagnosis/Contract + `delivery_lane`/`artifact_kind`/`prove_status` without re-briefing. Capability-gap stamps always set `proposes_option_a_scaffold` + `option_a_path` when Live metadata cannot finish (even if LLM owns `custom_code_blocks`). Expert Overview + Intent Go stash into the spine. Prefer Must-do AST root-fixed (Prefer for delivery checkbox + Delivery notes; automation/filter/reuse hints). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+ **Why:** Operators bounced between App/Draft/Autopilot and re-pasted briefs; Prefer Must-do goldens were thin.
+ **Rejected:** Parallel nav; claiming Online Python Autopilot; Prefer-reshaping residual full_app.
+-**P2:** done. P3 continuous invent / P4 Atlas elite still out of scope.
++**P2:** done. **P3 continuous invent:** done this tip. P4 Atlas elite still next.
+ 
+ ### 2026-09-22 — P1 Job 1: FX / rate-provider sync CLASS closed
+ **Decided:** Class-wide FX rate sync into stock `res.currency.rate` (parameterized USD/GBP/EUR or brief ISOs). CBN / Central Bank of Nigeria remains the earned gold shortcut (`currency_rate_cbn`) inside the class — not the only member. Generic HTTP/ECB/Open Exchange briefs → Option A authored scaffold (`ai_fx_rate_class.py`, marker `ingenium:fx_rate_provider_class`) on `res.company` + settings + cron. Online cannot promote Python → `external_connector` runbook IR + host stamps (`module_sh_or_self` vs `external_connector` vs online block copy). Never Prefer / Nigeria Autopilot `stock_reuse` alone for live HTTP fetch. Acceptance: writes_currency_rate, currencies_parameterized, no_x_fx_app, not_nigeria_autopilot_alone, gold_or_scaffold_present. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+diff --git a/apps/api/app/ai_constraint_ast.py b/apps/api/app/ai_constraint_ast.py
+index 15d2be1..fb09f30 100644
+--- a/apps/api/app/ai_constraint_ast.py
++++ b/apps/api/app/ai_constraint_ast.py
+@@ -214,10 +214,17 @@ _APPROVE_REFUSE_RE = re.compile(
+     r"(?i)\bapprove\s*/\s*refuse\b|\bapprove\s+or\s+refuse\b|\bapprove\s+and\s+refuse\b|"
+     r"\bmanager\s+approve"
+ )
++# Named optional note cue — extract the brief's note noun (never hardcode
++# Assignment Note for every "optionally link/create … note").
++_OPTIONAL_NOTE_CUE_RE = re.compile(
++    r"(?i)\boptionally\s+(?:link|create)(?:\s*/\s*(?:create|link))?\s+"
++    r"(?:an?\s+)?"
++    r"((?:[\w/&-]+\s+){0,6}?notes?)\b"
++)
+ _ASSIGNMENT_NOTE_RE = re.compile(
+-    r"(?i)\b(?:assignment\s+note|vehicle\s+assignment)\b|"
+-    r"\b(?:link|create)\s*/\s*(?:create|link)\b.*\b(?:fleet\s+)?vehicle\b|"
+-    r"\boptionally\s+(?:link|create)\b"
++    r"(?i)\b(?:assignment\s+notes?|vehicle\s+assignment(?:\s+notes?)?)\b|"
++    r"\b(?:link|create)\s*/\s*(?:create|link)\b.*\b(?:fleet\s+)?vehicle\b"
++    r".*\bnotes?\b"
+ )
+ _LIST_KANBAN_RE = re.compile(r"(?i)\blist\s*/\s*kanban\b|\bkanban\b.*\b(?:by\s+)?state\b|\blist\s*,?\s*kanban\b")
+ _MUST_DO_LEAK_RE = re.compile(
+@@ -342,6 +349,34 @@ def _has_enumerated_fields(text: str) -> bool:
+     return False
+ 
+ 
++
++def _title_note_label(raw: str) -> str:
++    """Calendar block note → Calendar Block Note; assignment → Assignment Note."""
++    words = [w for w in re.split(r"\s+", (raw or "").strip()) if w]
++    if not words:
++        return "Notes"
++    if any(w.lower() == "assignment" for w in words):
++        return "Assignment Note"
++    out: list[str] = []
++    for w in words:
++        low = w.lower()
++        if low in {"note", "notes"}:
++            out.append("Note" if low == "note" else "Notes")
++        else:
++            out.append(w[:1].upper() + w[1:] if w else w)
++    return " ".join(out) or "Notes"
++
++
++def _optional_note_label(text: str) -> str | None:
++    """Label for optional link/create … note cue — class-wide, not Vehicle-only."""
++    m = _OPTIONAL_NOTE_CUE_RE.search(text or "")
++    if m:
++        return _title_note_label(m.group(1))
++    if _ASSIGNMENT_NOTE_RE.search(text or ""):
++        return "Assignment Note"
++    return None
++
++
+ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+     """Structural fields from residual prose (Vehicle Request-shaped briefs)."""
+     fields: list[ConstraintField] = []
+@@ -385,14 +420,14 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+             )
+         )
+ 
+-    if _ASSIGNMENT_NOTE_RE.search(text or "") or (
+-        "optionally" in low and "assignment" in low
+-    ):
++    note_label = _optional_note_label(text or "")
++    if note_label:
+         # Optional note cue → one free-text surface on the primary.
+         # Never emit M2O+text for the same named cue (stock-link vs notes pad).
++        # Label follows the brief noun (Assignment Note / Calendar Block Note / …).
+         fields.append(
+             ConstraintField(
+-                label="Assignment Note",
++                label=note_label,
+                 ttype="text",
+                 bare=True,
+             )
+@@ -413,10 +448,9 @@ def _prose_full_app_structural(text: str) -> list[str]:
+         rows.append("List + form")
+     if _CREATE_READ_ONLY_RE.search(text or ""):
+         rows.append("Create/read only")
+-    if _ASSIGNMENT_NOTE_RE.search(text or "") or (
+-        "optionally" in (text or "").lower() and "assignment" in (text or "").lower()
+-    ):
+-        rows.append("Optional: link or create Assignment Note on Approve")
++    note_label = _optional_note_label(text or "")
++    if note_label:
++        rows.append(f"Optional: link or create {note_label} on Approve")
+     return rows
+ 
+ 
+@@ -477,12 +511,14 @@ def split_conjunction_chunks(body: str) -> list[str]:
+         chunks.append(buf.strip())
+     normalized: list[str] = []
+     for chunk in chunks:
+-        if re.search(r"(?i)\band\b", chunk) and "(" not in chunk:
++        # Strip leading conjunction left after comma splits ("and notes" → "notes").
++        chunk = re.sub(r"(?i)^(and|or)\s+", "", (chunk or "").strip()).strip(" .")
++        if not chunk:
++            continue
++        if re.search(r"(?i)\s+and\s+", chunk) and "(" not in chunk:
+             parts = re.split(r"(?i)\s+and\s+", chunk)
+-            normalized.extend(p.strip(" .") for p in parts if p.strip())
++            normalized.extend(p.strip(" .") for p in parts if p.strip(" ."))
+         else:
+-            if re.match(r"(?i)^and\s+", chunk):
+-                chunk = re.sub(r"(?i)^and\s+", "", chunk).strip()
+             if re.search(r"(?i)\band\b", chunk):
+                 parts: list[str] = []
+                 part = ""
+@@ -593,6 +629,12 @@ def _infer_ttype(label: str, *, stated: str | None = None) -> str:
+         return "datetime"
+     if re.search(r"(?i)\bdate\b", label):
+         return "date"
++    # Bare notes/remarks/comments/description → Multiline text (not Char).
++    if re.search(
++        r"(?i)^(?:notes?|remarks?|comments?|description)$",
++        (label or "").strip(),
++    ):
++        return "text"
+     return "char"
+ 
+ 
+@@ -835,10 +877,20 @@ def _parse_det_full_app(text: str) -> ConstraintAST:
+                 )
+                 continue
+             label_f = re.sub(r"\s+", " ", chunk).strip(" .")
++            label_f = re.sub(r"(?i)^(and|or)\s+", "", label_f).strip(" .")
+             if label_f.lower() in {"model", "with", "and", "a", "an", "the"}:
+                 continue
+             if _is_prose_dump_label(label_f):
+                 continue
++            # Bare notes cue → canonical Notes (text), not «and notes» / «notes» char.
++            if re.fullmatch(r"(?i)notes?", label_f):
++                label_f = "Notes"
++            elif re.fullmatch(r"(?i)remarks?", label_f):
++                label_f = "Remarks"
++            elif re.fullmatch(r"(?i)comments?", label_f):
++                label_f = "Comments"
++            elif re.fullmatch(r"(?i)description", label_f):
++                label_f = "Description"
+             expanded = expand_field_chunk(label_f)
+             if len(expanded) > 1:
+                 for lab in expanded:
+diff --git a/apps/api/app/ai_continuous_invent.py b/apps/api/app/ai_continuous_invent.py
+new file mode 100644
+index 0000000..4ebe6e0
+--- /dev/null
++++ b/apps/api/app/ai_continuous_invent.py
+@@ -0,0 +1,95 @@
++"""Continuous invent hardening CLASS (P3) — Studio/Draft/Generate quality gates.
++
++Class-wide (not Vehicle-only). Any residual / Prefer brief must stay honest:
++
++1. Uncued Selection invent — never invent Type/Priority/Rate Unit/… without cues
++2. One cue → one field — no duplicate Notes/Assignment Note parallels
++3. Satellite ≠ primary — optional peers never steal canvas; no uncued party/line
++4. Pack bleed — packs only when prompt clearly asks (shape + adoption cues)
++5. Stated brief cues honored (states, menu parents, fields, satellites)
++6. Diagnosis Name matches brief/canvas noun — no Management fluff
++7. Date default (not Datetime) unless time stated/implied
++
++Flash-free / ``AI_INTENT_LLM=off`` must fully deliver Apply guarantees.
++Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++"""
++
++from __future__ import annotations
++
++from typing import Any
++
++CONTINUOUS_INVENT_GATES: tuple[str, ...] = (
++    "uncued_selection",
++    "one_cue_one_field",
++    "satellite_ne_primary",
++    "pack_bleed",
++    "stated_brief_cues",
++    "diagnosis_name",
++    "date_default",
++)
++
++
++def continuous_invent_stamp(*, prove_status: str = "pending") -> dict[str, Any]:
++    """IR stamp for continuous invent class acceptance."""
++    return {
++        "class_id": "continuous_invent",
++        "phase": "P3",
++        "gates": list(CONTINUOUS_INVENT_GATES),
++        "prove_status": prove_status,
++        "promote_human": True,
++        "flash_free_floor": True,
++        "ai_intent_llm": "off",
++    }
++
++
++def assert_no_uncued_selection_invent(
++    fields: list[dict[str, Any]],
++    *,
++    allowed_names: set[str] | None = None,
++) -> list[str]:
++    """Return invent findings for Type/Priority/Rate Selection without cues."""
++    allowed = allowed_names or set()
++    findings: list[str] = []
++    banned_exact = {
++        "x_type",
++        "x_category",
++        "x_kind",
++        "x_class",
++        "x_priority",
++        "x_urgency",
++        "x_importance",
++        "x_rate_unit",
++        "x_rate_uom",
++        "x_uom",
++        "x_unit",
++    }
++    for field in fields or []:
++        if not isinstance(field, dict):
++            continue
++        name = str(field.get("name") or "")
++        string = str(field.get("string") or "").strip().lower()
++        if name in allowed or name in {a for a in allowed}:
++            continue
++        if name in banned_exact or string in {
++            "type",
++            "category",
++            "kind",
++            "class",
++            "priority",
++            "urgency",
++            "importance",
++            "rate unit",
++            "rate uom",
++            "uom",
++            "unit",
++        }:
++            if str(field.get("ttype") or "") == "selection" or not field.get("source"):
++                findings.append(f"uncued_selection:{name or string}")
++    return findings
++
++
++__all__ = [
++    "CONTINUOUS_INVENT_GATES",
++    "assert_no_uncued_selection_invent",
++    "continuous_invent_stamp",
++]
+diff --git a/apps/api/app/ai_document_shape.py b/apps/api/app/ai_document_shape.py
+index a28323f..a4ee251 100644
+--- a/apps/api/app/ai_document_shape.py
++++ b/apps/api/app/ai_document_shape.py
+@@ -237,7 +237,18 @@ def classify_document_shape(
+ 
+         matched = match_domain_pack(text)
+         if matched:
+-            return pack_document_shape(matched[1])
++            pack_id, pack = matched
++            # Pack lexical match alone is not adoption — require positive product
++            # cues and refuse thin simple residuals (enumerated fields + list/form).
++            cues_ok = True
++            try:
++                from app.ai_domain_coherence import pack_adoption_cues_present
++
++                cues_ok = pack_adoption_cues_present(text, pack_id)
++            except Exception:  # noqa: BLE001
++                cues_ok = True
++            if cues_ok and not _is_thin_simple_residual(text):
++                return pack_document_shape(pack)
+     except Exception:  # noqa: BLE001
+         pass
+ 
+@@ -366,23 +377,26 @@ def forbidden_stock_hosts(draft: dict[str, Any]) -> set[str]:
+ 
+ 
+ def may_add_line_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
++    """Line satellites only when the brief positively names lines/items/qty.
++
++    Class-wide: workspace pack lexical match alone must never invent _line on a
++    thin residual (Support Ticket Name/Subject/Description). Pack seeds still
++    bring their own models when positively adopted.
++    """
+     shape = document_shape_of(draft, prompt=prompt)
+     if shape in ADDITIVE_BLOCKED or shape == "catalog":
+         return False
+     text = prompt or str(draft.get("_user_prompt") or "")
+-    if shape == "transactional_header":
+-        return has_positive_match(_LINE_NOUN_RE, text)
+-    return True
++    return has_positive_match(_LINE_NOUN_RE, text)
+ 
+ 
+ def may_add_party_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
++    """Party satellites only when the brief positively names roles/parties/…"""
+     shape = document_shape_of(draft, prompt=prompt)
+     if shape in ADDITIVE_BLOCKED or shape == "catalog":
+         return False
+     text = prompt or str(draft.get("_user_prompt") or "")
+-    if shape == "transactional_header":
+-        return has_positive_match(_PARTY_NOUN_RE, text)
+-    return True
++    return has_positive_match(_PARTY_NOUN_RE, text)
+ 
+ 
+ 
+diff --git a/apps/api/app/ai_operator_brief.py b/apps/api/app/ai_operator_brief.py
+index e66dbd6..7b2c01b 100644
+--- a/apps/api/app/ai_operator_brief.py
++++ b/apps/api/app/ai_operator_brief.py
+@@ -36,7 +36,15 @@ _STOCK_NAMED: tuple[tuple[re.Pattern[str], str], ...] = (
+     (re.compile(r"(?i)\bquotations?\b|\bsales orders?\b"), "sale"),
+     (re.compile(r"(?i)\binvoices?\b|\binvoicing\b"), "account"),
+     (re.compile(r"(?i)\bemployees?\b|\btimesheets?\b|\bhr\b"), "hr"),
+-    (re.compile(r"(?i)\bcalendar\b|\bmeetings?\b"), "calendar"),
++    (re.compile(
++        # Never match Purpose selection «Meeting / …» or «calendar block note».
++        r"(?i)\bcalendar\s+events?\b|"
++        r"\b(?:use|open|under)\s+(?:the\s+)?calendar\b|"
++        r"\bcalendar\s+app\b|"
++        r"\b(?:schedule|book)\s+meetings?\b|"
++        r"\bmeetings?\s+(?:app|module)\b|"
++        r"\bcalendar\b(?!\s+block)"
++    ), "calendar"),
+     (re.compile(r"(?i)\bleads?\b|\bcrm\b"), "crm"),
+     # Standalone project/tasks — not the ``task`` suffix of negated ``project.task``.
+     (re.compile(r"(?i)\bprojects?\b|(?<!project\.)\btasks?\b"), "project"),
+diff --git a/apps/api/scripts/run_p3_invent_rubric_battery.sh b/apps/api/scripts/run_p3_invent_rubric_battery.sh
+new file mode 100755
+index 0000000..7814154
+--- /dev/null
++++ b/apps/api/scripts/run_p3_invent_rubric_battery.sh
+@@ -0,0 +1,39 @@
++#!/usr/bin/env bash
++# P3 continuous invent rubric battery (ingenium). AI_INTENT_LLM=off deterministic floor.
++# Extends P2 spine gates with invent/pack/residual/Prefer + Job1–3 stamps.
++# Unit/no_app_db only — App Postgres not required on the box.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== P3 continuous invent rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_continuous_invent_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_notes_surface_class.py \
++  tests/test_residual_optional_satellite_primary.py \
++  tests/test_residual_full_app_generate_ir.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_vehicle_request_must_do.py \
++  tests/test_date_vs_datetime_classifier.py \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_hosting_m1.py \
++  2>&1 | tee /tmp/ingenium-p3-invent-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-p3-invent-rubric.txt"
+diff --git a/apps/api/tests/test_continuous_invent_class.py b/apps/api/tests/test_continuous_invent_class.py
+new file mode 100644
+index 0000000..e255eb9
+--- /dev/null
++++ b/apps/api/tests/test_continuous_invent_class.py
+@@ -0,0 +1,334 @@
++"""P3 continuous invent — multi-brief class goldens (not Vehicle-only).
++
++AI_INTENT_LLM=off deterministic floor. Completeness ≠ Cert ≠ Autopilot.
++"""
++
++from __future__ import annotations
++
++import os
++import re
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_brief_cues import (  # noqa: E402
++    brief_has_priority_cue,
++    brief_has_rate_cue,
++    brief_has_type_cue,
++    honor_stated_brief_cues,
++)
++from app.ai_continuous_invent import continuous_invent_stamp  # noqa: E402
++from app.ai_conversation.understand import build_understanding  # noqa: E402
++from app.ai_document_shape import (  # noqa: E402
++    classify_document_shape,
++    may_add_line_satellite,
++    may_add_party_satellite,
++)
++from app.ai_draft_jobs import _finish_seed_draft  # noqa: E402
++from app.ai_operator_brief import build_operator_brief  # noqa: E402
++from app.ai_pipeline import seed_studio_draft  # noqa: E402
++from app.ai_residual_identity import scrub_residual_display_name  # noqa: E402
++
++
++VEHICLE = (
++    "Build Vehicle request: employees request a fleet vehicle for a date range; "
++    "manager approve/refuse; on approve, optionally link/create a Fleet vehicle "
++    "assignment note. List/kanban by state (Draft → Submitted → Approved/Refused → Done). "
++    "Menu under Fleet."
++)
++LEAVE = (
++    "Build Leave request: employees request leave for a date range; "
++    "manager approve/refuse; on approve, optionally link/create a calendar block note. "
++    "List/kanban by state (Draft → Submitted → Approved/Refused → Done). "
++    "Menu under Time Off."
++)
++INCIDENT = (
++    "Build Incident Log: Name, Date, and notes. Simple list + form. Menu under Employees."
++)
++TICKET = (
++    "Build Support Ticket: Name, Subject, Description. "
++    "Simple list + form. Menu under Helpdesk or Services."
++)
++VISITOR = (
++    "Build a tiny Visitor Log app: model with Name, Company (link to Contact), "
++    "Visit date, Purpose (selection: Meeting / Delivery / Other), and Host (Employee). "
++    "Simple list + form, menu under Services. No workflow beyond create/read."
++)
++DINING = (
++    "Dining Tables for our restaurant. Name, Capacity, "
++    "Status (selection: Free / Seated / Reserved). Simple list + form."
++)
++ASSET = (
++    "Build Asset checkout: employees check out a tool for a date range; "
++    "manager approve/refuse. List/kanban by state "
++    "(Draft → Submitted → Approved/Refused → Done). Menu under Inventory."
++)
++PREFER_SALES = (
++    "Extend Sales Orders: add Customer PO reference and Required delivery window "
++    "(date range or start/end dates). Prefer inherit/extend — do not invent a parallel Sales app."
++)
++
++
++def _locked(prompt: str) -> dict:
++    u = build_understanding(prompt)
++    return {
++        "title": u.title,
++        "grain": u.grain,
++        "inherit_existing": getattr(u, "inherit_existing", False),
++        "host_model": u.host_model,
++        "constraints": list(u.constraints or []),
++    }
++
++
++def _finish(prompt: str) -> dict:
++    return _finish_seed_draft(
++        prompt,
++        seed_studio_draft(prompt),
++        [],
++        locked_understanding=_locked(prompt),
++    )
++
++
++def _header(draft: dict) -> dict:
++    return next(
++        m
++        for m in (draft.get("models") or [])
++        if isinstance(m, dict)
++        and str(m.get("model") or "").startswith("x_")
++        and not str(m.get("model")).endswith(("_line", "_party"))
++    )
++
++
++def _x_models(draft: dict) -> list[str]:
++    return [
++        str(m.get("model"))
++        for m in (draft.get("models") or [])
++        if isinstance(m, dict) and str(m.get("model") or "").startswith("x_")
++    ]
++
++
++def _selection_labels(header: dict) -> set[str]:
++    out: set[str] = set()
++    for f in header.get("fields") or []:
++        if not isinstance(f, dict):
++            continue
++        if str(f.get("ttype") or "") != "selection":
++            continue
++        out.add(str(f.get("string") or f.get("name") or "").strip().lower())
++    return out
++
++
++def _note_fields(header: dict) -> list[tuple[str, str, str]]:
++    rows: list[tuple[str, str, str]] = []
++    for f in header.get("fields") or []:
++        if not isinstance(f, dict):
++            continue
++        name = str(f.get("name") or "")
++        string = str(f.get("string") or "")
++        blob = f"{name} {string}".lower()
++        if re.search(r"note|remark|comment|description", blob):
++            rows.append((name, string, str(f.get("ttype") or "")))
++    return rows
++
++
++def test_continuous_invent_stamp() -> None:
++    stamp = continuous_invent_stamp(prove_status="passed")
++    assert stamp["class_id"] == "continuous_invent"
++    assert stamp["phase"] == "P3"
++    assert stamp["flash_free_floor"] is True
++    assert "uncued_selection" in stamp["gates"]
++    assert stamp["promote_human"] is True
++
++
++@pytest.mark.parametrize(
++    "prompt,title,note_substr",
++    [
++        (VEHICLE, "Vehicle Request", "assignment"),
++        (LEAVE, "Leave Request", "calendar block"),
++        (INCIDENT, "Incident Log", "notes"),
++        (ASSET, "Asset Checkout", None),
++        (VISITOR, "Visitor Log", None),
++        (TICKET, "Support Ticket", "description"),
++        (DINING, "Dining Tables", None),
++    ],
++)
++def test_diagnosis_name_and_primary_canvas(
++    prompt: str, title: str, note_substr: str | None
++) -> None:
++    u = build_understanding(prompt)
++    assert u.title == title
++    assert "management" not in u.title.lower()
++    draft = _finish(prompt)
++    assert draft.get("display_name") == title
++    assert scrub_residual_display_name(f"{title} Management") == title
++    xmods = _x_models(draft)
++    # One primary residual — no party/line invent, no foreign pack canvas.
++    assert len([m for m in xmods if not m.endswith(("_line", "_party"))]) == 1
++    assert not any(m.endswith("_line") or m.endswith("_party") for m in xmods)
++    header = _header(draft)
++    assert str(header.get("model") or "").startswith("x_")
++    if note_substr:
++        notes = _note_fields(header)
++        assert notes, f"expected note surface containing {note_substr}"
++        assert any(note_substr in f"{n} {s}".lower() for n, s, _ in notes)
++        # One cue → one field
++        assert len(notes) == 1
++
++
++def test_leave_note_is_calendar_block_not_assignment() -> None:
++    u = build_understanding(LEAVE)
++    joined = " | ".join(u.constraints or [])
++    assert "Calendar Block Note" in joined
++    assert "Assignment Note" not in joined
++    draft = _finish(LEAVE)
++    header = _header(draft)
++    names = {str(f.get("name")) for f in header.get("fields") or []}
++    assert "x_calendar_block_note" in names
++    assert "x_assignment_note" not in names
++    # calendar block note is a Notes surface — not calendar.event stock invent
++    assert "calendar" not in build_operator_brief(LEAVE).stock_reuse
++    assert not any(
++        str(m.get("model")) == "calendar.event"
++        for m in (draft.get("models") or [])
++        if isinstance(m, dict)
++    )
++
++
++def test_incident_notes_not_and_notes_char() -> None:
++    u = build_understanding(INCIDENT)
++    assert any(c == "Text field: Notes" or c == "Notes" for c in (u.constraints or []))
++    assert not any("and notes" in c.lower() for c in (u.constraints or []))
++    draft = _finish(INCIDENT)
++    header = _header(draft)
++    by_name = {
++        str(f.get("name")): f
++        for f in (header.get("fields") or [])
++        if isinstance(f, dict)
++    }
++    assert "x_notes" in by_name
++    assert by_name["x_notes"]["ttype"] == "text"
++    assert "x_and_notes" not in by_name
++
++
++def test_thin_ticket_no_party_line_satellites() -> None:
++    draft = _finish(TICKET)
++    assert classify_document_shape(TICKET, draft) == "transactional_header"
++    assert may_add_line_satellite(draft, prompt=TICKET) is False
++    assert may_add_party_satellite(draft, prompt=TICKET) is False
++    xmods = _x_models(draft)
++    assert xmods == ["x_support_ticket"]
++
++
++def test_thin_dining_no_restaurant_workspace_bleed() -> None:
++    draft = _finish(DINING)
++    assert draft.get("domain_pack") in (None, "", "restaurant")  # seed may skip
++    # Shape must not explode party/line even if pack matched lexically.
++    assert may_add_line_satellite(draft, prompt=DINING) is False
++    assert may_add_party_satellite(draft, prompt=DINING) is False
++    assert not any(
++        str(m.get("model") or "").endswith(("_line", "_party"))
++        for m in (draft.get("models") or [])
++        if isinstance(m, dict)
++    )
++    header = _header(draft)
++    labels = {str(f.get("string") or "") for f in header.get("fields") or []}
++    assert "Capacity" in labels or any("capacity" in x.lower() for x in labels)
++    assert "Status" in labels or any("status" in x.lower() for x in labels)
++
++
++@pytest.mark.parametrize("prompt", [VEHICLE, LEAVE, ASSET, INCIDENT, TICKET, VISITOR, DINING])
++def test_no_uncued_type_priority_rate(prompt: str) -> None:
++    assert not brief_has_type_cue(prompt)
++    assert not brief_has_priority_cue(prompt)
++    assert not brief_has_rate_cue(prompt)
++    draft = _finish(prompt)
++    header = _header(draft)
++    sels = _selection_labels(header)
++    # State / Purpose / Status (cued) may remain; invent family must not.
++    banned = {
++        "type",
++        "category",
++        "kind",
++        "class",
++        "priority",
++        "urgency",
++        "importance",
++        "rate unit",
++        "rate uom",
++        "uom",
++        "unit",
++        "vehicle type",
++    }
++    assert not (sels & banned), sels
++
++
++@pytest.mark.parametrize("prompt", [VEHICLE, LEAVE, ASSET])
++def test_date_range_is_date_not_datetime(prompt: str) -> None:
++    draft = _finish(prompt)
++    header = _header(draft)
++    dates = [
++        f
++        for f in (header.get("fields") or [])
++        if isinstance(f, dict) and f.get("ttype") in {"date", "datetime"}
++    ]
++    assert dates
++    assert all(f.get("ttype") == "date" for f in dates)
++
++
++def test_visitor_purpose_kept_meeting_not_calendar_reuse() -> None:
++    """Purpose (Meeting / …) is a cued Selection — not calendar.event stock invent."""
++    assert "calendar" not in build_operator_brief(VISITOR).stock_reuse
++    draft = _finish(VISITOR)
++    header = _header(draft)
++    sels = _selection_labels(header)
++    assert "purpose" in sels
++    assert not any(
++        str(m.get("model")) == "calendar.event"
++        for m in (draft.get("models") or [])
++        if isinstance(m, dict)
++    )
++
++
++def test_prefer_sales_still_prefer() -> None:
++    u = build_understanding(PREFER_SALES)
++    assert getattr(u, "inherit_existing", False) is True or u.grain in {
++        "field_pack",
++        "feature_slice",
++    }
++    assert u.host_model == "sale.order"
++
++
++def test_honor_drops_injected_uncued_priority_on_leave() -> None:
++    draft = {
++        "display_name": "Leave Request",
++        "_user_prompt": LEAVE,
++        "models": [
++            {
++                "model": "x_leave_request",
++                "mode": "new",
++                "fields": [
++                    {"name": "x_name", "ttype": "char", "string": "Name"},
++                    {
++                        "name": "x_priority",
++                        "ttype": "selection",
++                        "string": "Priority",
++                        "selection": "[('0','Low'),('1','Normal')]",
++                        "source": "density",
++                    },
++                    {
++                        "name": "x_calendar_block_note",
++                        "ttype": "text",
++                        "string": "Calendar Block Note",
++                    },
++                ],
++            }
++        ],
++    }
++    notes = honor_stated_brief_cues(draft, prompt=LEAVE)
++    assert any("Priority" in n or "priority" in n.lower() for n in notes)
++    names = {str(f.get("name")) for f in draft["models"][0]["fields"]}
++    assert "x_priority" not in names
++    assert "x_calendar_block_note" in names
+-- 
+2.47.3
+

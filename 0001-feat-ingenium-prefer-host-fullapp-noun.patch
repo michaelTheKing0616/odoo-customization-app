@@ -1,0 +1,1116 @@
+From 6f87d410ec8c368f614cc49076f7b37db3b10e2a Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 14:53:48 +0100
+Subject: [PATCH] feat(ingenium): Prefer host lock + full_app business noun
+ (class-wide)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fix architectural Prefer host-steal (Project→sale.order on linked SO asides)
+and residual full_app noun collapse (Studio grain Full→x_full). Prefer-lock
+project.project for Project form Extends; Name/model from brief business noun;
+checklist/parts as honest O2M satellites. Prefer sale.order packs + Vehicle
+Request + invent families stay green.
+---
+ apps/api/app/ai_constraint_ast.py             | 136 ++++++++++--
+ apps/api/app/ai_conversation/understand.py    |  15 +-
+ apps/api/app/ai_document_shape.py             | 134 ++++++++++--
+ apps/api/app/ai_grain.py                      | 139 +++++++++++-
+ apps/api/app/ai_residual_identity.py          |  11 +
+ apps/api/app/ai_studio_contract.py            |   1 +
+ ...run_arc3_invent_families_rubric_battery.sh |   1 +
+ ...prefer_host_fullapp_noun_rubric_battery.sh |  45 ++++
+ .../test_prefer_host_fullapp_noun_class.py    | 199 ++++++++++++++++++
+ 9 files changed, 644 insertions(+), 37 deletions(-)
+ create mode 100755 apps/api/scripts/run_prefer_host_fullapp_noun_rubric_battery.sh
+ create mode 100644 apps/api/tests/test_prefer_host_fullapp_noun_class.py
+
+diff --git a/apps/api/app/ai_constraint_ast.py b/apps/api/app/ai_constraint_ast.py
+index fb09f30..8c33b61 100644
+--- a/apps/api/app/ai_constraint_ast.py
++++ b/apps/api/app/ai_constraint_ast.py
+@@ -118,7 +118,7 @@ _TYPED_TEXT_FIELD_RE = re.compile(
+ _ADD_CLAUSE_RE = re.compile(
+     r"(?i)\badd\s+(?:a\s+|an\s+)?(?!checkbox\b|boolean\b)"
+     r"(.+?)(?="
+-    r"\.\s*(?:On\s+the\s+form|Prefer|Do\s+not|Don't|Show\s+a\s+|When\b)|"
++    r"\.\s*(?:On\s+(?:the\s+)?(?:\w+\s+)?form|Prefer|Do\s+not|Don't|Show\s+a\s+|When\b)|"
+     r"\.\s*$|;\s*|\n|$)"
+ )
+ _DATE_RANGE_PAREN_RE = re.compile(
+@@ -142,9 +142,8 @@ _PRONOUN_LABELS = frozenset(
+ )
+ 
+ _APP_NOUN_RE = re.compile(
+-    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
++    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full)\s+)*"
+     r"(.+?)\s+app\b"
+-    r"|^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])"
+ )
+ _MODEL_WITH_FIELDS_RE = re.compile(
+     r"(?i)\bmodel\s+with\s+(.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|\.|$)"
+@@ -245,7 +244,7 @@ def _strip_leading_imperative(title: str) -> str:
+ 
+ 
+ def _full_app_naming(text: str) -> tuple[str, str]:
+-    """Display + slug for residual full_app — never leading imperatives."""
++    """Display + slug for residual full_app — never leading imperatives or grain words."""
+     display = ""
+     slug = ""
+     try:
+@@ -259,10 +258,16 @@ def _full_app_naming(text: str) -> tuple[str, str]:
+         app_m = _APP_NOUN_RE.search(text or "")
+         if app_m:
+             display = re.sub(
+-                r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")
++                r"\s+", " ", (app_m.group(1) or "")
+             ).strip(" .:,-")
+             display = re.sub(r"(?i)^(a|an|the)\s+", "", display).strip()
+             display = _strip_leading_imperative(display)
++    # Reject Studio grain-only nouns (Full / Prefer / full_app → x_full failure class).
++    if display and re.fullmatch(
++        r"(?i)full|new|prefer|extend|full_app|residual|app|field_pack|feature_slice",
++        display.strip(),
++    ):
++        display, slug = "", ""
+     if not display:
+         return "", ""
+     # Title-case when the brief left us lowercase crumbs
+@@ -388,12 +393,41 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+         fields.append(
+             ConstraintField(label="Employee", ttype="many2one", relation="Employee", bare=True)
+         )
+-    if re.search(r"(?i)\bfleet\s+vehicle\b|\bvehicle\b", text):
++    # Customer (Contact) — class-wide residual header, not flat invent.
++    if re.search(r"(?i)\bcustomer\s*\(\s*contact", text) or (
++        re.search(r"(?i)\bcustomer\b", text)
++        and re.search(r"(?i)\bcontact", text)
++        and re.search(r"(?i)\b(?:work\s+order|order|ticket|request|log)\b", text)
++    ):
++        fields.append(
++            ConstraintField(label="Customer", ttype="many2one", relation="Contact", bare=True)
++        )
++    if re.search(r"(?i)\b(?:related|linked|optional)\s+sales?\s+orders?\b", text):
++        fields.append(
++            ConstraintField(
++                label="Sales Order",
++                ttype="many2one",
++                relation="Sales Order",
++                bare=True,
++            )
++        )
++    if re.search(r"(?i)\bfleet\s+vehicle\b|\bvehicle\b|\basset\s*/\s*vehicle\b", text):
+         fields.append(
+             ConstraintField(
+                 label="Vehicle", ttype="many2one", relation="Fleet Vehicle", bare=True
+             )
+         )
++    if re.search(r"(?i)\bscheduled\s+slot\b", text):
++        fields.append(ConstraintField(label="Scheduled Slot", ttype="datetime", bare=True))
++    if re.search(r"(?i)\bpriority\b", text):
++        fields.append(
++            ConstraintField(
++                label="Priority",
++                ttype="selection",
++                selection_options="Low / Normal / High / Urgent",
++                bare=True,
++            )
++        )
+     if _DATE_RANGE_PROSE_RE.search(text or ""):
+         fields.append(ConstraintField(label="Start Date", ttype="date", bare=True))
+         fields.append(ConstraintField(label="End Date", ttype="date", bare=True))
+@@ -420,6 +454,9 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+             )
+         )
+ 
++    if re.search(r"(?i)\bsign[- ]?off\b", text):
++        fields.append(ConstraintField(label="Sign-off", ttype="text", bare=True))
++
+     note_label = _optional_note_label(text or "")
+     if note_label:
+         # Optional note cue → one free-text surface on the primary.
+@@ -432,6 +469,10 @@ def _prose_full_app_fields(text: str) -> list[ConstraintField]:
+                 bare=True,
+             )
+         )
++    elif re.search(r"(?i)\bhandoff\s+note\b|\bconsultant\s+handoff\b", text or ""):
++        fields.append(
++            ConstraintField(label="Handoff Note", ttype="text", bare=True)
++        )
+     return fields
+ 
+ 
+@@ -442,12 +483,19 @@ def _prose_full_app_structural(text: str) -> list[str]:
+         rows.append(f"Menu under {parent}")
+     if _APPROVE_REFUSE_RE.search(text or ""):
+         rows.append("Buttons: Submit, Approve, Refuse, Mark Done")
+-    if _LIST_KANBAN_RE.search(text or ""):
++    if re.search(r"(?i)\bmenus?\s+list\s*/\s*kanban\s*/\s*calendar\b", text or ""):
++        rows.append("Menus: list / kanban / calendar")
++    elif _LIST_KANBAN_RE.search(text or ""):
+         rows.append("List + kanban by State")
+     elif _LIST_FORM_RE.search(text or ""):
+         rows.append("List + form")
+     if _CREATE_READ_ONLY_RE.search(text or ""):
+         rows.append("Create/read only")
++    # Class-wide: checklist / parts lines → structured O2M satellites, never flat Product/Qty Identity.
++    if re.search(r"(?i)\bchecklist\s+lines?\b", text or ""):
++        rows.append("Satellite O2M: Checklist lines (not flat Product/Quantity on primary)")
++    if re.search(r"(?i)\bparts?\s+used\b", text or ""):
++        rows.append("Satellite O2M: Parts used (not flat Product/Quantity on primary)")
+     note_label = _optional_note_label(text or "")
+     if note_label:
+         rows.append(f"Optional: link or create {note_label} on Approve")
+@@ -589,6 +637,31 @@ def expand_field_chunk(chunk: str) -> list[str]:
+     return [raw]
+ 
+ 
++
++_SELECTION_OPTS_PAREN_RE = re.compile(
++    r"(?i)^(.+?)\s*\(\s*([A-Za-z][\w /&+-]*(?:\s*/\s*[A-Za-z][\w /&+-]*){1,})\s*\)\s*$"
++)
++
++
++def _peel_selection_label(label: str) -> tuple[str, str | None]:
++    """«Commercial phase (Discovery / Delivery / Hypercare / Closed)» → label + opts."""
++    raw = (label or "").strip()
++    m = _SELECTION_OPTS_PAREN_RE.match(raw)
++    if not m:
++        # Also peel units: Billable cap (hours)
++        unit = re.match(
++            r"(?i)^(.+?)\s*\(\s*(hours?|days?|qty|quantity|%)\s*\)\s*$",
++            raw,
++        )
++        if unit:
++            return unit.group(1).strip(), None
++        return raw, None
++    opts = re.sub(r"\s*/\s*", " / ", m.group(2)).strip()
++    if opts.lower() in {"hours", "hour", "days", "day", "qty", "quantity", "%"}:
++        return m.group(1).strip(), None
++    return m.group(1).strip(), opts
++
++
+ def iter_add_field_labels(text: str) -> list[str]:
+     """All Prefer/field_pack labels after add — conjunction + date-range aware."""
+     labels: list[str] = []
+@@ -596,7 +669,7 @@ def iter_add_field_labels(text: str) -> list[str]:
+         body = m.group(1).strip()
+         body = re.split(
+             r"(?i)\s+(?:under\s+(?:the\s+)?[\w /&-]+?\s+group|"
+-            r"required\s+before\b|on\s+the\s+\w+\s+form)\b",
++            r"required\s+before\b|on\s+(?:the\s+)?(?:\w+\s+)?form)\b",
+             body,
+             maxsplit=1,
+         )[0].strip()
+@@ -635,6 +708,10 @@ def _infer_ttype(label: str, *, stated: str | None = None) -> str:
+         (label or "").strip(),
+     ):
+         return "text"
++    if re.search(r"(?i)\b(?:cap|hours?|qty|quantity|count|amount)\b", label or ""):
++        if re.search(r"(?i)\b(?:%|percent|rate|ratio)\b", label or ""):
++            return "float"
++        return "float"
+     return "char"
+ 
+ 
+@@ -731,15 +808,31 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
+         for label in iter_add_field_labels(text):
+             if re.search(r"(?i)\b(?:filter|automat|activity|smart\s+button)\b", label):
+                 continue
+-            ttype = _infer_ttype(label)
+-            bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label)) or ttype in {
+-                "date",
+-                "datetime",
+-            }
++            # Read-only rollups / show-vs are hints, not invent fields.
++            if re.search(
++                r"(?i)^(?:show|display|actual)\b|\bvs\s+cap\b|\bread[- ]?only\b",
++                label,
++            ):
++                ast.hints.append(re.sub(r"\s+", " ", label).strip(" ."))
++                continue
++            clean, sel_opts = _peel_selection_label(label)
++            if not clean or len(clean) < 2:
++                continue
++            if sel_opts:
++                ast.fields.append(
++                    ConstraintField(
++                        label=clean,
++                        ttype="selection",
++                        selection_options=sel_opts,
++                        bare=False,
++                    )
++                )
++                continue
++            ttype = _infer_ttype(clean)
+             # Match prior Must-do: only start/end date expansions were bare;
+             # other Field: rows stay prefixed. Keep bare for start/end date.
+-            bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label))
+-            ast.fields.append(ConstraintField(label=label, ttype=ttype, bare=bare))
++            bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", clean))
++            ast.fields.append(ConstraintField(label=clean, ttype=ttype, bare=bare))
+ 
+     gm = _UNDER_GROUP_RE.search(text) or _UNDER_SECTION_RE.search(text)
+     if gm:
+@@ -771,6 +864,19 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
+         else:
+             ast.non_goals.append("Do not create a new home-screen app")
+ 
++    # Online-safe vs Option A honesty — stamp hints, do not lock whole Prefer as residual_app.
++    if re.search(
++        r"(?i)\b(?:onchange|python|option\s*a|/\s*sh|compute|rollup|"
++        r"when\s+phase\s+moves|require\s+a\s+linked|clear\s+warning)\b",
++        text or "",
++    ):
++        if not any("option a" in (h or "").lower() for h in ast.hints):
++            ast.hints.append(
++                "Option A / .sh when Python required (phase warning, hours rollup); "
++                "phase + cap fields stay Online-safe metadata"
++            )
++    if re.search(r"(?i)\bno\s+second\s+pm\b|\bno\s+second\s+project\b", text or ""):
++        ast.non_goals.append("Do not invent a parallel Project app")
+     # Honest if thin: mark uncertain so callers prefer extra Must-do over drop
+     if host and not ast.fields and not ast.hints:
+         ast.uncertain = True
+diff --git a/apps/api/app/ai_conversation/understand.py b/apps/api/app/ai_conversation/understand.py
+index 6526045..ed49545 100644
+--- a/apps/api/app/ai_conversation/understand.py
++++ b/apps/api/app/ai_conversation/understand.py
+@@ -636,10 +636,8 @@ def _brief_must_do_constraints(
+ 
+ 
+ _APP_NOUN_RE = re.compile(
+-    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini)\s+)*"
++    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full)\s+)*"
+     r"(.+?)\s+app\b"
+-    # "Dining Tables for our restaurant" / "Visitor Log: Name, …"
+-    r"|^([A-Z][\w][\w\s/-]{1,48}?)(?:\s+for\s+(?:our|the|a)\b|\s*[:—-])"
+ )
+ _MODEL_WITH_FIELDS_RE = re.compile(
+     r"(?i)\bmodel\s+with\s+(.+?)(?:\.\s*(?:Simple|No\s+workflow|Menu)|;|\.|$)"
+@@ -1082,7 +1080,7 @@ def _deterministic_understanding(prompt: str) -> Understanding:
+             app_m = _APP_NOUN_RE.search(text)
+             if app_m:
+                 nice = re.sub(
+-                    r"\s+", " ", (app_m.group(1) or app_m.group(2) or "")
++                    r"\s+", " ", (app_m.group(1) or "")
+                 ).strip(" .:,-")
+                 nice = re.sub(r"(?i)^(a|an|the)\s+", "", nice).strip()
+                 nice = re.sub(
+@@ -1107,7 +1105,14 @@ def _deterministic_understanding(prompt: str) -> Understanding:
+                 "",
+                 nice,
+             ).strip() or nice
+-            title = nice.title() if nice.islower() or nice.lower() == nice else nice
++            # Never title a Studio grain word (Full / Prefer / Extend → x_full).
++            if re.fullmatch(
++                r"(?i)full|new|prefer|extend|full_app|residual|app|field_pack|feature_slice",
++                nice.strip(),
++            ):
++                nice = ""
++            if nice:
++                title = nice.title() if nice.islower() or nice.lower() == nice else nice
+ 
+     result = Understanding(
+         capability=plan.capability,
+diff --git a/apps/api/app/ai_document_shape.py b/apps/api/app/ai_document_shape.py
+index a4ee251..5fbb5a0 100644
+--- a/apps/api/app/ai_document_shape.py
++++ b/apps/api/app/ai_document_shape.py
+@@ -62,7 +62,7 @@ _WORKSPACE_RE = re.compile(
+     r"\bpms\b|\berp\b"
+     r")\b"
+ )
+-_LINE_NOUN_RE = re.compile(r"(?i)\b(lines?|items?|qty|quantity|hours?)\b")
++_LINE_NOUN_RE = re.compile(r"(?i)\b(lines?|items?|qty|quantity|hours?|checklist|parts?\s+used)\b")
+ _PARTY_NOUN_RE = re.compile(r"(?i)\b(roles?|parties|attendees|participants)\b")
+ _COLUMN_LIST_RE = re.compile(
+     r"(?i)in odoo\s*:\s*(.+?)(?:\.(?:\s+[A-Z])|$)",
+@@ -401,12 +401,31 @@ def may_add_party_satellite(draft: dict[str, Any], *, prompt: str = "") -> bool:
+ 
+ 
+ _APP_NOUN_RE = re.compile(
+-    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|light(?:weight)?)\s+)*"
++    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full|light(?:weight)?)\s+)*"
+     r"(.+?)\s+apps?\b"
+-    r"|^\s*([A-Z][\w][\w\s/-]{1,48}?)(?=\s*:)"
++)
++# Short business noun after Build/Create/Make before stop words / marketing prose.
++# Do NOT block «Field …» — only exact checkbox/boolean/column/filter tokens.
++_BUILD_SHORT_NOUN_RE = re.compile(
++    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?"
++    r"(?:(?:tiny|simple|small|new|mini|full|light(?:weight)?)\s+)*"
++    r"(?!(?:checkbox|boolean|column|filter)\b)"
++    r"([A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,4}?)"
++    r"(?=\s+(?:a|an|the|for|that|which|where|with|could|to|next|app\b|mid[- ]market)|:|$)"
++)
++# «Build a Full app for Field work orders» — grain chrome then business noun.
++_FULL_APP_FOR_NOUN_RE = re.compile(
++    r"(?i)\b(?:build|create|make)\s+(?:an?\s+)?full\s+apps?\s+for\s+"
++    r"([A-Za-z][\w]*(?:\s+[A-Za-z][\w]*){0,4})"
++)
++# Mid-brief document header («Work order: Customer (Contact)») — class-wide.
++_DOC_HEADER_NOUN_RE = re.compile(
++    r"(?i)(?:^|[;.\n:\u2014\u2013-])\s*"
++    r"([A-Za-z][\w]+(?:\s+[A-Za-z][\w]+){0,3})\s*:\s*"
++    r"(?=[A-Za-z][\w]+\s*\()"
+ )
+ _SIZE_ADJ_RE = re.compile(
+-    r"(?i)^(?:a|an|the|tiny|simple|small|new|mini|light(?:weight)?|basic|minimal)\s+"
++    r"(?i)^(?:a|an|the|tiny|simple|small|new|mini|full|light(?:weight)?|basic|minimal)\s+"
+ )
+ _APP_CHROME_RE = re.compile(
+     r"(?i)\s+apps?(?:\s*:\s*models?)?$|\s*:\s*models?$|\s+models?$"
+@@ -415,24 +434,98 @@ _APP_CHROME_RE = re.compile(
+ _TITLE_FLUFF_TRAILING_RE = re.compile(
+     r"(?i)\s+(?:management|system|module|platform|suite|solution|application)s?$"
+ )
++# Studio grain words are never residual business nouns (Full → x_full failure class).
++_STUDIO_GRAIN_NOUNS = frozenset(
++    {
++        "full",
++        "new",
++        "prefer",
++        "extend",
++        "full_app",
++        "full app",
++        "residual",
++        "app",
++        "apps",
++        "field_pack",
++        "field pack",
++        "feature_slice",
++        "feature slice",
++        "component",
++        "slice",
++        "grain",
++    }
++)
+ 
+ 
+-def _scrub_residual_title(label: str) -> str:
+-    """Visitor Log — never «Tiny X App: Model» / «… Models»."""
+-    text = (label or "").strip()
++def _is_studio_grain_noun(label: str) -> bool:
++    """True when label is only a Studio grain word (Full / Prefer / full_app…)."""
++    low = re.sub(r"[_\s-]+", " ", (label or "").strip().lower())
++    low = re.sub(r"\s+", " ", low).strip()
++    if not low:
++        return True
++    if low in _STUDIO_GRAIN_NOUNS:
++        return True
++    if low.replace(" ", "_") in _STUDIO_GRAIN_NOUNS:
++        return True
++    return False
++
++
++def _extract_business_noun(prompt: str) -> str:
++    """Business noun from residual brief — never Studio grain words or marketing prose."""
++    text = (prompt or "").strip()
+     if not text:
+         return ""
+-    # Prefer "Build a tiny Visitor Log app" noun over the whole clause.
++    # 0) Build a Full app for <noun> — grain chrome, keep the for-noun
++    m = _FULL_APP_FOR_NOUN_RE.search(text)
++    if m:
++        cand = (m.group(1) or "").strip()
++        if cand and not _is_studio_grain_noun(cand):
++            return cand
++    # 1) Build … app → noun before app (skip when noun is grain-only)
+     m = _APP_NOUN_RE.search(text)
+     if m:
+-        text = (m.group(1) or m.group(2) or "").strip()
++        cand = (m.group(1) or "").strip()
++        if cand and not _is_studio_grain_noun(cand):
++            return cand
++    # 2) Short noun after Build before stop words («Field work orders a mid-market…»)
++    m = _BUILD_SHORT_NOUN_RE.search(text)
++    if m:
++        cand = (m.group(1) or "").strip()
++        # Reject exact invent-chrome tokens (but allow «Field work orders»)
++        if cand and cand.lower() not in {"checkbox", "boolean", "column", "filter", "field", "fields"}:
++            if not _is_studio_grain_noun(cand):
++                return cand
++    # 3) Mid-brief document header («Work order: Customer (Contact)»)
++    for m in _DOC_HEADER_NOUN_RE.finditer(text):
++        cand = (m.group(1) or "").strip()
++        if cand and not _is_studio_grain_noun(cand) and len(cand) <= 40:
++            # Skip marketing «Odoo:» / single filler words
++            if cand.lower() in {"odoo", "online", "studio", "menu", "menus", "state"}:
++                continue
++            return cand
++    return ""
++
++
++def _scrub_residual_title(label: str) -> str:
++    """Visitor Log — never «Tiny X App: Model» / «… Models» / «Full»."""
++    text = (label or "").strip()
++    if not text:
++        return ""
++    extracted = _extract_business_noun(text)
++    if extracted:
++        text = extracted
++    else:
++        # Prefer "Build a tiny Visitor Log app" noun over the whole clause.
++        m = _APP_NOUN_RE.search(text)
++        if m:
++            text = (m.group(1) or "").strip()
+     # Strip leading imperatives (Build/Create/Make) glued onto the noun.
+     text = re.sub(
+         r"(?i)^(build|create|make|add|implement|develop|generate)\s+",
+         "",
+         text,
+     ).strip()
+-    # Strip leading size/articles repeatedly.
++    # Strip leading size/articles repeatedly (incl. Full/New grain crumbs).
+     while True:
+         nxt = _SIZE_ADJ_RE.sub("", text).strip()
+         if nxt == text:
+@@ -457,6 +550,18 @@ def _scrub_residual_title(label: str) -> str:
+         if len(left.strip()) <= 40 and not re.search(r"(?i)\bmodel", left):
+             text = left.strip()
+     text = re.sub(r"\s+", " ", text).strip(" -:.,")
++    # Cut marketing prose tails («… a mid-market firm could sell…»)
++    text = re.split(
++        r"(?i)\s+(?:a\s+mid[- ]market|that\s+could|which\s+could|for\s+our\b|next\s+to\b)\b",
++        text,
++        maxsplit=1,
++    )[0].strip(" -:.,")
++    if _is_studio_grain_noun(text):
++        return ""
++    # Leading «app for X» chrome after Full scrub
++    text = re.sub(r"(?i)^apps?\s+for\s+", "", text).strip()
++    if _is_studio_grain_noun(text):
++        return ""
+     return text
+ 
+ 
+@@ -477,7 +582,12 @@ def naming_from_residual(prompt: str) -> tuple[str, str]:
+     label = re.split(r"[.(]", label, maxsplit=1)[0].strip()
+     label = re.sub(r"(?i)^(a|an|the)\s+", "", label).strip()
+     label = _scrub_residual_title(label)
+-    if not label or label.lower() in {"none", "app", "module", "system", "named in brief", "model", "models"}:
++    if not label or label.lower() in {
++        "none", "app", "module", "system", "named in brief", "model", "models",
++        "full", "new", "prefer", "extend", "residual", "full_app", "field_pack",
++    }:
++        return "", ""
++    if _is_studio_grain_noun(label):
+         return "", ""
+     words = [w for w in re.split(r"[\s_]+", label) if w]
+     # Preserve intentional internal caps (Visitor Log); otherwise title-case.
+@@ -485,7 +595,7 @@ def naming_from_residual(prompt: str) -> tuple[str, str]:
+         display = " ".join(words)
+         # Normalize size-adj leftovers that survived with odd caps.
+         display = re.sub(
+-            r"(?i)^(tiny|simple|small|mini|new)\s+",
++            r"(?i)^(tiny|simple|small|mini|new|full)\s+",
+             "",
+             display,
+         ).strip()
+diff --git a/apps/api/app/ai_grain.py b/apps/api/app/ai_grain.py
+index 3869360..b17d360 100644
+--- a/apps/api/app/ai_grain.py
++++ b/apps/api/app/ai_grain.py
+@@ -75,6 +75,12 @@ _FULL_APP_RE = re.compile(
+     r"full\s+app|standalone\s+app|new\s+application|from\s+scratch|"
+     r"entire\s+system|complete\s+platform|"
+     r"menu\s+under\s+\w+|"
++    # Residual document without trailing «app»: Build Field work orders / Create Visitor Log
++    r"(?:build|create|make)\s+(?:an?\s+)?(?:(?:tiny|simple|small|new|mini|full)\s+)*"
++    r"(?!(?:checkbox|boolean|column|filter)\b)"
++    r"[\w]+(?:\s+[\w]+){0,4}"
++    r"(?=\s+(?:a|an|the|for|that|which|where|with|could|to|next|:)|:)"
++    r"|"
+     r"library\s+management|car\s+rental|law\s+firm|hospital|clinic"
+     r")\b",
+     re.I,
+@@ -100,6 +106,7 @@ HOST_ALIASES: dict[str, str] = {
+     "hr.employee": "hr.employee",
+     "calendar.event": "calendar.event",
+     "crm.lead": "crm.lead",
++    "project.project": "project.project",
+     "project.task": "project.task",
+     "sale order": "sale.order",
+     "sale orders": "sale.order",
+@@ -116,6 +123,10 @@ HOST_ALIASES: dict[str, str] = {
+     "sales": "sale.order",
+     "project task": "project.task",
+     "project tasks": "project.task",
++    "project form": "project.project",
++    "projects form": "project.project",
++    "project": "project.project",
++    "projects": "project.project",
+     "task": "project.task",
+     "tasks": "project.task",
+     "contact": "res.partner",
+@@ -151,6 +162,7 @@ HOST_ALIASES: dict[str, str] = {
+ 
+ MODEL_MODULE: dict[str, str] = {
+     "sale.order": "sale",
++    "project.project": "project",
+     "project.task": "project",
+     "res.partner": "base",
+     "account.move": "account",
+@@ -185,6 +197,7 @@ def parent_menu_xml_id_for_module(mod: str) -> str | None:
+ 
+ INHERIT_FORM_XML: dict[str, str] = {
+     "sale.order": "sale.view_order_form",
++    "project.project": "project.edit_project",
+     "project.task": "project.view_task_form2",
+     "res.partner": "base.view_partner_form",
+     "account.move": "account.view_move_form",
+@@ -200,6 +213,7 @@ INHERIT_FORM_XPATH: dict[str, str] = {
+     "account.move": "//group[@id='header_right_group']",
+     "sale.order": "//sheet/group[1]",
+     "res.partner": "//sheet/group[1]",
++    "project.project": "//sheet/group[1]",
+     "project.task": "//sheet/group[1]",
+     "hr.employee": "//sheet/group[1]",
+     "calendar.event": "//sheet/group[1]",
+@@ -210,7 +224,8 @@ INHERIT_FORM_XPATH: dict[str, str] = {
+ 
+ HOST_LABELS: dict[str, str] = {
+     "sale.order": "Sales",
+-    "project.task": "Project",
++    "project.project": "Project",
++    "project.task": "Tasks",
+     "res.partner": "Contacts",
+     "account.move": "Invoicing",
+     "hr.employee": "Employees",
+@@ -233,6 +248,7 @@ HOST_WINDOW_ACTIONS: dict[str, tuple[str, ...]] = {
+     ),
+     "purchase.order": ("purchase.purchase_rfq", "purchase.purchase_form_action"),
+     "res.partner": ("contacts.action_contacts", "base.action_partner_form"),
++    "project.project": ("project.open_view_project_all", "project.action_view_project"),
+     "project.task": ("project.action_view_all_task", "project.action_view_task"),
+     "hr.employee": ("hr.open_view_employee_list_my", "hr.act_hr_employee"),
+     "calendar.event": ("calendar.action_calendar_event",),
+@@ -307,15 +323,37 @@ def is_inherit_only_ops(prompt: str) -> bool:
+     return bool(named_host_from_prompt(text) or _WIRING_VERBS_RE.search(text))
+ 
+ 
++_RESIDUAL_DOC_STRUCTURE_RE = re.compile(
++    r"(?i)\b(?:"
++    r"state\s*\(|workflow|"
++    r"menus?\s+list|list\s*/\s*kanban|"
++    r"checklist\s+lines?|parts\s+used|"
++    r"sign[- ]?off|handoff\s+note"
++    r")\b"
++)
++
++_RESIDUAL_SLICE_NOISE_RE = re.compile(
++    # Checklist/parts/lines on a residual document are satellites — not inherit slice.
++    r"(?i)\b(?:checklist\s+lines?|parts\s+used|line\s+items?)\b"
++)
++
++
+ def classify_grain(prompt: str) -> Grain:
+     """Classify prompt grain: field_pack | feature_slice | full_app."""
+     raw = (prompt or "").strip().lower()
+     # Scrub relation/selection/view chrome before component cues — "link to Employee"
+     # and "on the calendar" must not force field_pack on residual full apps.
+     text = _scrub_host_noise(raw).lower() or raw
+-    # New app / menu-under-X briefs win before inherit-slice heuristics.
++    # New app / menu-under-X / Build-document briefs win before inherit-slice heuristics.
+     if _FULL_APP_RE.search(raw) and not is_inherit_only_ops(raw):
+         return "full_app"
++    # Residual document with state/menus/lines — never Prefer-reshape via checklist slice.
++    if (
++        re.search(r"(?i)\b(?:build|create|make)\b", raw)
++        and _RESIDUAL_DOC_STRUCTURE_RE.search(raw)
++        and not is_inherit_only_ops(raw)
++    ):
++        return "full_app"
+     named = named_host_from_prompt(raw)
+     # Ops-extension / reuse briefs stay field_pack even when "smart button" matches _SLICE_RE.
+     if is_inherit_only_ops(raw) and not _FULL_APP_RE.search(raw):
+@@ -328,6 +366,11 @@ def classify_grain(prompt: str) -> Grain:
+     if _COMPONENT_RE.search(text):
+         if _FIELD_PACK_RE.search(text) and len(text.split()) < 12:
+             return "field_pack"
++        # Residual checklist/parts lines are not an inherit feature_slice.
++        if _RESIDUAL_SLICE_NOISE_RE.search(text) and re.search(
++            r"(?i)\b(?:build|create|make)\b", raw
++        ):
++            return "full_app"
+         # "Add SLA due date on invoices" is inherit-and-wire, not a second Invoices menu.
+         if not _SLICE_RE.search(text):
+             return "field_pack"
+@@ -354,6 +397,12 @@ _FIELD_RELATION_NOISE_RE = re.compile(
+     r"\([^)]*\blink\s+to\b[^)]*\)"
+     r"|\blink\s+to\s+(?:the\s+)?[\w][\w.\s]{0,40}"
+     r"|\b[A-Za-z][\w\s]{0,40}?\s*\(\s*(?![a-z][a-z0-9_]*\.[a-z0-9_.]+)[A-Za-z][\w\s./-]{0,40}\s*\)"
++    # Linked / related / require-a-linked document — relation field, not form host
++    r"|\b(?:(?:a\s+)?linked|related|optional)\s+"
++    r"(?:sales?\s+orders?|purchase\s+orders?|invoices?|contacts?|partners?|"
++    r"employees?|fleet\s+vehicles?|vehicles?|projects?|tasks?|assets?)\b"
++    r"(?:\s*\([^)]*\))?"
++    r"|\brequire\s+(?:a\s+)?linked\s+[\w\s.]{0,40}"
+ )
+ # Calendar as *view chrome* ("on the calendar") is not an inherit host.
+ # Keep "calendar event(s)" so Add-on-Calendar field packs still host correctly.
+@@ -362,6 +411,10 @@ _VIEW_CHROME_NOISE_RE = re.compile(
+     r"\b(?:on|in)\s+(?:the\s+|a\s+)?calendar\b(?!\s+events?\b)"
+     r"|\bcalendar(?:\s*-?\s*style)?\s+(?:view|schedule|board|layout)\b"
+     r"|\bcalendar-style\b"
++    # View menus — «list/kanban/calendar» is chrome, not calendar.event host
++    r"|\bmenus?\s+list\s*/\s*kanban\s*/\s*calendar\b"
++    r"|\blist\s*/\s*kanban\s*/\s*calendar\b"
++    r"|\b(?:list|kanban|form|calendar)(?:\s*/\s*(?:list|kanban|form|calendar))+\b"
+ )
+ 
+ 
+@@ -386,6 +439,7 @@ def named_host_from_prompt(prompt: str) -> str | None:
+     if not text:
+         return None
+     # Technical models always win when spelled (res.partner, stock.picking, …).
++    # Prefer project.project over project.task when both appear as technical ids.
+     for model in (
+         "res.partner",
+         "stock.picking",
+@@ -395,13 +449,22 @@ def named_host_from_prompt(prompt: str) -> str | None:
+         "hr.employee",
+         "calendar.event",
+         "crm.lead",
++        "project.project",
+         "project.task",
+     ):
+         if model in text:
+             return model
+-    # Field targets / view chrome are not the form host.
++    # Field targets / view chrome / linked-doc asides are not the form host.
+     text = _scrub_host_noise(text)
+ 
++    # Primary Project Prefer/Extend anchors beat incidental Sales Order links.
++    if re.search(
++        r"(?i)\b(?:on\s+(?:the\s+)?project(?:\s+form)?\b|project\s+form\b|"
++        r"extend\s+stock\s+project\b|on\s+projects?\b(?!\s+task))",
++        text,
++    ) and not re.search(r"(?i)\bproject\s+tasks?\b", text):
++        return "project.project"
++
+     # Correction clauses ("wait — actually … on Contacts") — last strong host wins.
+     for m in re.finditer(
+         r"(?i)(?:wait\s*[—\-–,.]?\s*)?(?:actually|instead)\b(.{0,120})",
+@@ -414,6 +477,8 @@ def named_host_from_prompt(prompt: str) -> str | None:
+             if phrase in tail:
+                 return model
+     scrubbed = _FIELD_DELIVERY_NOISE_RE.sub(" ", text)
++    # Alias scans use scrubbed text so linked/related Sales Order asides cannot steal.
++    scan = scrubbed
+     for phrase, model in sorted(HOST_ALIASES.items(), key=lambda kv: -len(kv[0])):
+         if phrase == "delivery":
+             # Bare "delivery" → picking only when not field-label noise and not
+@@ -424,8 +489,27 @@ def named_host_from_prompt(prompt: str) -> str | None:
+                 continue
+         if phrase == "picking" and "stock.picking" in text:
+             return "stock.picking"
++        # Bare "project" / "projects" must not win over an explicit project.task phrase
++        # already handled above; project form / on Project already returned project.project.
++        if phrase in {"project", "projects"} and re.search(
++            r"(?i)\bproject\s+tasks?\b", text
++        ):
++            continue
++        # Bare order/orders — not work/purchase/transfer/repair orders (residual nouns).
++        if phrase in {"order", "orders"} and re.search(
++            r"(?i)\b(?:work|purchase|transfer|repair|service|manufactur\w*|"
++            r"field\s+work|sales?|customer)\s+" + re.escape(phrase) + r"\b",
++            scan,
++        ):
++            # Allow when the longer sale-side phrase is what matched… but those are
++            # separate aliases (sales order). Bare order after work/purchase → skip.
++            if not re.search(
++                r"(?i)\b(?:sales?|customer)\s+" + re.escape(phrase) + r"\b",
++                scan,
++            ):
++                continue
+         # Word-ish match: avoid 'order' inside 'border'
+-        if re.search(rf"(?<![a-z0-9_.]){re.escape(phrase)}(?![a-z0-9_])", scrubbed if phrase == "delivery" else text):
++        if re.search(rf"(?<![a-z0-9_.]){re.escape(phrase)}(?![a-z0-9_])", scan):
+             return model
+     return None
+ 
+@@ -439,6 +523,25 @@ _DELIVERY_HOST_RE = re.compile(
+ )
+ 
+ 
++_LINKED_DOC_ASIDE_RE = re.compile(
++    r"(?i)\b(?:"
++    r"(?:(?:a\s+)?linked|related|optional)\s+"
++    r"(?:sales?\s+orders?|purchase\s+orders?|invoices?)|"
++    r"require\s+(?:a\s+)?linked\s+(?:sales?\s+orders?|purchase\s+orders?|invoices?)"
++    r")\b"
++)
++
++_PRIMARY_PROJECT_HOST_RE = re.compile(
++    r"(?i)\b(?:"
++    r"on\s+(?:the\s+)?project(?:\s+form)?\b|"
++    r"project\s+form\b|"
++    r"extend\s+stock\s+project\b|"
++    r"project\.project\b|"
++    r"on\s+projects?\b(?!\s+task)"
++    r")"
++)
++
++
+ def preferred_inherit_host(prompt: str) -> str | None:
+     """Host for Option A inherit seeds — prefer the document, not incidental 'customer'."""
+     text = prompt or ""
+@@ -455,6 +558,11 @@ def preferred_inherit_host(prompt: str) -> str | None:
+     except Exception:  # noqa: BLE001 — grain must stay import-light on failure
+         pass
+     named = named_host_from_prompt(text)
++    # Project Prefer/Extend — Commercial phase / billable cap on project form.
++    # Linked Sales Order warnings MUST NOT steal host onto sale.order.
++    if named == "project.project" or _PRIMARY_PROJECT_HOST_RE.search(text):
++        if not re.search(r"(?i)\bproject\s+tasks?\b", text):
++            return "project.project"
+     # Explicit partner/Contacts host always wins over delivery-slip / picking noise.
+     if named == "res.partner":
+         # Markup/sales docs may still redirect below; field-pack partner stays.
+@@ -477,11 +585,32 @@ def preferred_inherit_host(prompt: str) -> str | None:
+         and not _FIELD_DELIVERY_NOISE_RE.search(text)
+     ):
+         return "stock.picking"
+-    if _MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text):
++    # Sale-doc redirect only when Sales/Quotation is the PRIMARY document being
++    # extended — not when the brief only links/requires an SO from another host.
++    sale_primary = bool(_MARKUP_HOST_RE.search(text) or _SALE_DOC_RE.search(text))
++    if sale_primary and _LINKED_DOC_ASIDE_RE.search(text):
++        # Drop linked/related/optional SO asides; if no primary sale cue remains, skip.
++        aside_scrubbed = _LINKED_DOC_ASIDE_RE.sub(" ", text)
++        aside_scrubbed = _scrub_host_noise(aside_scrubbed)
++        if not (
++            _MARKUP_HOST_RE.search(aside_scrubbed) or _SALE_DOC_RE.search(aside_scrubbed)
++        ):
++            sale_primary = False
++        else:
++            scrubbed_named = named_host_from_prompt(aside_scrubbed)
++            if scrubbed_named and scrubbed_named != "sale.order":
++                sale_primary = False
++            elif named and named != "sale.order":
++                sale_primary = False
++            elif _PRIMARY_PROJECT_HOST_RE.search(text):
++                sale_primary = False
++    if sale_primary:
+         if re.search(r"(?i)purchase\s+order", text) and not re.search(r"(?i)\bsales?\b", text):
+             return named_host_from_prompt(text)
+         return "sale.order"
+     if named == "res.partner" and re.search(r"(?i)\b(sales?|quotation|invoices?)\b", text):
++        if _LINKED_DOC_ASIDE_RE.search(text):
++            return "res.partner"
+         if re.search(r"(?i)\binvoices?\b", text) and not re.search(r"(?i)\bsales?\b", text):
+             return "account.move"
+         return "sale.order"
+diff --git a/apps/api/app/ai_residual_identity.py b/apps/api/app/ai_residual_identity.py
+index cb493d6..f57232e 100644
+--- a/apps/api/app/ai_residual_identity.py
++++ b/apps/api/app/ai_residual_identity.py
+@@ -41,11 +41,22 @@ def scrub_residual_display_name(title: str) -> str:
+         "",
+         text,
+     ).strip()
++    text = re.sub(
++        r"(?i)^(tiny|simple|small|new|mini|full|light(?:weight)?|basic|minimal)\s+",
++        "",
++        text,
++    ).strip()
+     while True:
+         nxt = _TITLE_FLUFF_TRAILING_RE.sub("", text).strip(" -:.,")
+         if nxt == text:
+             break
+         text = nxt
++    # Studio grain words are never residual nouns (Full → x_full).
++    if re.fullmatch(
++        r"(?i)full|new|prefer|extend|full_app|residual|app|apps|field_pack|feature_slice",
++        text.strip(),
++    ):
++        return ""
+     # Only peel stock menu parent when a document noun follows
+     # («Fleet Vehicle Request» → Vehicle Request; keep «Sales Orders»).
+     stripped = re.sub(
+diff --git a/apps/api/app/ai_studio_contract.py b/apps/api/app/ai_studio_contract.py
+index 7811b21..796ac73 100644
+--- a/apps/api/app/ai_studio_contract.py
++++ b/apps/api/app/ai_studio_contract.py
+@@ -62,6 +62,7 @@ def _host_from_prompt(prompt: str, *, override: str | None = None) -> tuple[str,
+             "res.partner": "Contacts",
+             "stock.picking": "Transfers",
+             "sale.order": "Sales",
++            "project.project": "Project",
+             "project.task": "Tasks",
+             "calendar.event": "Calendar",
+             "hr.employee": "Employees",
+diff --git a/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh b/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh
+index a32d6b7..73b4e14 100755
+--- a/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh
++++ b/apps/api/scripts/run_arc3_invent_families_rubric_battery.sh
+@@ -32,6 +32,7 @@ echo "== Arc3 invent families + Flash-on honor rubric battery (no_app_db) =="
+   tests/test_report_layout_scrub_class.py \
+   tests/test_prefer_field_pack_no_clarification_leak.py \
+   tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_prefer_host_fullapp_noun_class.py \
+   tests/test_ai_constraint_ast.py \
+   tests/test_hosting_m1.py \
+   tests/test_atlas_elite_p4.py \
+diff --git a/apps/api/scripts/run_prefer_host_fullapp_noun_rubric_battery.sh b/apps/api/scripts/run_prefer_host_fullapp_noun_rubric_battery.sh
+new file mode 100755
+index 0000000..0c80a10
+--- /dev/null
++++ b/apps/api/scripts/run_prefer_host_fullapp_noun_rubric_battery.sh
+@@ -0,0 +1,45 @@
++#!/usr/bin/env bash
++# Prefer host lock + full_app business-noun rubric battery (ingenium).
++# Extends Arc3 invent families battery with Project Prefer host + Field work noun goldens.
++# AI_INTENT_LLM=off deterministic floor. Unit/no_app_db only.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== Prefer host + full_app noun rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_prefer_host_fullapp_noun_class.py \
++  tests/test_continuous_invent_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_notes_surface_class.py \
++  tests/test_residual_optional_satellite_primary.py \
++  tests/test_residual_full_app_generate_ir.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_vehicle_request_must_do.py \
++  tests/test_date_vs_datetime_classifier.py \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_hosting_m1.py \
++  tests/test_atlas_elite_p4.py \
++  tests/test_batch_os_atlas_recipes.py \
++  tests/test_batch_os_order_dry_run.py \
++  tests/test_batch_os_document_dry_run.py \
++  tests/test_batch_os_new_recipes.py \
++  2>&1 | tee /tmp/ingenium-prefer-host-fullapp-noun-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-prefer-host-fullapp-noun-rubric.txt"
+diff --git a/apps/api/tests/test_prefer_host_fullapp_noun_class.py b/apps/api/tests/test_prefer_host_fullapp_noun_class.py
+new file mode 100644
+index 0000000..76bd7c2
+--- /dev/null
++++ b/apps/api/tests/test_prefer_host_fullapp_noun_class.py
+@@ -0,0 +1,199 @@
++"""Class-wide Prefer host lock + full_app business-noun naming.
++
++Failure classes (Tope mandate — architectural, not domain-hard):
++A) Prefer/Extend on Project must Prefer-lock project.project; linked Sales Order
++   warnings must NOT steal host onto sale.order; Online-safe phase+cap; Option A
++   honesty only for Python bits — never residual_app tile for this Extend.
++B) Residual full_app Diagnosis Name / model from brief BUSINESS NOUN — never
++   Studio grain words Full / New / Prefer / Extend / full_app → x_full.
++"""
++
++from __future__ import annotations
++
++import os
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_constraint_ast import ast_to_must_do, parse_det  # noqa: E402
++from app.ai_conversation.understand import build_understanding  # noqa: E402
++from app.ai_document_shape import naming_from_residual  # noqa: E402
++from app.ai_grain import (  # noqa: E402
++    classify_grain,
++    named_host_from_prompt,
++    preferred_inherit_host,
++)
++
++PROJECT_COMMERCIAL = (
++    "For professional-services firms: on Project, add Commercial phase "
++    "(Discovery / Delivery / Hypercare / Closed) and Billable cap (hours). "
++    "On project form, show actual hours vs cap (read-only from existing "
++    "timesheet/project hours if available). When phase moves to Hypercare, "
++    "require a linked Sales Order or show a clear warning. Extend stock "
++    "Project/Sale — no second PM suite. Say what’s Online-safe vs what needs "
++    "Option A / sh if Python is required."
++)
++
++FIELD_WORK_ORDERS = (
++    "Build Field work orders a mid-market firm could sell next to Odoo: "
++    "Work order: Customer (Contact), Related Sales Order (optional), "
++    "Asset/Vehicle (Fleet, optional), Scheduled slot, Priority, State "
++    "(Draft → Scheduled → In progress → Done → Invoiced); Checklist lines; "
++    "Parts used; Sign-off; Menus list/kanban/calendar; consultant handoff note; "
++    "prefer working Online metadata over fake Studio parity."
++)
++
++TOPE_SALES_PREFER = (
++    "Extend Sales Orders: add Customer PO reference and Required delivery window "
++    "(start and end dates). Show a status hint when PO is set but delivery window "
++    "is incomplete. Do not create a new app — inherit sale.order. Place under Other "
++    "Info / Documents."
++)
++
++VEHICLE_REQUEST = (
++    "Build Vehicle request: employees request a fleet vehicle for a date range; "
++    "manager approve/refuse; on approve, optionally link/create a Fleet vehicle "
++    "assignment note. List/kanban by state (Draft → Submitted → Approved/Refused → Done). "
++    "Menu under Fleet or HR — pick the more natural parent."
++)
++
++_GRAIN_NOUNS = {
++    "full",
++    "new",
++    "prefer",
++    "extend",
++    "full_app",
++    "residual",
++    "app",
++    "field_pack",
++    "feature_slice",
++}
++
++
++# ---------------------------------------------------------------------------
++# A — Prefer/Extend host steal (Project → sale.order)
++# ---------------------------------------------------------------------------
++
++
++def test_project_commercial_prefer_locks_project_not_sale() -> None:
++    assert named_host_from_prompt(PROJECT_COMMERCIAL) == "project.project"
++    assert preferred_inherit_host(PROJECT_COMMERCIAL) == "project.project"
++    assert classify_grain(PROJECT_COMMERCIAL) == "field_pack"
++
++    u = build_understanding(PROJECT_COMMERCIAL)
++    assert u.host_model == "project.project"
++    assert u.grain == "field_pack"
++    assert u.inherit_existing is True
++    joined = " | ".join(u.constraints).lower()
++    assert "project.project" in joined
++    assert "sale.order" not in joined
++    assert "on sales" not in joined
++    assert "commercial phase" in joined
++    assert "billable cap" in joined
++    # Prompt crumb must not glue «On project form» into the Billable cap label.
++    assert "billable cap (hours). on project" not in joined
++    assert "option a" in joined or "python" in joined
++    # No residual full_app tile for this Prefer/Extend.
++    assert u.inherit_existing
++    assert any("new home-screen app" in x.lower() or "parallel project" in x.lower() for x in (u.out_of_scope or []) + u.constraints)
++
++
++def test_project_commercial_ast_phase_selection_and_cap_float() -> None:
++    ast = parse_det(
++        PROJECT_COMMERCIAL, host="project.project", inherit=True, grain="field_pack"
++    )
++    assert ast.host == "project.project"
++    by_label = {f.label.lower(): f for f in ast.fields}
++    assert "commercial phase" in by_label
++    phase = by_label["commercial phase"]
++    assert phase.ttype == "selection"
++    assert phase.selection_options and "hypercare" in phase.selection_options.lower()
++    assert "billable cap" in by_label
++    assert by_label["billable cap"].ttype in {"float", "integer"}
++    rows = " | ".join(ast_to_must_do(ast)).lower()
++    assert "sale.order" not in rows
++    assert "option a" in rows or "python" in rows
++
++
++def test_prefer_sale_order_packs_still_prefer_sale() -> None:
++    """Regression: Customer PO + delivery window Prefer-locks sale.order."""
++    assert preferred_inherit_host(TOPE_SALES_PREFER) == "sale.order"
++    assert classify_grain(TOPE_SALES_PREFER) == "field_pack"
++    u = build_understanding(TOPE_SALES_PREFER)
++    assert u.host_model == "sale.order"
++    assert u.grain == "field_pack"
++    assert u.inherit_existing is True
++    joined = " | ".join(u.constraints).lower()
++    assert "sale.order" in joined
++    assert "customer po" in joined or "delivery window" in joined
++
++
++# ---------------------------------------------------------------------------
++# B — full_app noun collapse (grain Full → Name Full / x_full)
++# ---------------------------------------------------------------------------
++
++
++def test_field_work_orders_noun_not_full_or_x_full() -> None:
++    assert classify_grain(FIELD_WORK_ORDERS) == "full_app"
++    display, slug = naming_from_residual(FIELD_WORK_ORDERS)
++    assert display.lower() not in _GRAIN_NOUNS
++    assert slug not in {"full", "x_full", "new", "prefer", "extend"}
++    assert "full" != display.lower()
++    assert "field" in display.lower() and "order" in display.lower()
++    assert slug.startswith("field_work_order")
++
++    u = build_understanding(FIELD_WORK_ORDERS)
++    assert u.grain == "full_app"
++    assert u.host_model is None
++    assert u.inherit_existing is False
++    assert u.title.lower() not in _GRAIN_NOUNS
++    assert "full" != u.title.lower()
++    assert "field" in u.title.lower() and "order" in u.title.lower()
++    joined = " | ".join(u.constraints).lower()
++    assert "x_full" not in joined
++    assert "x_field_work_order" in joined
++    assert "priority" in joined  # cued — invent honor must keep
++    assert "checklist" in joined or "parts used" in joined
++    # Honest satellites — not flat Product*/Quantity* Identity.
++    assert "flat product" in joined or "satellite" in joined or "o2m" in joined
++    assert not any(
++        x.lower().startswith("field: product") or x.lower().startswith("field: quantity")
++        for x in u.constraints
++    )
++
++
++def test_studio_grain_words_never_become_residual_noun() -> None:
++    """Class-wide: Full / New / Prefer / Extend are grain chrome, not app nouns."""
++    for brief, _forbidden in (
++        ("Build a Full app", "full"),
++        ("Build a New app", "new"),
++        ("Full app — Build Visitor Log: Name, Company", None),
++    ):
++        display, slug = naming_from_residual(brief)
++        assert display.lower() not in _GRAIN_NOUNS, brief
++        assert slug not in {"full", "new", "prefer", "extend", "x_full"}, brief
++
++
++def test_full_app_for_noun_keeps_business_noun() -> None:
++    display, slug = naming_from_residual("Build a Full app for Field work orders")
++    assert "field" in display.lower() and "order" in display.lower()
++    assert display.lower() not in _GRAIN_NOUNS
++    assert slug.startswith("field_work_order")
++
++
++def test_vehicle_request_residual_still_green() -> None:
++    """Regression: Vehicle Request residual lock + naming stay green."""
++    assert classify_grain(VEHICLE_REQUEST) == "full_app"
++    display, slug = naming_from_residual(VEHICLE_REQUEST)
++    assert display == "Vehicle Request"
++    assert slug == "vehicle_request"
++    u = build_understanding(VEHICLE_REQUEST)
++    assert u.grain == "full_app"
++    assert u.host_model is None
++    assert u.title == "Vehicle Request"
++    joined = " | ".join(u.constraints).lower()
++    assert "x_vehicle_request" in joined
++    assert "employees" in joined or "employee" in joined
+-- 
+2.47.3
+

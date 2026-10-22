@@ -1,0 +1,890 @@
+From d9f19e531d309edc9791075cc8ff7b18105dff92 Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 16:11:47 +0100
+Subject: [PATCH] feat(ingenium): Generate spray + install grammar class gates
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Production path (depth→apply→production_shape) re-injected company/PO/
+Rate-line/party after Identity scrub. Class-wide: thin residual ambition
+for ticket/card workflows; bare x_party not a line model; cued Checklist/
+Parts before generic _line invent; PO requires brief cue on operations
+headers; depth seeds drop Contact/Company; scrub re-run after apply/
+production. Prefer/Vehicle/Field Work/Install grammar stay green.
+---
+ apps/api/app/ai_apply_readiness.py            |  84 ++++-
+ apps/api/app/ai_depth.py                      |  46 ++-
+ apps/api/app/ai_document_compiler.py          |  12 +-
+ apps/api/app/ai_odoo_app_bar.py               | 145 +++++++-
+ apps/api/app/ai_production_shape.py           |  11 +
+ apps/api/app/multi_company_pack.py            |   7 +
+ ...n_generate_spray_grammar_rubric_battery.sh |  52 +++
+ .../test_generate_spray_grammar_class.py      | 323 ++++++++++++++++++
+ 8 files changed, 649 insertions(+), 31 deletions(-)
+ create mode 100755 apps/api/scripts/run_generate_spray_grammar_rubric_battery.sh
+ create mode 100644 apps/api/tests/test_generate_spray_grammar_class.py
+
+diff --git a/apps/api/app/ai_apply_readiness.py b/apps/api/app/ai_apply_readiness.py
+index 0e708a6..3c6a4a4 100644
+--- a/apps/api/app/ai_apply_readiness.py
++++ b/apps/api/app/ai_apply_readiness.py
+@@ -559,19 +559,42 @@ def _is_sales_header(model: dict[str, Any]) -> bool:
+     return any(word in desc for word in ("sales", "customer order", "retail", "pos"))
+ 
+ 
+-def _keeps_purchase_document_link(model: dict[str, Any]) -> bool:
+-    """purchase.order is valid on procurement and operations headers, never on sales."""
++def _brief_cues_purchase_order(prompt: str) -> bool:
++    """Same gate as scrub_uncued_identity_link_m2os — Online-honest/parts ≠ PO."""
++    return bool(
++        re.search(
++            r"(?i)\bpurchase\s+orders?\b|\blink(?:ed)?\s+(?:a\s+)?(?:purchase|PO)\b|"
++            r"\bRFQ\b|\bvendor\s+bill",
++            prompt or "",
++        )
++    )
++
++
++def _keeps_purchase_document_link(
++    model: dict[str, Any], *, prompt: str = ""
++) -> bool:
++    """purchase.order on procurement headers, or operations headers when brief cues PO.
++
++    Class-wide: Maintenance tickets / Field work / Service cards are operations
++    documents — the *token* alone must not invent Purchase Order Identity.
++    """
+     if _is_sales_header(model):
+         return False
+     mid = str(model.get("model") or "").lower()
+     if "line" in mid or any(tok in mid for tok in _INTERNAL_HEADER_TOKENS):
+         return False
+-    return _is_procurement_header(model) or _is_operations_header(model)
++    if _is_procurement_header(model):
++        return True
++    if _is_operations_header(model):
++        return _brief_cues_purchase_order(prompt)
++    return False
+ 
+ 
+-def _stock_link_applies(stock_model: str, model: dict[str, Any]) -> bool:
++def _stock_link_applies(
++    stock_model: str, model: dict[str, Any], *, prompt: str = ""
++) -> bool:
+     if stock_model == "purchase.order":
+-        return _keeps_purchase_document_link(model)
++        return _keeps_purchase_document_link(model, prompt=prompt)
+     if stock_model == "sale.order":
+         return _is_sales_header(model)
+     if stock_model == "account.move":
+@@ -843,10 +866,17 @@ def consolidate_header_monetary_fields(draft: dict[str, Any]) -> list[str]:
+ def scrub_misapplied_stock_document_links(draft: dict[str, Any]) -> list[str]:
+     """Drop stock-document M2O fields on semantically wrong header models."""
+     notes: list[str] = []
++    prompt = str(draft.get("_user_prompt") or "")
+     checks = (
+-        ("x_purchase_order_id", _keeps_purchase_document_link),
++        (
++            "x_purchase_order_id",
++            lambda model: _keeps_purchase_document_link(model, prompt=prompt),
++        ),
+         ("x_sale_order_id", lambda model: _is_sales_header(model)),
+-        ("x_invoice_id", lambda model: _stock_link_applies("account.move", model)),
++        (
++            "x_invoice_id",
++            lambda model: _stock_link_applies("account.move", model, prompt=prompt),
++        ),
+     )
+     for model in draft.get("models") or []:
+         if not isinstance(model, dict):
+@@ -865,11 +895,14 @@ def ensure_transaction_document_links(draft: dict[str, Any]) -> list[str]:
+     notes: list[str] = []
+     reuse = _reuse_models(draft)
+     depends = set(draft.get("depends") or [])
++    prompt = str(draft.get("_user_prompt") or "")
+     for stock_model, fname, label, dep_module in _STOCK_DOCUMENT_LINKS:
+         if stock_model not in reuse and dep_module not in depends:
+             continue
+         for model in draft.get("models") or []:
+-            if not isinstance(model, dict) or not _stock_link_applies(stock_model, model):
++            if not isinstance(model, dict) or not _stock_link_applies(
++                stock_model, model, prompt=prompt
++            ):
+                 continue
+             mid = str(model.get("model") or "")
+             names = _field_names(model)
+@@ -967,7 +1000,9 @@ _REUSE_STOCK_DOCUMENT_TARGETS: tuple[tuple[str, str, str], ...] = (
+ )
+ 
+ 
+-def _needs_reuse_stock_document(model: str, by_id: dict[str, dict[str, Any]]) -> bool:
++def _needs_reuse_stock_document(
++    model: str, by_id: dict[str, dict[str, Any]], *, prompt: str = ""
++) -> bool:
+     if model == "sale.order":
+         return any(_is_sales_header(m) for m in by_id.values())
+     if model == "account.move":
+@@ -975,7 +1010,9 @@ def _needs_reuse_stock_document(model: str, by_id: dict[str, dict[str, Any]]) ->
+             _is_sales_header(m) or _is_procurement_header(m) for m in by_id.values()
+         )
+     if model == "purchase.order":
+-        return any(_keeps_purchase_document_link(m) for m in by_id.values())
++        return any(
++            _keeps_purchase_document_link(m, prompt=prompt) for m in by_id.values()
++        )
+     return False
+ 
+ 
+@@ -1000,8 +1037,9 @@ def wire_reuse_stock_documents(draft: dict[str, Any]) -> list[str]:
+     models_reuse = set(reuse.get("models") or [])
+     depends = list(draft.get("depends") or [])
+ 
++    prompt = str(draft.get("_user_prompt") or "")
+     for stock_model, dep_module, default_reason in _REUSE_STOCK_DOCUMENT_TARGETS:
+-        if not _needs_reuse_stock_document(stock_model, by_id):
++        if not _needs_reuse_stock_document(stock_model, by_id, prompt=prompt):
+             continue
+         pack_row = pack_rows.get(stock_model, {})
+         reason = str(pack_row.get("reason") or default_reason)
+@@ -4106,6 +4144,30 @@ def run_apply_readiness_pass(draft: dict[str, Any]) -> list[str]:
+     from app.ai_live_apply_contract import attach_live_apply_contract
+ 
+     notes.extend(attach_live_apply_contract(draft))
++    # Identity / depth-seed spray gates — same scrub as app_bar (Generate path
++    # re-injects PO/company via wire_reuse + multi-company alignment).
++    try:
++        from app.ai_odoo_app_bar import (
++            scrub_uncued_depth_seed_satellites,
++            scrub_uncued_identity_link_m2os,
++        )
++
++        prompt = str(draft.get("_user_prompt") or "")
++        notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
++        notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
++        # Drop purchase depend if no PO field remains after scrub.
++        depends = [str(d) for d in (draft.get("depends") or []) if d]
++        needs_po = any(
++            isinstance(f, dict) and str(f.get("relation") or "") == "purchase.order"
++            for m in (draft.get("models") or [])
++            if isinstance(m, dict)
++            for f in (m.get("fields") or [])
++        )
++        if not needs_po and any(d.lower() == "purchase" for d in depends):
++            draft["depends"] = [d for d in depends if d.lower() != "purchase"]
++            notes.append("apply: clipped purchase depend after Identity scrub")
++    except Exception as exc:  # noqa: BLE001
++        notes.append(f"apply: identity scrub skipped ({exc})")
+     return notes
+ 
+ 
+diff --git a/apps/api/app/ai_depth.py b/apps/api/app/ai_depth.py
+index c21b5ce..b4ccc2f 100644
+--- a/apps/api/app/ai_depth.py
++++ b/apps/api/app/ai_depth.py
+@@ -52,6 +52,16 @@ _SINGLE_DOC_RESIDUAL_RE = re.compile(
+     r"|attendance\s+request|remote\s+work\s+request"
+     r")\b"
+ )
++# Thin residual workflow docs (tickets/cards + Draft→Done / checklist / parts).
++# Must NOT floor to comprehensive — that depth-seeds x_party / x_rate and sprays
++# Company/Contact/PO. Class-wide (Service cards, Maintenance tickets, …).
++_THIN_RESIDUAL_WORKFLOW_RE = re.compile(
++    r"(?i)\b(?:"
++    r"(?:maintenance\s+)?tickets?"
++    r"|(?:service\s+)?cards?"
++    r"|work\s+orders?"
++    r")\b"
++)
+ _COMPREHENSIVE_RE = re.compile(
+     r"\b("
+     r"comprehensive|world[\s-]?class|enterprise[\s-]?grade|production[\s-]?grade|"
+@@ -128,6 +138,22 @@ def classify_ambition_with_notes(prompt: str) -> tuple[Ambition, list[str]]:
+             "ambition: single-document residual request/log → thin (no satellite floor)"
+         )
+         return "thin", notes
++    # Tickets/cards with stated state / checklist / parts — thin residual, not
++    # comprehensive depth_seed floor (x_party / x_rate / Company spray).
++    if (
++        _THIN_RESIDUAL_WORKFLOW_RE.search(text)
++        and not _SCALE_RE.search(text)
++        and not _COMPREHENSIVE_RE.search(text)
++        and (
++            re.search(r"(?i)\b(?:state|draft)\b", text)
++            or re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", text)
++        )
++        and len(text.split()) < 55
++    ):
++        notes.append(
++            "ambition: thin residual ticket/card workflow → thin (no depth_seed floor)"
++        )
++        return "thin", notes
+     # Full-scale Odoo apps are the default. Bare "multiple" is still not a scale
+     # keyword (_SCALE_RE); a real business prompt of 6+ words is comprehensive.
+     notes.append(
+@@ -895,23 +921,9 @@ def _build_seed_fields(
+                 ),
+             }
+         )
+-    fields.extend(
+-        [
+-            {
+-                "name": "x_partner_id",
+-                "ttype": "many2one",
+-                "relation": "res.partner",
+-                "string": "Contact",
+-            },
+-            {
+-                "name": "x_company_id",
+-                "ttype": "many2one",
+-                "relation": "res.company",
+-                "string": "Company",
+-            },
+-            {"name": "x_notes", "ttype": "text", "string": "Notes"},
+-        ]
+-    )
++    # Contact / Company are Identity spray unless the brief cues them — do not
++    # stamp them onto every depth_seed (that chicken-eggs multi-company rules).
++    fields.append({"name": "x_notes", "ttype": "text", "string": "Notes"})
+     return fields
+ 
+ 
+diff --git a/apps/api/app/ai_document_compiler.py b/apps/api/app/ai_document_compiler.py
+index 6ce1a0a..193db9c 100644
+--- a/apps/api/app/ai_document_compiler.py
++++ b/apps/api/app/ai_document_compiler.py
+@@ -75,7 +75,17 @@ def _field_names(model: dict[str, Any]) -> set[str]:
+ 
+ 
+ def _is_line_model(mid: str) -> bool:
+-    return bool(_LINE_MODEL_RE.search(str(mid or ""))) or str(mid or "").endswith("_party")
++    """True for embedded line/join rows — not bare depth-seed hubs.
++
++    ``x_matter_party`` / ``x_foo_party`` are joins. Bare ``x_party`` is a
++    depth_seed hub and must NOT survive thin compile as a third O2M.
++    """
++    s = str(mid or "")
++    if bool(_LINE_MODEL_RE.search(s)):
++        return True
++    if s.endswith("_party") and s not in {"x_party", "party"} and s.count("_") >= 2:
++        return True
++    return False
+ 
+ 
+ def _pack_header_id(draft: dict[str, Any]) -> str:
+diff --git a/apps/api/app/ai_odoo_app_bar.py b/apps/api/app/ai_odoo_app_bar.py
+index 0b07039..4e2ec0c 100644
+--- a/apps/api/app/ai_odoo_app_bar.py
++++ b/apps/api/app/ai_odoo_app_bar.py
+@@ -592,12 +592,20 @@ def humanize_app_surface(draft: dict[str, Any]) -> list[str]:
+ 
+ 
+ def ensure_header_line_models(draft: dict[str, Any]) -> list[str]:
+-    """Document headers get a line model — Odoo sale.order / purchase.order shape."""
++    """Document headers get a line model — Odoo sale.order / purchase.order shape.
++
++    When the brief already cues Checklist / Parts O2Ms, do NOT invent a third
++    generic ``{mid}_line`` (Mac surface: «Rate Line For …»). Cued satellites
++    own the line shape.
++    """
+     notes: list[str] = []
+     from app.ai_document_shape import may_add_line_satellite
+ 
+     if not may_add_line_satellite(draft):
+         return notes
++    prompt = str(draft.get("_user_prompt") or "")
++    if re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", prompt):
++        return notes
+     depends = set(draft.get("depends") or [])
+     by_id = _models_index(draft)
+     for mid, model in list(by_id.items()):
+@@ -1420,6 +1428,132 @@ def stamp_online_stock_honesty(draft: dict[str, Any], *, prompt: str = "") -> li
+     return notes
+ 
+ 
++
++def scrub_uncued_depth_seed_satellites(
++    draft: dict[str, Any], *, prompt: str = ""
++) -> list[str]:
++    """Drop bare depth_seed hubs (x_party / x_rate) when the brief did not cue them.
++
++    Class-wide: checklist + parts cues must not keep a third Party/Rate O2M, and
++    Find-it must not advertise Contact/Company from those hubs.
++    """
++    notes: list[str] = []
++    text = prompt or str(draft.get("_user_prompt") or "")
++    if not isinstance(draft, dict):
++        return notes
++    wants_party = bool(
++        re.search(
++            r"(?i)\b(?:part(?:y|ies)|participant|stakeholder|role\s+link)s?\b",
++            text,
++        )
++    )
++    wants_rate = bool(
++        re.search(
++            r"(?i)\b(?:rate\s+cards?|billing\s+rates?|price\s+cards?|rate\s+lines?)\b",
++            text,
++        )
++    )
++    drop_mids: set[str] = set()
++    for model in list(draft.get("models") or []):
++        if not isinstance(model, dict):
++            continue
++        mid = str(model.get("model") or "")
++        src = str(model.get("source") or "")
++        if mid == "x_party" and not wants_party:
++            drop_mids.add(mid)
++        if mid == "x_rate" and not wants_rate:
++            drop_mids.add(mid)
++        # Generic {header}_line when checklist/parts already present
++        if (
++            mid.endswith("_line")
++            and not mid.endswith("_checklist_line")
++            and not mid.endswith("_parts_line")
++            and re.search(r"(?i)\bchecklist\s+lines?\b|\bparts?\s+used\b", text)
++            and src in {"odoo_app_bar", "depth_seed", ""}
++        ):
++            # Only drop the bare generic leaf `_line`, not named satellites.
++            leaf = mid.rsplit("_", 1)[0]
++            if mid == f"{leaf}_line" or mid.endswith("_tickets_line") or mid.endswith("_cards_line") or mid.endswith("_orders_line"):
++                # Keep if relation is the only line child — handled below via header O2M scan
++                pass
++    # Stronger: if header already has checklist + parts O2Ms, drop generic `{mid}_line`.
++    by_id = _models_index(draft)
++    for mid, model in list(by_id.items()):
++        if not str(mid).startswith("x_") or str(mid).endswith("_line") or str(mid).endswith("_party"):
++            continue
++        fields = [f for f in (model.get("fields") or []) if isinstance(f, dict)]
++        o2m_rels = {
++            str(f.get("relation") or "")
++            for f in fields
++            if str(f.get("ttype") or "") == "one2many"
++        }
++        has_cued = any("checklist" in r for r in o2m_rels) and any(
++            "parts" in r for r in o2m_rels
++        )
++        generic = f"{mid}_line"
++        if has_cued and generic in by_id:
++            drop_mids.add(generic)
++        if "x_party" in by_id and not wants_party:
++            drop_mids.add("x_party")
++        if "x_rate" in by_id and not wants_rate:
++            drop_mids.add("x_rate")
++
++    if not drop_mids:
++        return notes
++
++    draft["models"] = [
++        m
++        for m in (draft.get("models") or [])
++        if not (isinstance(m, dict) and str(m.get("model") or "") in drop_mids)
++    ]
++    # Drop O2Ms / FKs pointing at purged models
++    for model in draft.get("models") or []:
++        if not isinstance(model, dict):
++            continue
++        kept = []
++        for field in model.get("fields") or []:
++            if not isinstance(field, dict):
++                continue
++            rel = str(field.get("relation") or "")
++            if rel in drop_mids:
++                continue
++            kept.append(field)
++        model["fields"] = kept
++    for key in ("actions", "menus", "views", "smart_buttons", "automations", "access_rules"):
++        rows = draft.get(key)
++        if not isinstance(rows, list):
++            continue
++        if key == "menus":
++            action_model = {
++                str(a.get("technical_name") or ""): str(a.get("model") or "")
++                for a in (draft.get("actions") or [])
++                if isinstance(a, dict)
++            }
++            draft[key] = [
++                m
++                for m in rows
++                if not (
++                    isinstance(m, dict)
++                    and action_model.get(str(m.get("action_xml_id") or ""), "") in drop_mids
++                )
++            ]
++            continue
++        draft[key] = [
++            r
++            for r in rows
++            if not (
++                isinstance(r, dict)
++                and str(r.get("model") or r.get("on_model") or r.get("related_model") or "")
++                in drop_mids
++            )
++        ]
++    notes.append(
++        "app_bar: scrubbed uncued depth/generic satellites "
++        + ", ".join(sorted(drop_mids))
++    )
++    return notes
++
++
+ def scrub_uncued_residual_stock_smart_buttons(
+     draft: dict[str, Any], *, prompt: str = ""
+ ) -> list[str]:
+@@ -5659,16 +5793,23 @@ def run_odoo_app_bar_pass(draft: dict[str, Any], *, user_prompt: str = "") -> li
+     notes.extend(scrub_selection_chrome_smart_buttons(draft))
+     notes.extend(drop_leftover_state_fields(draft))
+     notes.extend(ensure_mail_mixins(draft))
++    # Cued Checklist/Parts first so generic {mid}_line invent never becomes a
++    # third Rate/service O2M on thin residuals.
++    notes.extend(ensure_cued_o2m_satellites(draft))
+     notes.extend(ensure_header_line_models(draft))
+     notes.extend(ensure_reverse_o2ms(draft))
+     notes.extend(wire_stock_apps_from_depends(draft))
+-    notes.extend(ensure_cued_o2m_satellites(draft))
+     notes.extend(ensure_residual_satellites(draft))
+     notes.extend(ensure_stock_inherit_bridges(draft))
+     notes.extend(scrub_uncued_residual_stock_smart_buttons(draft, prompt=prompt))
+     notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
++    notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
+     notes.extend(stamp_online_stock_honesty(draft, prompt=prompt))
+     notes.extend(ensure_invoice_link_on_headers(draft))
++    # Re-scrub after invoice/PO link helpers — production_shape may also re-inject;
++    # this catches app_bar-local re-adds before UI sync.
++    notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
++    notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
+     notes.extend(ensure_relational_smart_buttons(draft))
+     notes.extend(drop_hollow_automations(draft))
+     notes.extend(ensure_lifecycle_automations(draft))
+diff --git a/apps/api/app/ai_production_shape.py b/apps/api/app/ai_production_shape.py
+index f1c3a28..0ed2c2c 100644
+--- a/apps/api/app/ai_production_shape.py
++++ b/apps/api/app/ai_production_shape.py
+@@ -403,6 +403,17 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
+ 
+     notes.extend(attach_live_apply_contract(draft))
+     notes.extend(finalize_draft_readiness_metadata(draft))
++    try:
++        from app.ai_odoo_app_bar import (
++            scrub_uncued_depth_seed_satellites,
++            scrub_uncued_identity_link_m2os,
++        )
++
++        prompt = str(draft.get("_user_prompt") or "")
++        notes.extend(scrub_uncued_identity_link_m2os(draft, prompt=prompt))
++        notes.extend(scrub_uncued_depth_seed_satellites(draft, prompt=prompt))
++    except Exception as exc:  # noqa: BLE001
++        notes.append(f"production: identity scrub skipped ({exc})")
+     return notes
+ 
+ 
+diff --git a/apps/api/app/multi_company_pack.py b/apps/api/app/multi_company_pack.py
+index d759001..fa75c6d 100644
+--- a/apps/api/app/multi_company_pack.py
++++ b/apps/api/app/multi_company_pack.py
+@@ -65,9 +65,16 @@ def prompt_asks_multi_company(prompt: str) -> bool:
+ 
+ 
+ def _draft_has_company_field(draft: dict[str, Any]) -> bool:
++    """True when a non-depth_seed model carries company.
++
++    Depth seeds used to stamp x_company_id on every satellite, which
++    chicken-egged multi-company record rules on thin residuals. Ignore those.
++    """
+     for model in draft.get("models") or []:
+         if not isinstance(model, dict):
+             continue
++        if str(model.get("source") or "") == "depth_seed":
++            continue
+         for field in model.get("fields") or []:
+             if isinstance(field, dict) and str(field.get("name") or "") in {
+                 "x_company_id",
+diff --git a/apps/api/scripts/run_generate_spray_grammar_rubric_battery.sh b/apps/api/scripts/run_generate_spray_grammar_rubric_battery.sh
+new file mode 100755
+index 0000000..5072040
+--- /dev/null
++++ b/apps/api/scripts/run_generate_spray_grammar_rubric_battery.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++# Generate spray + install grammar rubric battery (ingenium).
++# Extends State/title/identity spray with production-path gates:
++# uncued company/PO/Contact/Rate-line never re-inject after scrub;
++# O2Ms in notebook (header 0); thin one-document menu; Date≠Datetime;
++# Prefer / Vehicle / Field Work / Install grammar stay green.
++# AI_INTENT_LLM=off deterministic floor. Unit/no_app_db only.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== Generate spray / grammar rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_generate_spray_grammar_class.py \
++  tests/test_state_title_identity_spray_class.py \
++  tests/test_install_grammar_o2m_preview_class.py \
++  tests/test_first_try_generate_repair_class.py \
++  tests/test_prefer_host_fullapp_noun_class.py \
++  tests/test_continuous_invent_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_notes_surface_class.py \
++  tests/test_residual_optional_satellite_primary.py \
++  tests/test_residual_full_app_generate_ir.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_vehicle_request_must_do.py \
++  tests/test_date_vs_datetime_classifier.py \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_hosting_m1.py \
++  tests/test_atlas_elite_p4.py \
++  tests/test_batch_os_atlas_recipes.py \
++  tests/test_batch_os_order_dry_run.py \
++  tests/test_batch_os_document_dry_run.py \
++  tests/test_batch_os_new_recipes.py \
++  2>&1 | tee /tmp/ingenium-generate-spray-grammar-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-generate-spray-grammar-rubric.txt"
+diff --git a/apps/api/tests/test_generate_spray_grammar_class.py b/apps/api/tests/test_generate_spray_grammar_class.py
+new file mode 100644
+index 0000000..23c1d7e
+--- /dev/null
++++ b/apps/api/tests/test_generate_spray_grammar_class.py
+@@ -0,0 +1,323 @@
++"""Class-wide Generate spray + install grammar (Tope mandate 2026-09-22).
++
++Production path (seed → depth → finalize) must not re-inject:
++- uncued company / Contact / Purchase Order Identity M2Os
++- uncued Rate/service/generic _line O2M when checklist + parts are cued
++- header O2Ms / empty notebook clone tabs
++- 2 sibling apps on thin residual
++- Datetime when brief says Date (or implies no time)
++
++Uses full finalize path — thin _generate alone is insufficient (scrub was
++already green while production_shape re-injected).
++"""
++
++from __future__ import annotations
++
++import os
++import re
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_brief_cues import honor_stated_brief_cues  # noqa: E402
++from app.ai_constraint_ast import ast_to_must_do, parse_det  # noqa: E402
++from app.ai_depth import classify_ambition, apply_deterministic_depth  # noqa: E402
++from app.ai_document_shape import naming_from_residual  # noqa: E402
++from app.ai_enrich_jobs import finalize_enriched_draft  # noqa: E402
++from app.ai_generation_engine import attach_generation_engine  # noqa: E402
++from app.ai_pipeline import seed_studio_draft  # noqa: E402
++from app.preview_views import build_form_preview  # noqa: E402
++
++MAINTENANCE_EXACT = (
++    "Build Maintenance tickets: checklist lines with done flags, parts used (product + qty), "
++    "state Draft→Done; Online-honest on stock moves."
++)
++
++# Unseen sibling — same class, not Maintenance-named
++SERVICE_CARDS = (
++    "Build Service cards: technician; state Draft→Done; "
++    "checklist lines with done flags; parts used (product + qty); "
++    "Online-honest on stock moves."
++)
++
++FIELD_WORK_ORDERS = (
++    "Build Field work orders a mid-market firm could sell next to Odoo: "
++    "Work order: Customer (Contact), Related Sales Order (optional), "
++    "Asset/Vehicle (Fleet, optional), Scheduled slot, Priority, State "
++    "(Draft → Scheduled → In progress → Done → Invoiced); Checklist lines; "
++    "Parts used; Sign-off; Menus list/kanban/calendar; consultant handoff note; "
++    "prefer working Online metadata over fake Studio parity."
++)
++
++PROJECT_COMMERCIAL = (
++    "For professional-services firms: on Project, add Commercial phase "
++    "(Discovery / Delivery / Hypercare / Closed) and Billable cap (hours). "
++    "On project form, show actual hours vs cap (read-only from existing "
++    "timesheet/project hours if available). When phase moves to Hypercare, "
++    "require a linked Sales Order or show a clear warning. Extend stock "
++    "Project/Sale — no second PM suite. Say what’s Online-safe vs what needs "
++    "Option A / sh if Python is required."
++)
++
++TOPE_SALES_PREFER = (
++    "Extend Sales Orders: add Customer PO reference and Required delivery window "
++    "on the order form. Prefer/Extend stock sale.order — no second sales app."
++)
++
++VEHICLE_REQUEST = (
++    "Build Vehicle request: employees request a fleet vehicle for a date range; "
++    "manager approve/refuse; on approve, optionally link/create a Fleet vehicle "
++    "assignment note. List/kanban by state (Draft → Submitted → Approved/Refused → Done). "
++    "Menu under Fleet or HR — pick the more natural parent."
++)
++
++
++def _produce(brief: str) -> dict:
++    """Full production Generate path that Mac Studio uses."""
++    draft = seed_studio_draft(brief)
++    draft, _ = apply_deterministic_depth(draft, user_prompt=brief)
++    warns: list[str] = []
++    finalize_enriched_draft(draft, prompt=brief, warnings=warns, llm_mode="seed_fallback")
++    honor_stated_brief_cues(draft, prompt=brief)
++    attach_generation_engine(draft, brief, user_phase="review")
++    return draft
++
++
++def _primary(draft: dict) -> dict:
++    slug = str(draft.get("technical_name") or "")
++    want = f"x_{slug}" if slug and not slug.startswith("x_") else slug
++    for m in draft.get("models") or []:
++        if str(m.get("model")) == want:
++            return m
++    for m in draft.get("models") or []:
++        mid = str(m.get("model") or "")
++        if (
++            mid.startswith("x_")
++            and not mid.endswith("_line")
++            and not mid.endswith("_party")
++            and "checklist" not in mid
++            and "parts" not in mid
++        ):
++            return m
++    return (draft.get("models") or [{}])[0]
++
++
++def _header_o2m_count(header: dict) -> int:
++    return sum(
++        1
++        for f in header.get("fields") or []
++        if isinstance(f, dict) and str(f.get("ttype") or "") == "one2many"
++    )
++
++
++def _form_header_o2m_count(draft: dict, mid: str) -> int:
++    for v in draft.get("views") or []:
++        if not isinstance(v, dict) or str(v.get("model") or "") != mid:
++            continue
++        arch = str(v.get("arch") or "")
++        if "<form" not in arch and str(v.get("type") or v.get("view_type") or "") != "form":
++            continue
++        if "<notebook" not in arch:
++            return len(re.findall(r'name=["\']([^"\']+_ids)["\']', arch))
++        before = arch.split("<notebook", 1)[0]
++        return len(re.findall(r'name=["\']([^"\']+_ids)["\']', before))
++    return -1
++
++
++def _assert_no_spray(draft: dict, *, allow_partner: bool = False) -> None:
++    header = _primary(draft)
++    names = {str(f.get("name") or "") for f in header.get("fields") or []}
++    rels = {str(f.get("relation") or "") for f in header.get("fields") or []}
++    assert "x_company_id" not in names
++    assert "company_id" not in names
++    assert "res.company" not in rels
++    assert "purchase.order" not in rels
++    assert "x_purchase_order_id" not in names
++    assert "account.move" not in rels
++    assert "x_invoice_id" not in names
++    if not allow_partner:
++        assert "res.partner" not in rels
++    # No rate / generic service line invent
++    mids = {str(m.get("model") or "") for m in draft.get("models") or []}
++    assert "x_rate" not in mids
++    assert not any(mid.endswith("_rate") or mid.endswith("_rate_line") for mid in mids)
++    labels = {
++        str(f.get("string") or "").lower()
++        for m in draft.get("models") or []
++        for f in (m.get("fields") or [])
++        if isinstance(f, dict)
++    }
++    assert not any("rate line" in lab for lab in labels)
++    # Bare depth-seed party hub must not survive
++    assert "x_party" not in mids
++
++
++# --- Ambition: thin residual, not comprehensive depth floor ---
++
++
++def test_thin_residual_ambition_not_comprehensive() -> None:
++    assert classify_ambition(MAINTENANCE_EXACT) == "thin"
++    assert classify_ambition(SERVICE_CARDS) == "thin"
++
++
++# --- Must-do shape ---
++
++
++def test_maintenance_must_do_state_plus_two_o2ms() -> None:
++    rows = ast_to_must_do(parse_det(MAINTENANCE_EXACT, grain="full_app"))
++    joined = " | ".join(rows)
++    assert "State selection" in joined
++    assert "Draft" in joined and "Done" in joined
++    assert "Checklist" in joined
++    assert "Parts" in joined
++    assert "Company" not in joined
++    assert "Purchase" not in joined
++    assert "Rate" not in joined
++
++
++def test_service_cards_must_do_same_class() -> None:
++    rows = ast_to_must_do(parse_det(SERVICE_CARDS, grain="full_app"))
++    joined = " | ".join(rows)
++    assert "State selection" in joined
++    assert "Checklist" in joined
++    assert "Parts" in joined
++
++
++# --- Full production Generate ---
++
++
++def test_maintenance_produce_no_company_po_rate_party() -> None:
++    draft = _produce(MAINTENANCE_EXACT)
++    assert draft["display_name"] == "Maintenance Tickets"
++    _assert_no_spray(draft)
++    header = _primary(draft)
++    o2ms = [
++        f
++        for f in header.get("fields") or []
++        if isinstance(f, dict) and str(f.get("ttype")) == "one2many"
++    ]
++    assert len(o2ms) == 2, [f.get("string") for f in o2ms]
++    strings = {str(f.get("string") or "").lower() for f in o2ms}
++    assert any("checklist" in s for s in strings)
++    assert any("parts" in s for s in strings)
++    # Generic _line third satellite must not exist
++    mids = {str(m.get("model") or "") for m in draft.get("models") or []}
++    assert "x_maintenance_tickets_line" not in mids
++    depends = {str(d).lower() for d in (draft.get("depends") or [])}
++    assert "purchase" not in depends
++    assert "stock" not in depends
++    honesty = draft.get("_honesty") or {}
++    assert honesty.get("online_stock_moves") is True
++
++
++def test_service_cards_produce_same_class_no_spray() -> None:
++    draft = _produce(SERVICE_CARDS)
++    display, slug = naming_from_residual(SERVICE_CARDS)
++    assert "build" not in display.lower()
++    _assert_no_spray(draft)
++    header = _primary(draft)
++    o2ms = [
++        f
++        for f in header.get("fields") or []
++        if isinstance(f, dict) and str(f.get("ttype")) == "one2many"
++    ]
++    assert len(o2ms) == 2, [f.get("string") for f in o2ms]
++    mids = {str(m.get("model") or "") for m in draft.get("models") or []}
++    assert f"x_{slug}_line" not in mids if slug else True
++    assert "x_party" not in mids
++    assert "x_rate" not in mids
++
++
++def test_maintenance_form_o2ms_in_notebook_not_header() -> None:
++    draft = _produce(MAINTENANCE_EXACT)
++    header = _primary(draft)
++    mid = str(header.get("model") or "")
++    assert _form_header_o2m_count(draft, mid) == 0
++    prev = build_form_preview(draft)
++    pages: list[str] = []
++    for nb in prev.get("notebooks") or []:
++        for p in nb.get("pages") or []:
++            pages.append(str(p.get("string") or ""))
++    assert len(pages) == 2, pages
++    assert any("checklist" in p.lower() for p in pages)
++    assert any("parts" in p.lower() for p in pages)
++    # Identity has no Purchase order / Company
++    for g in prev.get("groups") or []:
++        if str(g.get("string") or "") == "Identity":
++            labs = [str(f.get("string") or "") for f in g.get("fields") or []]
++            assert "Purchase order" not in labs
++            assert "Company" not in labs
++            assert "Contact" not in labs
++
++
++def test_maintenance_thin_one_document_menu() -> None:
++    draft = _produce(MAINTENANCE_EXACT)
++    roots = [
++        m
++        for m in (draft.get("menus") or [])
++        if isinstance(m, dict) and not m.get("parent_xml_id")
++    ]
++    assert len(roots) == 1, [m.get("name") for m in roots]
++    # No sibling root for party/rate
++    action_models = {
++        str(a.get("model") or "")
++        for a in (draft.get("actions") or [])
++        if isinstance(a, dict)
++    }
++    assert "x_party" not in action_models
++    assert "x_rate" not in action_models
++    # Find-it must not advertise Contact/Company/PO from depth spray
++    op = draft.get("_operator_surface") if isinstance(draft.get("_operator_surface"), dict) else {}
++    links = op.get("stock_links") or []
++    stock_models = {str(l.get("stock_model") or "") for l in links if isinstance(l, dict)}
++    assert "purchase.order" not in stock_models
++    assert "res.company" not in stock_models
++    # Contact find-it only OK if brief cued contact — Maintenance did not
++    assert "res.partner" not in stock_models
++
++
++def test_date_fields_are_date_not_datetime() -> None:
++    draft = _produce(MAINTENANCE_EXACT)
++    for m in draft.get("models") or []:
++        for f in m.get("fields") or []:
++            if not isinstance(f, dict):
++                continue
++            if str(f.get("ttype") or "") == "datetime":
++                lab = str(f.get("string") or f.get("name") or "")
++                # Scheduled slot / time cues may be datetime; bare Date must not
++                assert re.search(
++                    r"(?i)\b(?:time|slot|schedule|appointment|check[\s-]?in|timestamp)\b",
++                    lab,
++                ), f"uncued datetime: {m.get('model')}.{f.get('name')} ({lab})"
++
++
++def test_field_work_keeps_customer_no_uncued_po_invoice() -> None:
++    draft = _produce(FIELD_WORK_ORDERS)
++    header = _primary(draft)
++    rels = {str(f.get("relation") or "") for f in header.get("fields") or []}
++    names = {str(f.get("name") or "") for f in header.get("fields") or []}
++    assert "res.partner" in rels
++    assert "purchase.order" not in rels
++    assert "x_purchase_order_id" not in names
++    assert "account.move" not in rels
++    assert "x_invoice_id" not in names
++
++
++def test_prefer_host_locks_still_prefer() -> None:
++    from app.ai_conversation.understand import build_understanding
++    from app.ai_grain import named_host_from_prompt, preferred_inherit_host
++
++    assert named_host_from_prompt(PROJECT_COMMERCIAL) == "project.project"
++    assert preferred_inherit_host(PROJECT_COMMERCIAL) == "project.project"
++    u = build_understanding(PROJECT_COMMERCIAL)
++    assert u.host_model == "project.project"
++    assert preferred_inherit_host(TOPE_SALES_PREFER) == "sale.order"
++
++
++def test_vehicle_must_do_regression() -> None:
++    v = " | ".join(ast_to_must_do(parse_det(VEHICLE_REQUEST, grain="full_app")))
++    assert "State selection" in v
++    assert "Approved" in v and "Refused" in v
+-- 
+2.47.3
+

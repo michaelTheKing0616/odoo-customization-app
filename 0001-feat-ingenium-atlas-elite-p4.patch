@@ -1,0 +1,2432 @@
+From 0b9f9bdfdd1fca7d03abfc503809301b031f99c1 Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 12:41:03 +0100
+Subject: [PATCH] =?UTF-8?q?feat(ingenium):=20P4=20Config=20Atlas=20elite?=
+ =?UTF-8?q?=20=E2=80=94=20order=20batch=20+=20spine=20continuity?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Close last Atlas stub (docs.orders → document_batch.orders CSV→draft
+sale.order/purchase.order; Preview ≠ confirmed). Expert/Intent → Atlas →
+recipe handoff carries atlas_class/recipe/risk/delivery_lane; Build spine
+Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas
+goldens + P4 rubric battery. Completeness ≠ Cert ≠ Autopilot. Promote stays
+human.
+---
+ APPLY_ATLAS_ELITE_P4_ON_MAC.sh                |  47 ++
+ DOCKET.md                                     |  27 +-
+ MEMORY.md                                     |  12 +-
+ apps/api/app/ai_atlas_elite.py                | 222 +++++++
+ apps/api/app/ai_build_spine.py                |  37 +-
+ apps/api/app/ai_class_stamp.py                |  13 +-
+ apps/api/app/batch_os/atlas/seed/atlas.json   |   6 +-
+ apps/api/app/batch_os/atlas/seed/atlas.yaml   |   6 +-
+ apps/api/app/batch_os/order_batch.py          | 570 ++++++++++++++++++
+ apps/api/app/batch_os/recipes/registry.py     |   4 +
+ apps/api/app/batch_os/types.py                |  58 ++
+ apps/api/app/intent_router/catalog.json       |  45 ++
+ apps/api/app/intent_router/catalog.yaml       |  43 ++
+ apps/api/app/routers/batch_os.py              | 137 +++++
+ .../run_p4_atlas_elite_rubric_battery.sh      |  44 ++
+ apps/api/tests/test_atlas_elite_p4.py         | 156 +++++
+ apps/api/tests/test_batch_os_atlas_recipes.py |  12 +
+ apps/api/tests/test_batch_os_order_dry_run.py | 103 ++++
+ .../src/app/connections/[id]/journal/page.tsx |  20 +-
+ .../batch-os/OrderBatchPanel.test.tsx         |  16 +
+ .../components/batch-os/OrderBatchPanel.tsx   | 291 +++++++++
+ .../config/ConfigAtlasBrowser.test.tsx        |   1 +
+ .../components/config/ConfigAtlasBrowser.tsx  |   2 +-
+ .../components/expert/IntentRouterPanel.tsx   |  21 +-
+ apps/web/src/lib/api.ts                       |  32 +
+ apps/web/src/lib/build-spine-handoff.test.ts  |  18 +
+ apps/web/src/lib/build-spine-handoff.ts       |   7 +
+ apps/web/src/lib/build-spine.ts               |   4 +
+ 28 files changed, 1935 insertions(+), 19 deletions(-)
+ create mode 100755 APPLY_ATLAS_ELITE_P4_ON_MAC.sh
+ create mode 100644 apps/api/app/ai_atlas_elite.py
+ create mode 100644 apps/api/app/batch_os/order_batch.py
+ create mode 100755 apps/api/scripts/run_p4_atlas_elite_rubric_battery.sh
+ create mode 100644 apps/api/tests/test_atlas_elite_p4.py
+ create mode 100644 apps/api/tests/test_batch_os_order_dry_run.py
+ create mode 100644 apps/web/src/components/batch-os/OrderBatchPanel.test.tsx
+ create mode 100644 apps/web/src/components/batch-os/OrderBatchPanel.tsx
+
+diff --git a/APPLY_ATLAS_ELITE_P4_ON_MAC.sh b/APPLY_ATLAS_ELITE_P4_ON_MAC.sh
+new file mode 100755
+index 0000000..d6466e7
+--- /dev/null
++++ b/APPLY_ATLAS_ELITE_P4_ON_MAC.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++# Apply P4 Config Atlas elite onto Tope's Mac checkout.
++# machineId: 4fc0d119-8958-4a46-954b-7411355d96ce
++set -euo pipefail
++REPO="${1:-/Users/temitopeolaitanmichael/Odoo_Customization_App}"
++PATCH="${2:-/workspace/0001-feat-ingenium-atlas-elite-p4.patch}"
++cd "$REPO"
++git checkout premium-local-tip
++git status -sb
++
++STASHED=0
++if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
++  echo "Local WIP present — stashing before apply"
++  git stash push -u -m "pre-atlas-elite-p4-apply"
++  STASHED=1
++fi
++
++git fetch origin premium-local-tip || true
++
++if [ -f "$PATCH" ]; then
++  git am --3way "$PATCH" || {
++    git am --abort 2>/dev/null || true
++    git apply --check "$PATCH" && git apply "$PATCH"
++    git add -A
++    git commit -m "feat(ingenium): P4 Config Atlas elite — order batch + spine continuity"
++  }
++else
++  echo "WARN: patch missing at $PATCH — pull/cherry-pick from tip instead"
++  git pull --ff-only origin premium-local-tip || true
++fi
++
++git push origin premium-local-tip || echo "WARN: push failed — push manually"
++
++if [ "$STASHED" = "1" ]; then
++  git stash pop || echo "WARN: stash pop conflict — resolve manually"
++fi
++
++pkill -f "uvicorn .*8001" 2>/dev/null || true
++sleep 1
++cd "$REPO/apps/api"
++if [ -f ../../.venv/bin/uvicorn ]; then UV=../../.venv/bin/uvicorn
++elif [ -f .venv/bin/uvicorn ]; then UV=.venv/bin/uvicorn
++else UV=uvicorn; fi
++nohup env AI_INTENT_LLM=off "$UV" app.main:app --host 127.0.0.1 --port 8001 --reload \
++  > /tmp/ingenium-api-8001.log 2>&1 &
++echo "API restarting on :8001 — log /tmp/ingenium-api-8001.log"
++echo "Done. ingenium P4 Config Atlas elite. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+diff --git a/DOCKET.md b/DOCKET.md
+index 2e35d9b..a9a5e49 100644
+--- a/DOCKET.md
++++ b/DOCKET.md
+@@ -26,7 +26,7 @@ Never Prefer when Option A required; never Online Python promote.
+ | **P1** | Job 1 FX/CBN rate CLASS + Job 2 markup+WHT + Job 3 report scrub | **done** |
+ | **P2** | Build spine — one entry, mode chips, handoff without re-briefing | **done** |
+ | **P3** | Continuous invent hardening — Studio/Draft/Generate quality gates | **done** (this tip) |
+-| **P4** | Atlas elite | out of scope this tip — still next |
++| **P4** | Atlas elite | **done** (this tip) |
+ 
+ ## Done
+ 
+@@ -37,6 +37,9 @@ Never Prefer when Option A required; never Online Python promote.
+ - [x] **P3 continuous invent hardening** — 2026-09-22  
+   Class-wide invent/pack/residual gates (not Vehicle-only): uncued Selection, one-cue→one-field note labels from brief noun, thin residual never pack-workspace party/line bleed, calendar block note ≠ calendar.event, Diagnosis Name scrub, Date≠Datetime. Rubric battery green (`run_p3_invent_rubric_battery.sh`, AI_INTENT_LLM=off).
+ 
++- [x] **P4 Config Atlas elite** — 2026-09-22  
++  Closed last Atlas stub (`docs.orders` → `document_batch.orders` CSV→draft SO/PO). Expert/Intent → Atlas → recipe → Apply continuity with atlas_class/recipe/risk/delivery_lane handoff. Build spine Stock/Config deep-links Config Atlas / journal tabs. Multi-brief Atlas goldens + L3/preview honesty. Rubric battery green (`run_p4_atlas_elite_rubric_battery.sh`, AI_INTENT_LLM=off).
++
+ - [x] **P2 Build spine** — 2026-09-22  
+   One Build entry with mode chips (Prefer / Residual / Option A / Stock Autopilot / Report / Connector). Handoff Draft↔App↔Autopilot carries brief + Diagnosis/Contract + delivery_lane stamps. Capability gaps always propose Option A scaffold when Live cannot finish. Expert routes into spine. Rubric battery green (184 no_app_db).
+ 
+@@ -101,3 +104,25 @@ Release gates for continuous invent — `AI_INTENT_LLM=off`, `apps/api/scripts/r
+ 
+ **Battery:** 236 pytest passed (`no_app_db`). Web: 5 vitest passed (build-spine retained).
+ 
++
++## P4 Atlas elite rubric matrix (2026-09-22)
++
++Release gates for Config Atlas elite — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p4_atlas_elite_rubric_battery.sh` (+ web vitest spine/Atlas/orders).
++
++| Gate | Result |
++|------|--------|
++| Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
++| Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
++| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
++| Invent/pack bleed; grain+delivery_lane; Online+Python honesty | **pass** |
++| Completeness ≠ Cert ≠ Autopilot | **pass** |
++| Job1–3 class goldens | **pass** |
++| Zero Atlas stub intents; `docs.orders` → `document_batch.orders` complete | **pass** |
++| Recipe registry zero stubs; Preview ≠ posted/confirmed honesty | **pass** |
++| Multi-brief Atlas goldens (lock dates L3, tax pack, partners CSV, invoice/order batch, settings board) | **pass** |
++| Expert/Intent → Atlas recipe deep-link; Build spine carries atlas_class/recipe/risk/delivery_lane | **pass** |
++| Prefer/Option A not stolen by Atlas | **pass** |
++| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
++
++**Battery:** 275 pytest passed (`no_app_db`). Web: 7 vitest passed (build-spine + handoff + Atlas browser + OrderBatchPanel).
++
+diff --git a/MEMORY.md b/MEMORY.md
+index 629c78d..716203c 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -1,14 +1,20 @@
++### 2026-09-22 — P4 Config Atlas elite closed (Stock/Config/Batch craft)
++**Decided:** Elevate Config Atlas + Batch OS from seed-complete / zero-stub-recipes to elite operator craft. Root fixes: (1) close last Atlas stub `docs.orders` with CE-safe public-RPC `document_batch.orders` (CSV→draft sale.order/purchase.order; Preview ≠ confirmed; never auto-confirm); (2) `ai_atlas_elite` multi-brief class goldens route lock dates / tax pack / partners CSV / invoice+order batch / settings board onto atlas_class+recipe+risk with `stock_config`/`online_metadata`; (3) Build spine handoff + Expert Go carry atlas_class/recipe_id/risk/delivery_lane and deep-link Config Atlas / journal tabs without re-brief; (4) L3 lock + stub/complete badge honesty; (5) Prefer/Option A never stolen by Atlas. Rubric `run_p4_atlas_elite_rubric_battery.sh` green (275 no_app_db). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++**Why:** Operators needed class-wide Stock/Config/Batch grain continuity after P3 invent — one remaining Atlas stub + spine not first-class for config/batch briefs.
++**Rejected:** Claiming Online Python Autopilot; inventing EE-only as CE defaults; auto-promote; reopening P3 invent without regression; Vehicle-only patches.
++**P4:** done this tip.
++
+ ### 2026-09-22 — P3 continuous invent hardening closed (class-wide quality gates)
+ **Decided:** Continuous invent is a class-wide Studio/Draft/Generate quality-gate arc — not Vehicle Request keyword patches. Root fixes: (1) optional note cue extracts brief noun (Assignment Note vs Calendar Block Note) — never hardcode Assignment Note for every optionally link/create; (2) conjunction field lists strip leading and/or so «Name, Date, and notes» → Notes (text); (3) line/party satellites always require positive cues (workspace pack lexical match alone never invents _line/_party on thin residuals); (4) pack shape adoption gated by positive cues + not thin simple residual; (5) calendar stock_reuse ignores «calendar block note» and Purpose «Meeting / …». Multi-brief goldens in `test_continuous_invent_class.py`. Battery `run_p3_invent_rubric_battery.sh`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+ **Why:** Leave invented Assignment Note + calendar.event; Incident parsed «and notes»; Support Ticket exploded party/line via helpdesk pack workspace shape; DOCKET wrongly remapped P3→Job1.
+-**Rejected:** Vehicle-only patches; Prefer-reshaping locked residual; inventing EE-only as CE defaults; Online Python Autopilot; starting P4 Atlas elite.
+-**P3:** done. P4 Atlas elite still next.
++**Rejected:** Vehicle-only patches; Prefer-reshaping locked residual; inventing EE-only as CE defaults; Online Python Autopilot; reopening P3 invent without regression.
++**P3:** done. P4 Atlas elite **done** this tip.
+ 
+ ### 2026-09-22 — P2 Build spine closed (mode chips + handoff + rubric battery)
+ **Decided:** One Build front door — App Studio / Draft Studio / Job Autopilot are modes, not rival homes. Mode chips: Prefer pack, Residual app, Option A, Stock Autopilot, Report layout, Connector (as applicable). Handoff IR (`build-spine-handoff` + `ai_build_spine.build_spine_payload`) carries brief + Diagnosis/Contract + `delivery_lane`/`artifact_kind`/`prove_status` without re-briefing. Capability-gap stamps always set `proposes_option_a_scaffold` + `option_a_path` when Live metadata cannot finish (even if LLM owns `custom_code_blocks`). Expert Overview + Intent Go stash into the spine. Prefer Must-do AST root-fixed (Prefer for delivery checkbox + Delivery notes; automation/filter/reuse hints). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+ **Why:** Operators bounced between App/Draft/Autopilot and re-pasted briefs; Prefer Must-do goldens were thin.
+ **Rejected:** Parallel nav; claiming Online Python Autopilot; Prefer-reshaping residual full_app.
+-**P2:** done. **P3 continuous invent:** done this tip. P4 Atlas elite still next.
++**P2:** done. **P3 continuous invent:** done this tip. P4 Atlas elite **done** this tip.
+ 
+ ### 2026-09-22 — P1 Job 1: FX / rate-provider sync CLASS closed
+ **Decided:** Class-wide FX rate sync into stock `res.currency.rate` (parameterized USD/GBP/EUR or brief ISOs). CBN / Central Bank of Nigeria remains the earned gold shortcut (`currency_rate_cbn`) inside the class — not the only member. Generic HTTP/ECB/Open Exchange briefs → Option A authored scaffold (`ai_fx_rate_class.py`, marker `ingenium:fx_rate_provider_class`) on `res.company` + settings + cron. Online cannot promote Python → `external_connector` runbook IR + host stamps (`module_sh_or_self` vs `external_connector` vs online block copy). Never Prefer / Nigeria Autopilot `stock_reuse` alone for live HTTP fetch. Acceptance: writes_currency_rate, currencies_parameterized, no_x_fx_app, not_nigeria_autopilot_alone, gold_or_scaffold_present. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+diff --git a/apps/api/app/ai_atlas_elite.py b/apps/api/app/ai_atlas_elite.py
+new file mode 100644
+index 0000000..b776edd
+--- /dev/null
++++ b/apps/api/app/ai_atlas_elite.py
+@@ -0,0 +1,222 @@
++"""P4 Config Atlas elite — class-wide Stock/Config/Batch detection + handoff.
++
++Resolves plain-language config/batch briefs onto Atlas class + recipe + risk
++without Prefer-stealing Prefer field packs or Option A invent classes.
++
++Completeness ≠ Cert ≠ Autopilot. Promote stays human. Preview ≠ posted/confirmed.
++"""
++
++from __future__ import annotations
++
++import re
++from typing import Any
++
++# Explicit config/batch operator phrases (class-wide — not one client SOW).
++_ATLAS_BATCH_RE = re.compile(
++    r"(?i)\b("
++    r"lock\s+(?:accounting\s+)?dates?|period\s+lock|fiscalyear\s+lock|tax\s+lock|"
++    r"freeze\s+(?:the\s+)?books|close\s+period|"
++    r"tax\s+pack|fiscal\s+year|"
++    r"opening\s+balances?|trial\s+balance\s+upload|"
++    r"journal\s+batch|upload\s+(?:journal|gl)\s+entr|"
++    r"partners?\s+csv|products?\s+csv|"
++    r"bulk\s+(?:create\s+)?(?:partners?|customers?|vendors?|products?)|"
++    r"master\s+data\s+batch|"
++    r"invoice\s+batch|upload\s+invoices?|bulk\s+invoices?|"
++    r"vendor\s+bills?\s+batch|bills?\s+batch|"
++    r"order\s+batch|sales?\s+order\s+batch|purchase\s+order\s+batch|"
++    r"upload\s+(?:sales?\s+|purchase\s+)?orders?|"
++    r"bulk\s+(?:sales?\s+|purchase\s+)?orders?|"
++    r"settings\s+board|payment\s+terms\s+pack|"
++    r"config\s+atlas|instance\s+config|"
++    r"payment\s+matching\s+batch|payments?\s+batch"
++    r")\b"
++)
++
++# Prefer / invent cues that must win over Atlas (do not steal).
++_NOT_ATLAS_RE = re.compile(
++    r"(?i)\b("
++    r"prefer\s+for\s+delivery|add\s+(?:a\s+)?field\s+on|"
++    r"build\s+(?:a\s+)?(?:new\s+)?app|visitor\s+log|"
++    r"mark-?up|withh?olding\s+tax|\bwht\b|"
++    r"cbn|central\s+bank|fx\s+rate|exchange\s+rate|"
++    r"custom\s+python|owl\s+widget|option\s+a|"
++    r"delivery\s+(?:note|slip)|qweb|report\s+layout"
++    r")\b"
++)
++
++# Ordered golden → atlas handoff (first match wins).
++_GOLDEN_ROUTES: tuple[tuple[re.Pattern[str], dict[str, str]], ...] = (
++    (
++        re.compile(r"(?i)\block\s+(?:accounting\s+)?dates?|period\s+lock|freeze\s+books"),
++        {
++            "atlas_class": "accounting",
++            "recipe_id": "accounting.lock_dates",
++            "risk": "L3",
++            "route": "config",
++            "intent_id": "accounting.lock_dates",
++        },
++    ),
++    (
++        re.compile(r"(?i)\btax\s+pack\b"),
++        {
++            "atlas_class": "accounting",
++            "recipe_id": "accounting.tax_pack",
++            "risk": "L2",
++            "route": "config",
++            "intent_id": "accounting.taxes",
++        },
++    ),
++    (
++        re.compile(r"(?i)\bfiscal\s+year\b"),
++        {
++            "atlas_class": "accounting",
++            "recipe_id": "accounting.fiscal_year",
++            "risk": "L2",
++            "route": "config",
++            "intent_id": "accounting.fy",
++        },
++    ),
++    (
++        re.compile(r"(?i)\b(?:partners?\s+csv|bulk\s+(?:create\s+)?(?:partners?|customers?|vendors?)|master\s+data\s+batch)\b"),
++        {
++            "atlas_class": "master_data",
++            "recipe_id": "master_data.partners_batch",
++            "risk": "L1",
++            "route": "journal?tab=master",
++            "intent_id": "master.partners",
++        },
++    ),
++    (
++        re.compile(r"(?i)\b(?:products?\s+csv|bulk\s+(?:create\s+)?products?)\b"),
++        {
++            "atlas_class": "master_data",
++            "recipe_id": "master_data.products_batch",
++            "risk": "L1",
++            "route": "journal?tab=master",
++            "intent_id": "master.products",
++        },
++    ),
++    (
++        re.compile(r"(?i)\b(?:invoice\s+batch|upload\s+invoices?|bulk\s+invoices?|vendor\s+bills?\s+batch)\b"),
++        {
++            "atlas_class": "document_batch",
++            "recipe_id": "document_batch.invoices",
++            "risk": "L1",
++            "route": "journal?tab=invoices",
++            "intent_id": "docs.invoices",
++        },
++    ),
++    (
++        re.compile(
++            r"(?i)\b("
++            r"order\s+batch|sales?\s+order\s+batch|purchase\s+order\s+batch|"
++            r"upload\s+(?:sales?\s+|purchase\s+)?orders?|"
++            r"bulk\s+(?:sales?\s+|purchase\s+)?orders?"
++            r")\b"
++        ),
++        {
++            "atlas_class": "document_batch",
++            "recipe_id": "document_batch.orders",
++            "risk": "L1",
++            "route": "journal?tab=orders",
++            "intent_id": "docs.orders",
++        },
++    ),
++    (
++        re.compile(r"(?i)\b(?:settings\s+board|payment\s+terms\s+pack)\b"),
++        {
++            "atlas_class": "settings",
++            "recipe_id": "settings.board_apply",
++            "risk": "L2",
++            "route": "config",
++            "intent_id": "settings.board",
++        },
++    ),
++    (
++        re.compile(r"(?i)\b(?:journal\s+batch|upload\s+(?:journal|gl)\s+entr|opening\s+balances?)\b"),
++        {
++            "atlas_class": "accounting",
++            "recipe_id": "accounting.journal_batch",
++            "risk": "L1",
++            "route": "journal?tab=batch",
++            "intent_id": "accounting.journal_batch",
++        },
++    ),
++    (
++        re.compile(r"(?i)\b(?:config\s+atlas|instance\s+config)\b"),
++        {
++            "atlas_class": "settings",
++            "recipe_id": "settings.board_apply",
++            "risk": "L2",
++            "route": "config",
++            "intent_id": "settings.board",
++        },
++    ),
++)
++
++
++def is_atlas_config_batch_brief(prompt: str) -> bool:
++    """True when the brief is Stock/Config/Batch Atlas grain (not Prefer/Option A)."""
++    text = prompt or ""
++    if not text.strip():
++        return False
++    if _NOT_ATLAS_RE.search(text) and not _ATLAS_BATCH_RE.search(text):
++        return False
++    # Prefer field packs mention Sales Orders but are Prefer, not order batch.
++    if re.search(r"(?i)\badd\s+(?:a\s+)?field\s+on\b", text):
++        return False
++    if re.search(r"(?i)\bprefer\s+for\s+delivery\b", text):
++        return False
++    return bool(_ATLAS_BATCH_RE.search(text))
++
++
++def resolve_atlas_handoff(prompt: str) -> dict[str, Any] | None:
++    """Map a config/batch brief → atlas_class / recipe_id / risk / route."""
++    if not is_atlas_config_batch_brief(prompt):
++        return None
++    text = prompt or ""
++    for pattern, handoff in _GOLDEN_ROUTES:
++        if pattern.search(text):
++            out = dict(handoff)
++            out["delivery_lane"] = "online_metadata"
++            out["artifact_kind"] = "stock_config"
++            out["prove_status"] = "not_required"
++            out["honesty"] = (
++                "Preview ≠ posted/confirmed. L3 lock dates require confirm. "
++                "Completeness ≠ Cert ≠ Autopilot. Promote stays human."
++            )
++            return out
++    # Generic Atlas hub
++    return {
++        "atlas_class": "settings",
++        "recipe_id": None,
++        "risk": "L1",
++        "route": "config",
++        "intent_id": None,
++        "delivery_lane": "online_metadata",
++        "artifact_kind": "stock_config",
++        "prove_status": "not_required",
++        "honesty": (
++            "Preview ≠ posted/confirmed. Completeness ≠ Cert ≠ Autopilot. "
++            "Promote stays human."
++        ),
++    }
++
++
++def atlas_zero_stub_intents() -> bool:
++    """Elite gate: no Atlas intent remains stub once recipes are complete."""
++    from app.batch_os.atlas.loader import load_atlas
++
++    for cls in load_atlas():
++        for intent in cls.intents:
++            if intent.status == "stub":
++                return False
++    return True
++
++
++__all__ = [
++    "atlas_zero_stub_intents",
++    "is_atlas_config_batch_brief",
++    "resolve_atlas_handoff",
++]
+diff --git a/apps/api/app/ai_build_spine.py b/apps/api/app/ai_build_spine.py
+index 2928ce3..091d3a1 100644
+--- a/apps/api/app/ai_build_spine.py
++++ b/apps/api/app/ai_build_spine.py
+@@ -210,6 +210,30 @@ def build_spine_payload(
+                 if src.get(copy_key):
+                     stamp[copy_key] = src[copy_key]
+ 
++    atlas = None
++    try:
++        from app.ai_atlas_elite import resolve_atlas_handoff
++
++        atlas = resolve_atlas_handoff(text)
++    except Exception:  # noqa: BLE001
++        atlas = None
++    if atlas:
++        kind_now = str(stamp.get("artifact_kind") or "")
++        cap_now = str(ir.get("capability") or "")
++        # Prefer / Option A / report / connector keep their stamps.
++        # Residual full_app mis-classify yields to Atlas stock_config (elite continuity).
++        protected = {
++            "option_a_module",
++            "report_layout",
++            "external_connector",
++            "field_pack",
++            "refuse",
++        }
++        if kind_now not in protected and not cap_now.startswith("option_a"):
++            stamp["artifact_kind"] = atlas.get("artifact_kind") or "stock_config"
++            stamp["delivery_lane"] = atlas.get("delivery_lane") or "online_metadata"
++            stamp["prove_status"] = atlas.get("prove_status") or "not_required"
++
+     mode = resolve_build_mode(
+         prompt=text,
+         capability=str(ir.get("capability") or u.get("capability") or ""),
+@@ -222,13 +246,17 @@ def build_spine_payload(
+     chips = []
+     for m in modes:
+         meta = MODE_META[m]
++        href = href_for_mode(connection_id, m) if connection_id else ""
++        # Atlas / Batch class-wide briefs deep-link into Config Atlas or journal tabs.
++        if m == mode == "stock_autopilot" and atlas and atlas.get("route") and connection_id:
++            href = f"/connections/{connection_id}/{atlas['route'].lstrip('/')}"
+         chips.append(
+             {
+                 "id": m,
+                 "label": meta["label"],
+                 "blurb": meta["blurb"],
+-                "surface": meta["surface"],
+-                "href": href_for_mode(connection_id, m) if connection_id else "",
++                "surface": "config" if (m == mode == "stock_autopilot" and atlas) else meta["surface"],
++                "href": href,
+                 "active": m == mode,
+             }
+         )
+@@ -274,6 +302,11 @@ def build_spine_payload(
+             "One Build entry — App Studio, Draft Studio, and Job Autopilot share this "
+             "brief and stamps. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+         ),
++        "atlas_class": (atlas or {}).get("atlas_class") if atlas else None,
++        "recipe_id": (atlas or {}).get("recipe_id") if atlas else None,
++        "risk": (atlas or {}).get("risk") if atlas else None,
++        "atlas_route": (atlas or {}).get("route") if atlas else None,
++        "atlas_intent_id": (atlas or {}).get("intent_id") if atlas else None,
+     }
+ 
+ 
+diff --git a/apps/api/app/ai_class_stamp.py b/apps/api/app/ai_class_stamp.py
+index e4bc97e..d656814 100644
+--- a/apps/api/app/ai_class_stamp.py
++++ b/apps/api/app/ai_class_stamp.py
+@@ -114,6 +114,17 @@ def is_report_layout_class(prompt: str) -> bool:
+     return bool(_REPORT_SCRUB_RE.search(prompt or ""))
+ 
+ 
++
++
++def is_atlas_config_batch_class(prompt: str) -> bool:
++    """Stock/Config/Batch Atlas grain — not Prefer / Option A invent."""
++    try:
++        from app.ai_atlas_elite import is_atlas_config_batch_brief
++
++        return is_atlas_config_batch_brief(prompt or "")
++    except Exception:  # noqa: BLE001
++        return False
++
+ def resolve_class_stamp(
+     *,
+     prompt: str = "",
+@@ -172,7 +183,7 @@ def resolve_class_stamp(
+         lane = "online_metadata" if not needs_module else "module_sh_or_self"
+         kind = "full_app"
+         prove = "not_required" if lane == "online_metadata" else "pending"
+-    elif cap == "stock_reuse" or g in {"", "stock"}:
++    elif is_atlas_config_batch_class(text) or cap == "stock_reuse" or g in {"", "stock"}:
+         lane = "online_metadata"
+         kind = "stock_config"
+         prove = "not_required"
+diff --git a/apps/api/app/batch_os/atlas/seed/atlas.json b/apps/api/app/batch_os/atlas/seed/atlas.json
+index 2e0c85c..2747285 100644
+--- a/apps/api/app/batch_os/atlas/seed/atlas.json
++++ b/apps/api/app/batch_os/atlas/seed/atlas.json
+@@ -198,9 +198,9 @@
+             "purchase.order"
+           ],
+           "risk": "L1",
+-          "recipe": null,
+-          "status": "stub",
+-          "blurb": "Sales/purchase order batch \u2014 planned after invoice layer."
++          "recipe": "document_batch.orders",
++          "status": "complete",
++          "blurb": "CSV/XLSX \u2192 draft sale.order / purchase.order. Preview \u2260 confirmed."
+         },
+         {
+           "id": "docs.journal",
+diff --git a/apps/api/app/batch_os/atlas/seed/atlas.yaml b/apps/api/app/batch_os/atlas/seed/atlas.yaml
+index c36bcba..1fb5454 100644
+--- a/apps/api/app/batch_os/atlas/seed/atlas.yaml
++++ b/apps/api/app/batch_os/atlas/seed/atlas.yaml
+@@ -121,9 +121,9 @@ classes:
+         title: Order batch
+         models: [sale.order, purchase.order]
+         risk: L1
+-        recipe: null
+-        status: stub
+-        blurb: Sales/purchase order batch — planned after invoice layer.
++        recipe: document_batch.orders
++        status: complete
++        blurb: CSV/XLSX → draft sale.order / purchase.order. Preview ≠ confirmed.
+       - id: docs.journal
+         title: Journal entries
+         models: [account.move]
+diff --git a/apps/api/app/batch_os/order_batch.py b/apps/api/app/batch_os/order_batch.py
+new file mode 100644
+index 0000000..2dda22a
+--- /dev/null
++++ b/apps/api/app/batch_os/order_batch.py
+@@ -0,0 +1,570 @@
++"""Order batch — CSV/XLSX → draft sale.order / purchase.order (public RPC).
++
++Creates quotation / RFQ drafts only. Preview ≠ confirmed.
++Never invent EE-only fields; never auto-confirm.
++"""
++
++from __future__ import annotations
++
++import re
++import uuid
++from collections import defaultdict
++from typing import Any
++
++from app.batch_os.partner_match import resolve_partner_id
++from app.batch_os.types import (
++    HONESTY_PREVIEW_NE_CONFIRMED,
++    ORDER_COLUMN_TARGETS,
++    ORDER_HEADER_ALIASES,
++    BatchJobState,
++    MappedLine,
++    MovePreview,
++    RowError,
++)
++
++_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
++_SALE = {
++    "sale",
++    "sale_order",
++    "sales",
++    "quotation",
++    "quote",
++    "so",
++    "customer",
++    "out",
++}
++_PURCHASE = {
++    "purchase",
++    "purchase_order",
++    "po",
++    "rfq",
++    "vendor",
++    "supplier",
++    "in",
++}
++
++
++def suggest_order_column_map(headers: list[str]) -> dict[str, str]:
++    out: dict[str, str] = {}
++    used: set[str] = set()
++    for h in headers:
++        low = h.strip().lower().replace(" ", "_")
++        target = ORDER_HEADER_ALIASES.get(low)
++        if target and target not in used:
++            out[h] = target
++            used.add(target)
++            continue
++        if low in ORDER_COLUMN_TARGETS and low not in used:
++            out[h] = low
++            used.add(low)
++    return out
++
++
++def _num(val: Any) -> float:
++    if val is None or val == "":
++        return 0.0
++    try:
++        return float(str(val).replace(",", "").strip())
++    except ValueError:
++        return 0.0
++
++
++def _pick(row: dict[str, str], column_map: dict[str, str], target: str) -> str:
++    for header, mapped in column_map.items():
++        if mapped == target:
++            return (row.get(header) or "").strip()
++    return ""
++
++
++def _normalize_order_type(raw: str) -> str:
++    low = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
++    if low in _PURCHASE or low.startswith("purchase") or low.startswith("po"):
++        return "purchase"
++    if low in {"sale", "sale_order", "purchase"}:
++        return low if low != "sale_order" else "sale"
++    if low in _SALE:
++        return "sale"
++    return "sale"
++
++
++def _encode_ref(*, ref: str, order_type: str, product: str) -> str:
++    parts: list[str] = []
++    if ref:
++        parts.append(ref)
++    parts.append(f"otype:{order_type}")
++    if product:
++        parts.append(f"product:{product}")
++    return "||".join(parts)
++
++
++def _parse_ref(ref: str) -> dict[str, str]:
++    out: dict[str, str] = {}
++    for i, part in enumerate((ref or "").split("||")):
++        if part.startswith("otype:"):
++            out["order_type"] = part[6:]
++        elif part.startswith("product:"):
++            out["product"] = part[8:]
++        elif part and i == 0:
++            out["ref"] = part
++    return out
++
++
++def build_order_lines(
++    rows: list[dict[str, str]],
++    column_map: dict[str, str],
++) -> tuple[list[MappedLine], list[RowError]]:
++    lines: list[MappedLine] = []
++    errors: list[RowError] = []
++    targets = set(column_map.values())
++    if "partner" not in targets:
++        errors.append(
++            RowError(
++                row_index=0,
++                field="partner",
++                code="blocking",
++                message="Column map missing required target: partner",
++            )
++        )
++        return lines, errors
++
++    for idx, row in enumerate(rows, start=1):
++        partner = _pick(row, column_map, "partner")
++        qty = _num(_pick(row, column_map, "qty") or "1")
++        price = _num(_pick(row, column_map, "price"))
++        product = _pick(row, column_map, "product")
++        label = _pick(row, column_map, "label") or product or "Order line"
++        if not partner and qty == 0 and price == 0 and not product:
++            continue
++        if not partner:
++            errors.append(
++                RowError(
++                    row_index=idx, field="partner", code="blocking", message="Partner required"
++                )
++            )
++        if not product and not label:
++            errors.append(
++                RowError(
++                    row_index=idx,
++                    field="product",
++                    code="blocking",
++                    message="Need product or label",
++                )
++            )
++        if qty <= 0:
++            errors.append(
++                RowError(row_index=idx, field="qty", code="blocking", message="Qty must be > 0")
++            )
++        date_s = _pick(row, column_map, "date")
++        if date_s and not _DATE_RE.match(date_s[:10]):
++            errors.append(
++                RowError(
++                    row_index=idx,
++                    field="date",
++                    code="warn",
++                    message="Prefer ISO date YYYY-MM-DD",
++                )
++            )
++        order_type = _normalize_order_type(_pick(row, column_map, "order_type"))
++        group = (
++            _pick(row, column_map, "order_group")
++            or _pick(row, column_map, "ref")
++            or f"{partner}-{date_s or 'nodate'}-{order_type}-{idx}"
++        )
++        lines.append(
++            MappedLine(
++                row_index=idx,
++                journal_key=order_type,
++                date=(date_s[:10] if date_s else ""),
++                ref=_encode_ref(
++                    ref=_pick(row, column_map, "ref"),
++                    order_type=order_type,
++                    product=product,
++                ),
++                label=label,
++                account_key=product,
++                debit=qty,
++                credit=price,
++                partner_key=partner,
++                move_group=group,
++            )
++        )
++    return lines, errors
++
++
++def _resolve_product_id(client: Any, key: str) -> int | None:
++    key = (key or "").strip()
++    if not key or not client.model_exists("product.product"):
++        return None
++    if key.isdigit():
++        return int(key)
++    for domain in (
++        [("default_code", "=", key)],
++        [("name", "=", key)],
++        [("default_code", "ilike", key)],
++        [("name", "ilike", key)],
++    ):
++        rows = client.execute_kw(
++            "product.product",
++            "search_read",
++            [domain],
++            {"fields": ["id"], "limit": 2},
++        )
++        if len(rows) == 1:
++            return int(rows[0]["id"])
++        if len(rows) > 1 and domain[0][1] == "=":
++            return int(rows[0]["id"])
++    return None
++
++
++def resolve_order_lines(
++    client: Any, lines: list[MappedLine]
++) -> tuple[list[MappedLine], list[RowError]]:
++    errors: list[RowError] = []
++    out: list[MappedLine] = []
++    for line in lines:
++        meta = _parse_ref(line.ref)
++        order_type = meta.get("order_type") or "sale"
++        model = "sale.order" if order_type == "sale" else "purchase.order"
++        if not client.model_exists(model):
++            errors.append(
++                RowError(
++                    row_index=line.row_index,
++                    field="order_type",
++                    code="blocking",
++                    message=f"{model} not installed on this database",
++                )
++            )
++
++        partner_id = resolve_partner_id(client, key=line.partner_key, name=line.partner_key)
++        if partner_id is None:
++            errors.append(
++                RowError(
++                    row_index=line.row_index,
++                    field="partner",
++                    code="blocking",
++                    message=f"Partner not found: {line.partner_key!r}",
++                )
++            )
++
++        product_key = meta.get("product") or line.account_key or ""
++        product_id = _resolve_product_id(client, product_key) if product_key else None
++        if product_id is None:
++            errors.append(
++                RowError(
++                    row_index=line.row_index,
++                    field="product",
++                    code="blocking",
++                    message=f"Product not resolved: {product_key!r}",
++                )
++            )
++
++        date_s = line.date
++        if not date_s:
++            from datetime import date as _date
++
++            date_s = _date.today().isoformat()
++
++        out.append(
++            MappedLine(
++                row_index=line.row_index,
++                journal_key=order_type,
++                journal_id=1 if partner_id and product_id else None,
++                date=date_s,
++                ref=line.ref,
++                label=line.label,
++                account_key=line.account_key,
++                account_id=None,
++                debit=line.debit,
++                credit=line.credit,
++                partner_key=line.partner_key,
++                partner_id=partner_id,
++                analytic_key="",
++                analytic_id=product_id,
++                move_group=line.move_group,
++            )
++        )
++    return out, errors
++
++
++def group_orders(lines: list[MappedLine]) -> list[MovePreview]:
++    groups: dict[str, list[MappedLine]] = defaultdict(list)
++    for line in lines:
++        groups[line.move_group or f"row-{line.row_index}"].append(line)
++    moves: list[MovePreview] = []
++    for key, group_lines in groups.items():
++        errs: list[str] = []
++        first = group_lines[0]
++        meta = _parse_ref(first.ref)
++        order_type = meta.get("order_type") or "sale"
++        if not first.partner_id:
++            errs.append("Missing partner")
++        if not all(gl.analytic_id for gl in group_lines):
++            errs.append("Missing product on one or more lines")
++        total = sum(round(l.debit * l.credit, 2) for l in group_lines)
++        balanced = bool(first.partner_id and not errs)
++        moves.append(
++            MovePreview(
++                group_key=key,
++                journal_id=first.journal_id,
++                journal_name=order_type,
++                date=first.date,
++                ref=meta.get("ref") or first.move_group,
++                line_count=len(group_lines),
++                total_debit=round(total, 2),
++                total_credit=0.0,
++                balanced=balanced,
++                line_indexes=[l.row_index for l in group_lines],
++                errors=errs,
++            )
++        )
++    return moves
++
++
++def create_draft_orders(
++    client: Any,
++    lines: list[MappedLine],
++    moves: list[MovePreview],
++    *,
++    dry_run: bool,
++) -> tuple[list[MovePreview], list[int], list[RowError]]:
++    errors: list[RowError] = []
++    created: list[int] = []
++    by_group: dict[str, list[MappedLine]] = defaultdict(list)
++    for line in lines:
++        by_group[line.move_group or f"row-{line.row_index}"].append(line)
++
++    updated: list[MovePreview] = []
++    for move in moves:
++        if not move.balanced:
++            errors.append(
++                RowError(
++                    row_index=move.line_indexes[0] if move.line_indexes else 0,
++                    code="blocking",
++                    message=f"Skip {move.group_key}: {'; '.join(move.errors) or 'invalid'}",
++                )
++            )
++            updated.append(move)
++            continue
++        group_lines = by_group.get(move.group_key) or []
++        if not group_lines:
++            updated.append(move)
++            continue
++        first = group_lines[0]
++        meta = _parse_ref(first.ref)
++        order_type = meta.get("order_type") or move.journal_name or "sale"
++        model = "sale.order" if order_type == "sale" else "purchase.order"
++        line_model_qty_field = "product_uom_qty" if order_type == "sale" else "product_qty"
++
++        line_cmds: list[tuple[int, int, dict[str, Any]]] = []
++        for gl in group_lines:
++            qty = gl.debit if gl.debit else 1.0
++            price = gl.credit
++            vals: dict[str, Any] = {
++                "name": gl.label,
++                line_model_qty_field: qty,
++                "price_unit": price,
++            }
++            if gl.analytic_id:
++                vals["product_id"] = gl.analytic_id
++            line_cmds.append((0, 0, vals))
++
++        order_vals: dict[str, Any] = {
++            "partner_id": int(first.partner_id) if first.partner_id else False,
++            "order_line": line_cmds,
++        }
++        if first.date:
++            order_vals["date_order"] = first.date
++        ref = move.ref or meta.get("ref") or ""
++        if ref:
++            if order_type == "sale":
++                order_vals["client_order_ref"] = ref
++            else:
++                order_vals["partner_ref"] = ref
++
++        if dry_run:
++            updated.append(
++                MovePreview(
++                    group_key=move.group_key,
++                    journal_id=move.journal_id,
++                    journal_name=order_type,
++                    date=move.date,
++                    ref=move.ref,
++                    line_count=move.line_count,
++                    total_debit=move.total_debit,
++                    total_credit=move.total_credit,
++                    balanced=True,
++                    line_indexes=list(move.line_indexes),
++                    errors=list(move.errors)
++                    + [f"dry-run: would create DRAFT {model} (not confirmed)"],
++                )
++            )
++            continue
++
++        try:
++            order_id = client.execute_kw(model, "create", [order_vals])
++            if isinstance(order_id, list):
++                order_id = order_id[0]
++            order_id = int(order_id)
++            created.append(order_id)
++            updated.append(
++                MovePreview(
++                    group_key=move.group_key,
++                    journal_id=move.journal_id,
++                    journal_name=order_type,
++                    date=move.date,
++                    ref=move.ref,
++                    line_count=move.line_count,
++                    total_debit=move.total_debit,
++                    total_credit=move.total_credit,
++                    balanced=True,
++                    line_indexes=list(move.line_indexes),
++                    errors=[],
++                    move_id=order_id,
++                    posted=False,
++                )
++            )
++        except Exception as exc:  # noqa: BLE001
++            errors.append(
++                RowError(
++                    row_index=move.line_indexes[0] if move.line_indexes else 0,
++                    code="blocking",
++                    message=f"Create failed for {move.group_key}: {exc}",
++                )
++            )
++            updated.append(move)
++    return updated, created, errors
++
++
++class OrderBatchRecipe:
++    """Recipe document_batch.orders — sales / purchase order drafts."""
++
++    id = "document_batch.orders"
++    risk = "L1"
++    title = "Order batch"
++    blurb = (
++        "CSV/XLSX → draft sale.order / purchase.order. "
++        "Preview ≠ confirmed. Never auto-confirm."
++    )
++    atlas_class = "document_batch"
++
++    def intake(
++        self,
++        *,
++        connection_id: str,
++        filename: str,
++        headers: list[str],
++        rows: list[dict[str, str]],
++        extras: dict[str, Any] | None = None,
++    ) -> BatchJobState:
++        suggested = suggest_order_column_map(headers)
++        return BatchJobState(
++            job_id=str(uuid.uuid4()),
++            connection_id=connection_id,
++            recipe_id=self.id,
++            risk="L1",
++            phase="intake",
++            filename=filename,
++            headers=list(headers),
++            raw_rows=list(rows),
++            column_map=suggested,
++            warnings=[],
++            message=f"Loaded {len(rows)} rows from {filename or 'upload'}",
++            honesty=HONESTY_PREVIEW_NE_CONFIRMED,
++            extras={"model": "sale.order|purchase.order", "order_batch": True, **(extras or {})},
++        )
++
++    def map(self, state: BatchJobState, column_map: dict[str, str] | None = None) -> BatchJobState:
++        cmap = column_map if column_map is not None else state.column_map
++        state.column_map = dict(cmap)
++        lines, errors = build_order_lines(state.raw_rows, state.column_map)
++        state.mapped_lines = lines
++        state.errors = [e for e in errors if e.code == "blocking"] + [
++            e for e in errors if e.code != "blocking"
++        ]
++        state.phase = "mapped"
++        state.message = f"Mapped {len(lines)} order lines"
++        return state
++
++    def validate(self, state: BatchJobState, client: Any) -> BatchJobState:
++        if not state.mapped_lines:
++            state = self.map(state)
++        sale_ok = client.model_exists("sale.order")
++        purchase_ok = client.model_exists("purchase.order")
++        if not sale_ok and not purchase_ok:
++            state.errors.append(
++                RowError(
++                    row_index=0,
++                    code="blocking",
++                    message="Neither sale.order nor purchase.order is installed",
++                )
++            )
++            state.phase = "failed"
++            return state
++        resolved, res_errors = resolve_order_lines(client, state.mapped_lines)
++        state.mapped_lines = resolved
++        state.errors = [e for e in state.errors if e.code != "blocking"] + res_errors
++        state.moves = group_orders(resolved)
++        for m in state.moves:
++            if not m.balanced:
++                state.errors.append(
++                    RowError(
++                        row_index=m.line_indexes[0] if m.line_indexes else 0,
++                        code="blocking",
++                        message=f"Order {m.ref or m.group_key} invalid: {'; '.join(m.errors)}",
++                    )
++                )
++        state.phase = "validated"
++        state.message = (
++            f"Validated {len(state.moves)} order(s) "
++            f"({sum(1 for m in state.moves if m.balanced)} ready)"
++        )
++        state.honesty = HONESTY_PREVIEW_NE_CONFIRMED
++        return state
++
++    def dry_run(self, state: BatchJobState, client: Any) -> BatchJobState:
++        state = self.validate(state, client)
++        blocking = [e for e in state.errors if e.code == "blocking"]
++        if blocking:
++            state.phase = "failed"
++            state.message = f"Dry-run blocked: {len(blocking)} error(s)"
++            return state
++        updated, _, err = create_draft_orders(
++            client, state.mapped_lines, state.moves, dry_run=True
++        )
++        state.moves = updated
++        state.errors.extend(err)
++        state.phase = "dry_run"
++        state.dry_run = True
++        state.message = (
++            f"Dry-run OK — would create {len(state.moves)} DRAFT order(s). "
++            f"{HONESTY_PREVIEW_NE_CONFIRMED}"
++        )
++        return state
++
++    def apply(
++        self,
++        state: BatchJobState,
++        client: Any,
++        *,
++        post_after_create: bool = False,
++    ) -> BatchJobState:
++        del post_after_create  # orders never auto-confirm
++        state = self.validate(state, client)
++        blocking = [e for e in state.errors if e.code == "blocking"]
++        if blocking:
++            state.phase = "failed"
++            state.message = f"Apply blocked: {len(blocking)} error(s)"
++            return state
++        updated, created, err = create_draft_orders(
++            client, state.mapped_lines, state.moves, dry_run=False
++        )
++        state.moves = updated
++        state.created_move_ids = created
++        state.posted_move_ids = []
++        state.errors.extend(err)
++        state.phase = "applied"
++        state.dry_run = False
++        state.post_after_create = False
++        state.message = f"Created {len(created)} draft order(s) (not confirmed)"
++        state.honesty = HONESTY_PREVIEW_NE_CONFIRMED
++        return state
+diff --git a/apps/api/app/batch_os/recipes/registry.py b/apps/api/app/batch_os/recipes/registry.py
+index f041ffc..fd5fbea 100644
+--- a/apps/api/app/batch_os/recipes/registry.py
++++ b/apps/api/app/batch_os/recipes/registry.py
+@@ -5,6 +5,7 @@ from __future__ import annotations
+ from typing import Any
+ 
+ from app.batch_os.document_batch import DocumentBatchRecipe
++from app.batch_os.order_batch import OrderBatchRecipe
+ from app.batch_os.journal_batch import JournalBatchRecipe
+ from app.batch_os.master_data_batch import PartnersBatchRecipe, ProductsBatchRecipe
+ from app.batch_os.payment_batch import PaymentBatchRecipe
+@@ -39,6 +40,7 @@ _COMPLETE = {
+     "accounting.fiscal_year",
+     "document_batch.invoices",
+     "document_batch.payments",
++    "document_batch.orders",
+     "master_data.partners_batch",
+     "master_data.products_batch",
+     "settings.board_apply",
+@@ -66,6 +68,7 @@ def _registry() -> dict[str, Any]:
+         "accounting.fiscal_year": FiscalYearRecipe(),
+         "document_batch.invoices": DocumentBatchRecipe(),
+         "document_batch.payments": PaymentBatchRecipe(),
++        "document_batch.orders": OrderBatchRecipe(),
+         "master_data.partners_batch": PartnersBatchRecipe(),
+         "master_data.products_batch": ProductsBatchRecipe(),
+         "settings.board_apply": SettingsBoardRecipe(),
+@@ -110,6 +113,7 @@ def list_recipes() -> list[RecipeCard]:
+         "document_batch.payments": [
+             "account.payment", "account.payment.register", "account.move", "account.journal", "res.partner"
+         ],
++        "document_batch.orders": ["sale.order", "purchase.order", "res.partner", "product.product"],
+         "master_data.partners_batch": ["res.partner"],
+         "master_data.products_batch": ["product.template", "product.product"],
+         "settings.board_apply": ["account.payment.term", "res.currency", "ir.sequence", "product.pricelist"],
+diff --git a/apps/api/app/batch_os/types.py b/apps/api/app/batch_os/types.py
+index bd078ea..00ee6bd 100644
+--- a/apps/api/app/batch_os/types.py
++++ b/apps/api/app/batch_os/types.py
+@@ -23,6 +23,11 @@ HONESTY_PREVIEW_NE_POSTED = (
+     "Apply creates drafts; posting (if requested) is a separate L2 step."
+ )
+ 
++HONESTY_PREVIEW_NE_CONFIRMED = (
++    "Preview is not confirmed. Dry-run only validates shape — "
++    "Apply creates draft sale/purchase orders; confirmation is a separate step."
++)
++
+ RISK_LABELS: dict[RiskTier, str] = {
+     "L0": "Read / preview only",
+     "L1": "Draft creates (reversible via draft unlink)",
+@@ -288,3 +293,56 @@ PAYMENT_HEADER_ALIASES: dict[str, str] = {
+     "type": "payment_type",
+ }
+ 
++
++# Canonical order-batch (sale.order / purchase.order) column targets
++ORDER_COLUMN_TARGETS: tuple[str, ...] = (
++    "order_type",
++    "partner",
++    "date",
++    "product",
++    "label",
++    "qty",
++    "price",
++    "ref",
++    "order_group",
++)
++
++ORDER_HEADER_ALIASES: dict[str, str] = {
++    "order_type": "order_type",
++    "type": "order_type",
++    "doc_type": "order_type",
++    "document_type": "order_type",
++    "partner": "partner",
++    "partner_name": "partner",
++    "customer": "partner",
++    "vendor": "partner",
++    "supplier": "partner",
++    "date": "date",
++    "order_date": "date",
++    "date_order": "date",
++    "product": "product",
++    "product_code": "product",
++    "product_name": "product",
++    "default_code": "product",
++    "label": "label",
++    "description": "label",
++    "name": "label",
++    "qty": "qty",
++    "quantity": "qty",
++    "product_uom_qty": "qty",
++    "product_qty": "qty",
++    "price": "price",
++    "price_unit": "price",
++    "unit_price": "price",
++    "ref": "ref",
++    "reference": "ref",
++    "client_order_ref": "ref",
++    "partner_ref": "ref",
++    "order_group": "order_group",
++    "group": "order_group",
++    "order": "order_group",
++    "order_number": "order_group",
++    "so": "order_group",
++    "po": "order_group",
++}
++
+diff --git a/apps/api/app/intent_router/catalog.json b/apps/api/app/intent_router/catalog.json
+index 6718c4d..848a3e8 100644
+--- a/apps/api/app/intent_router/catalog.json
++++ b/apps/api/app/intent_router/catalog.json
+@@ -9,6 +9,7 @@
+     "accounting.fiscal_year": "config",
+     "document_batch.invoices": "journal?tab=invoices",
+     "document_batch.payments": "journal?tab=invoices",
++    "document_batch.orders": "journal?tab=orders",
+     "master_data.partners_batch": "journal?tab=master",
+     "master_data.products_batch": "journal?tab=master",
+     "settings.board_apply": "config",
+@@ -74,6 +75,33 @@
+       ],
+       "weight": 1.15
+     },
++    {
++      "id": "journal.orders",
++      "title": "Order batch",
++      "blurb": "CSV \u2192 draft sale.order / purchase.order. Preview \u2260 confirmed. Never auto-confirm.",
++      "route": "journal?tab=orders",
++      "source": "batch_os",
++      "status": "complete",
++      "can_handle": true,
++      "recipe": "document_batch.orders",
++      "atlas_class": "document_batch",
++      "risk": "L1",
++      "keywords": [
++        "order batch",
++        "sales order batch",
++        "purchase order batch",
++        "upload orders",
++        "upload sales orders",
++        "upload purchase orders",
++        "bulk orders",
++        "bulk sales orders",
++        "sale.order",
++        "purchase.order",
++        "draft quotations",
++        "draft rfq"
++      ],
++      "weight": 1.2
++    },
+     {
+       "id": "journal.master",
+       "title": "Master data batch",
+@@ -120,6 +148,23 @@
+       ],
+       "weight": 1.3
+     },
++    {
++      "id": "atlas.orders",
++      "title": "Order batch (Atlas)",
++      "blurb": "Document-batch class \u2014 CSV \u2192 draft SO/PO via Config Atlas / journal Orders tab.",
++      "route": "journal?tab=orders",
++      "source": "atlas",
++      "status": "complete",
++      "can_handle": true,
++      "recipe": "document_batch.orders",
++      "atlas_class": "document_batch",
++      "risk": "L1",
++      "keywords": [
++        "docs.orders",
++        "order batch atlas"
++      ],
++      "weight": 1.05
++    },
+     {
+       "id": "config.atlas",
+       "title": "Config Atlas",
+diff --git a/apps/api/app/intent_router/catalog.yaml b/apps/api/app/intent_router/catalog.yaml
+index 506cb73..a00c941 100644
+--- a/apps/api/app/intent_router/catalog.yaml
++++ b/apps/api/app/intent_router/catalog.yaml
+@@ -13,6 +13,7 @@ recipe_routes:
+   accounting.fiscal_year: "config"
+   document_batch.invoices: "journal?tab=invoices"
+   document_batch.payments: "journal?tab=invoices"
++  document_batch.orders: "journal?tab=orders"
+   master_data.partners_batch: "journal?tab=master"
+   master_data.products_batch: "journal?tab=master"
+   settings.board_apply: "config"
+@@ -74,6 +75,32 @@ features:
+       - payments batch
+     weight: 1.15
+ 
++
++  - id: journal.orders
++    title: Order batch
++    blurb: CSV → draft sale.order / purchase.order. Preview ≠ confirmed. Never auto-confirm.
++    route: "journal?tab=orders"
++    source: batch_os
++    status: complete
++    can_handle: true
++    recipe: document_batch.orders
++    atlas_class: document_batch
++    risk: L1
++    keywords:
++      - order batch
++      - sales order batch
++      - purchase order batch
++      - upload orders
++      - upload sales orders
++      - upload purchase orders
++      - bulk orders
++      - bulk sales orders
++      - sale.order
++      - purchase.order
++      - draft quotations
++      - draft rfq
++    weight: 1.2
++
+   - id: journal.master
+     title: Master data batch
+     blurb: Bulk create/update partners or products via CSV/XLSX. Preview ≠ written.
+@@ -116,6 +143,22 @@ features:
+       - freeze books
+     weight: 1.3
+ 
++
++  - id: atlas.orders
++    title: Order batch (Atlas)
++    blurb: Document-batch class — CSV → draft SO/PO via Config Atlas / journal Orders tab.
++    route: "journal?tab=orders"
++    source: atlas
++    status: complete
++    can_handle: true
++    recipe: document_batch.orders
++    atlas_class: document_batch
++    risk: L1
++    keywords:
++      - docs.orders
++      - order batch atlas
++    weight: 1.05
++
+   - id: config.atlas
+     title: Config Atlas
+     blurb: Intent → class → models → risk → recipe browser for all eight Atlas classes.
+diff --git a/apps/api/app/routers/batch_os.py b/apps/api/app/routers/batch_os.py
+index 8b8be92..60527e1 100644
+--- a/apps/api/app/routers/batch_os.py
++++ b/apps/api/app/routers/batch_os.py
+@@ -15,8 +15,10 @@ from app.batch_os.recipes.registry import list_recipes, require_recipe
+ from app.batch_os.runner import job_public, run_phase
+ from app.batch_os.types import (
+     DOCUMENT_COLUMN_TARGETS,
++    HONESTY_PREVIEW_NE_CONFIRMED,
+     HONESTY_PREVIEW_NE_POSTED,
+     JOURNAL_COLUMN_TARGETS,
++    ORDER_COLUMN_TARGETS,
+     PAYMENT_COLUMN_TARGETS,
+ )
+ from app.db import get_db
+@@ -310,6 +312,141 @@ def payment_columns(connection_id: str) -> dict[str, Any]:
+     }
+ 
+ 
++
++@router.get("/order/columns")
++def order_columns(connection_id: str) -> dict[str, Any]:
++    del connection_id
++    return {
++        "targets": list(ORDER_COLUMN_TARGETS),
++        "required": ["partner", "product"],
++        "optional": ["order_type", "date", "label", "qty", "price", "ref", "order_group"],
++        "honesty": HONESTY_PREVIEW_NE_CONFIRMED,
++        "risk": "L1",
++    }
++
++
++@router.post("/order/intake")
++async def order_intake(
++    connection_id: str,
++    db: Session = Depends(get_db),
++    file: UploadFile = File(...),
++    recipe_id: str = Form("document_batch.orders"),
++) -> dict[str, Any]:
++    raw = await file.read()
++    if not raw:
++        raise HTTPException(status_code=400, detail="Empty upload")
++    try:
++        headers, rows = parse_upload(raw, file.filename or "upload.csv")
++    except ValueError as exc:
++        raise HTTPException(status_code=400, detail=str(exc)) from exc
++    try:
++        recipe = require_recipe(recipe_id)
++    except LookupError as exc:
++        raise HTTPException(status_code=404, detail=str(exc)) from exc
++    state = run_phase(
++        db,
++        recipe,
++        phase="intake",
++        connection_id=connection_id,
++        filename=file.filename or "upload.csv",
++        headers=headers,
++        rows=rows,
++    )
++    return _state_out(state)
++
++
++@router.post("/order/map")
++def order_map(
++    connection_id: str,
++    body: MapBody,
++    db: Session = Depends(get_db),
++) -> dict[str, Any]:
++    try:
++        state = _batch_flow(
++            connection_id=connection_id,
++            db=db,
++            recipe_id="document_batch.orders",
++            phase="map",
++            job_id=body.job_id,
++            column_map=body.column_map or None,
++        )
++    except LookupError as exc:
++        raise HTTPException(status_code=404, detail=str(exc)) from exc
++    return _state_out(state)
++
++
++@router.post("/order/validate")
++def order_validate(
++    connection_id: str,
++    body: PhaseBody,
++    db: Session = Depends(get_db),
++) -> dict[str, Any]:
++    try:
++        state = _batch_flow(
++            connection_id=connection_id,
++            db=db,
++            recipe_id="document_batch.orders",
++            phase="validate",
++            job_id=body.job_id,
++        )
++    except LookupError as exc:
++        raise HTTPException(status_code=404, detail=str(exc)) from exc
++    return _state_out(state)
++
++
++@router.post("/order/dry-run")
++def order_dry_run(
++    connection_id: str,
++    body: PhaseBody,
++    db: Session = Depends(get_db),
++) -> dict[str, Any]:
++    try:
++        state = _batch_flow(
++            connection_id=connection_id,
++            db=db,
++            recipe_id="document_batch.orders",
++            phase="dry_run",
++            job_id=body.job_id,
++        )
++    except LookupError as exc:
++        raise HTTPException(status_code=404, detail=str(exc)) from exc
++    return _state_out(state)
++
++
++@router.post("/order/apply")
++def order_apply(
++    connection_id: str,
++    body: ApplyBody,
++    db: Session = Depends(get_db),
++) -> dict[str, Any]:
++    risks = [
++        "Creates draft sale.order / purchase.order on the live database",
++        HONESTY_PREVIEW_NE_CONFIRMED,
++        "Never auto-confirms — confirmation is a separate operator step",
++    ]
++    try:
++        require_advanced_confirmation(
++            confirm_advanced=body.confirm_advanced,
++            confirm_phrase=body.confirm_phrase,
++            warning="Order batch apply writes draft sales/purchase orders to live Odoo",
++            risks=risks,
++        )
++    except ConfirmationRequired as exc:
++        raise _confirm_http(exc) from exc
++    try:
++        state = _batch_flow(
++            connection_id=connection_id,
++            db=db,
++            recipe_id="document_batch.orders",
++            phase="apply",
++            job_id=body.job_id,
++            post_after_create=False,
++        )
++    except LookupError as exc:
++        raise HTTPException(status_code=404, detail=str(exc)) from exc
++    return _state_out(state)
++
++
+ def _batch_flow(
+     *,
+     connection_id: str,
+diff --git a/apps/api/scripts/run_p4_atlas_elite_rubric_battery.sh b/apps/api/scripts/run_p4_atlas_elite_rubric_battery.sh
+new file mode 100755
+index 0000000..26cd2e5
+--- /dev/null
++++ b/apps/api/scripts/run_p4_atlas_elite_rubric_battery.sh
+@@ -0,0 +1,44 @@
++#!/usr/bin/env bash
++# P4 Config Atlas elite rubric battery (ingenium). AI_INTENT_LLM=off deterministic floor.
++# Wraps P2/P3 spine + invent gates and adds Atlas elite goldens / order batch.
++# Unit/no_app_db only — App Postgres not required on the box.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== P4 Atlas elite rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_atlas_elite_p4.py \
++  tests/test_batch_os_atlas_recipes.py \
++  tests/test_batch_os_order_dry_run.py \
++  tests/test_batch_os_document_dry_run.py \
++  tests/test_batch_os_new_recipes.py \
++  tests/test_continuous_invent_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_notes_surface_class.py \
++  tests/test_residual_optional_satellite_primary.py \
++  tests/test_residual_full_app_generate_ir.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_vehicle_request_must_do.py \
++  tests/test_date_vs_datetime_classifier.py \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_hosting_m1.py \
++  2>&1 | tee /tmp/ingenium-p4-atlas-elite-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-p4-atlas-elite-rubric.txt"
+diff --git a/apps/api/tests/test_atlas_elite_p4.py b/apps/api/tests/test_atlas_elite_p4.py
+new file mode 100644
+index 0000000..b2aaeda
+--- /dev/null
++++ b/apps/api/tests/test_atlas_elite_p4.py
+@@ -0,0 +1,156 @@
++"""P4 Config Atlas elite — class-wide gates (AI_INTENT_LLM=off)."""
++
++from __future__ import annotations
++
++import os
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_atlas_elite import (
++    atlas_zero_stub_intents,
++    is_atlas_config_batch_brief,
++    resolve_atlas_handoff,
++)
++from app.ai_build_spine import build_spine_payload, resolve_build_mode
++from app.ai_class_stamp import resolve_class_stamp
++from app.batch_os.atlas.loader import list_atlas, reload_atlas, search_atlas
++from app.batch_os.recipes.registry import get_recipe, list_recipes
++from app.batch_os.types import HONESTY_PREVIEW_NE_CONFIRMED, HONESTY_PREVIEW_NE_POSTED
++from app.intent_router import route_intent
++from app.intent_router.loader import reload_catalog
++
++
++@pytest.fixture(autouse=True)
++def _reload():
++    reload_atlas()
++    reload_catalog()
++    yield
++    reload_atlas()
++    reload_catalog()
++
++
++def test_zero_stub_atlas_intents_and_orders_recipe():
++    assert atlas_zero_stub_intents() is True
++    reload_atlas()
++    classes = list_atlas()
++    assert len(classes) == 8
++    for c in classes:
++        assert c["status"] == "complete"
++        for intent in c["intents"]:
++            assert intent["status"] != "stub", intent
++    orders = next(
++        i
++        for c in classes
++        if c["id"] == "document_batch"
++        for i in c["intents"]
++        if i["id"] == "docs.orders"
++    )
++    assert orders["status"] == "complete"
++    assert orders["recipe"] == "document_batch.orders"
++    assert get_recipe("document_batch.orders") is not None
++    stubs = [c for c in list_recipes() if c.status == "stub"]
++    assert stubs == []
++
++
++def test_search_risk_craft_l3_lock_and_honesty():
++    hits = search_atlas("lock")
++    assert any(h["intent_id"] == "accounting.lock_dates" for h in hits)
++    lock = next(h for h in hits if h["intent_id"] == "accounting.lock_dates")
++    assert lock["risk"] == "L3"
++    assert lock["status"] == "complete"
++    assert HONESTY_PREVIEW_NE_POSTED
++    assert HONESTY_PREVIEW_NE_CONFIRMED
++    assert "not confirmed" in HONESTY_PREVIEW_NE_CONFIRMED.lower()
++
++
++@pytest.mark.parametrize(
++    "brief,recipe,atlas_class,risk",
++    [
++        ("lock accounting dates for period close", "accounting.lock_dates", "accounting", "L3"),
++        ("apply NG tax pack via RPC", "accounting.tax_pack", "accounting", "L2"),
++        ("partners CSV bulk create customers", "master_data.partners_batch", "master_data", "L1"),
++        ("upload invoices document batch", "document_batch.invoices", "document_batch", "L1"),
++        ("upload sales orders CSV batch", "document_batch.orders", "document_batch", "L1"),
++        ("purchase order batch from spreadsheet", "document_batch.orders", "document_batch", "L1"),
++        ("settings board payment terms pack", "settings.board_apply", "settings", "L2"),
++    ],
++)
++def test_multi_brief_atlas_goldens(brief, recipe, atlas_class, risk):
++    assert is_atlas_config_batch_brief(brief) is True
++    handoff = resolve_atlas_handoff(brief)
++    assert handoff is not None
++    assert handoff["recipe_id"] == recipe
++    assert handoff["atlas_class"] == atlas_class
++    assert handoff["risk"] == risk
++    assert handoff["delivery_lane"] == "online_metadata"
++    assert handoff["artifact_kind"] == "stock_config"
++
++    stamp = resolve_class_stamp(prompt=brief)
++    assert stamp["artifact_kind"] == "stock_config"
++    assert stamp["delivery_lane"] == "online_metadata"
++
++    payload = build_spine_payload(prompt=brief, connection_id="c1")
++    assert payload["artifact_kind"] == "stock_config"
++    assert payload["build_mode"] == "stock_autopilot"
++    assert payload["atlas_class"] == atlas_class
++    assert payload["recipe_id"] == recipe
++    assert payload["risk"] == risk
++    assert payload["delivery_lane"] == "online_metadata"
++    active = next(c for c in payload["chips"] if c["active"])
++    assert "/connections/c1/" in active["href"]
++    assert "studio" not in active["href"] or "config" in active["href"] or "journal" in active["href"]
++
++
++def test_prefer_and_option_a_not_stolen_by_atlas():
++    assert is_atlas_config_batch_brief(
++        "Prefer for delivery checkbox and Delivery notes on Contacts under Delivery group"
++    ) is False
++    assert is_atlas_config_batch_brief(
++        "add a field on Sales Orders for customer PO number"
++    ) is False
++    assert is_atlas_config_batch_brief(
++        "add markup percent and withholding tax compute on Sales quotations"
++    ) is False
++    prefer = resolve_class_stamp(
++        prompt="Prefer for delivery checkbox and Delivery notes on Contacts",
++        grain="field_pack",
++        inherit_only=True,
++    )
++    assert prefer["artifact_kind"] == "field_pack"
++    markup = resolve_class_stamp(
++        prompt="markup percent and withholding tax on sale.order",
++        capability="option_a_authored",
++        needs_module=True,
++        module_delivery=True,
++    )
++    assert markup["artifact_kind"] == "option_a_module"
++
++
++def test_intent_routes_order_batch_and_lock_dates():
++    orders = route_intent("upload sales orders CSV batch", connection_id="c1")
++    assert orders["matches"]
++    top = orders["matches"][0]
++    assert top["recipe"] == "document_batch.orders" or "order" in top["feature_id"]
++    assert top["can_handle"] in {"true", "partial"}
++    assert "orders" in top["route"] or top.get("atlas_class") == "document_batch"
++
++    lock = route_intent("lock accounting dates", connection_id="c1")
++    assert lock["matches"]
++    ltop = lock["matches"][0]
++    assert ltop["recipe"] == "accounting.lock_dates" or "lock" in ltop["feature_id"]
++    assert ltop.get("risk") in {None, "L3"} or ltop["recipe"] == "accounting.lock_dates"
++
++
++def test_resolve_build_mode_stock_config_chip():
++    assert (
++        resolve_build_mode(
++            prompt="lock accounting dates",
++            artifact_kind="stock_config",
++            delivery_lane="online_metadata",
++        )
++        == "stock_autopilot"
++    )
+diff --git a/apps/api/tests/test_batch_os_atlas_recipes.py b/apps/api/tests/test_batch_os_atlas_recipes.py
+index b6dea33..292c716 100644
+--- a/apps/api/tests/test_batch_os_atlas_recipes.py
++++ b/apps/api/tests/test_batch_os_atlas_recipes.py
+@@ -74,3 +74,15 @@ def test_all_atlas_classes_complete_and_intents_wired():
+             assert intent.get("status") in {"complete", "stub"}, intent
+             # every intent either has a recipe id or is an explicit catalog pointer (recipe null)
+             assert "recipe" in intent
++
++
++def test_docs_orders_intent_complete_with_recipe():
++    reload_atlas()
++    classes = list_atlas()
++    doc = next(c for c in classes if c["id"] == "document_batch")
++    orders = next(i for i in doc["intents"] if i["id"] == "docs.orders")
++    assert orders["status"] == "complete"
++    assert orders["recipe"] == "document_batch.orders"
++    assert get_recipe("document_batch.orders") is not None
++    cards = {c.id: c for c in list_recipes()}
++    assert cards["document_batch.orders"].status == "complete"
+diff --git a/apps/api/tests/test_batch_os_order_dry_run.py b/apps/api/tests/test_batch_os_order_dry_run.py
+new file mode 100644
+index 0000000..6f7d83d
+--- /dev/null
++++ b/apps/api/tests/test_batch_os_order_dry_run.py
+@@ -0,0 +1,103 @@
++"""Order batch (sale/purchase) dry-run with mock RPC client."""
++
++from __future__ import annotations
++
++from typing import Any
++
++import pytest
++
++pytestmark = pytest.mark.no_app_db
++
++from app.batch_os.order_batch import OrderBatchRecipe
++from app.batch_os.types import HONESTY_PREVIEW_NE_CONFIRMED
++
++
++class FakeClient:
++    def __init__(self) -> None:
++        self.created: list[tuple[str, dict[str, Any]]] = []
++
++    def model_exists(self, model: str) -> bool:
++        return model in {
++            "sale.order",
++            "purchase.order",
++            "res.partner",
++            "product.product",
++        }
++
++    def execute_kw(self, model: str, method: str, args: list[Any], kwargs: dict | None = None):
++        kwargs = kwargs or {}
++        if model == "res.partner" and method == "search_read":
++            return [{"id": 10, "name": "Acme Co"}]
++        if model == "product.product" and method == "search_read":
++            return [{"id": 50, "name": "Widget"}]
++        if model in {"sale.order", "purchase.order"} and method == "create":
++            vals = args[0]
++            self.created.append((model, vals))
++            return 9000 + len(self.created)
++        return []
++
++
++def _rows():
++    return [
++        {
++            "partner": "Acme Co",
++            "date": "2024-06-01",
++            "product": "Widget",
++            "qty": "2",
++            "price": "100",
++            "order_type": "sale",
++            "order_group": "SO1",
++            "ref": "PO-42",
++        },
++        {
++            "partner": "Acme Co",
++            "date": "2024-06-01",
++            "product": "Widget",
++            "qty": "1",
++            "price": "50",
++            "order_type": "sale",
++            "order_group": "SO1",
++            "ref": "PO-42",
++        },
++    ]
++
++
++def test_order_dry_run_groups_lines():
++    recipe = OrderBatchRecipe()
++    client = FakeClient()
++    state = recipe.intake(
++        connection_id="c1",
++        filename="orders.csv",
++        headers=list(_rows()[0].keys()),
++        rows=_rows(),
++    )
++    state = recipe.map(state)
++    state = recipe.dry_run(state, client)
++    assert state.phase == "dry_run"
++    assert len(state.moves) == 1
++    assert state.moves[0].balanced is True
++    assert abs(state.moves[0].total_debit - 250.0) < 0.01
++    assert client.created == []
++    assert "DRAFT" in state.message or "not confirmed" in state.message.lower()
++    assert HONESTY_PREVIEW_NE_CONFIRMED in (state.honesty or "")
++
++
++def test_order_apply_creates_sale_order_draft_never_confirms():
++    recipe = OrderBatchRecipe()
++    client = FakeClient()
++    state = recipe.intake(
++        connection_id="c1",
++        filename="orders.csv",
++        headers=list(_rows()[0].keys()),
++        rows=_rows(),
++    )
++    state = recipe.map(state)
++    state = recipe.apply(state, client, post_after_create=True)
++    assert state.phase == "applied"
++    assert len(client.created) == 1
++    model, vals = client.created[0]
++    assert model == "sale.order"
++    assert vals["partner_id"] == 10
++    assert len(vals["order_line"]) == 2
++    assert state.posted_move_ids == []
++    assert "not confirmed" in state.message.lower()
+diff --git a/apps/web/src/app/connections/[id]/journal/page.tsx b/apps/web/src/app/connections/[id]/journal/page.tsx
+index 1b0a272..f10fb71 100644
+--- a/apps/web/src/app/connections/[id]/journal/page.tsx
++++ b/apps/web/src/app/connections/[id]/journal/page.tsx
+@@ -14,9 +14,10 @@ import { EMPTY_STATES, REVERSIBILITY } from "@/lib/copy-guide";
+ import { JournalBatchPanel } from "@/components/batch-os/JournalBatchPanel";
+ import { DocumentBatchPanel } from "@/components/batch-os/DocumentBatchPanel";
+ import { MasterDataBatchPanel } from "@/components/batch-os/MasterDataBatchPanel";
++import { OrderBatchPanel } from "@/components/batch-os/OrderBatchPanel";
+ 
+ type TimelineFilter = "all" | "snapshot" | "audit" | "health";
+-type PageTab = "timeline" | "batch" | "invoices" | "master";
++type PageTab = "timeline" | "batch" | "invoices" | "orders" | "master";
+ 
+ type TimelineEntry =
+   | { kind: "snapshot"; at: string; snapshot: SnapshotRow }
+@@ -51,7 +52,7 @@ export default function ChangeJournalPage() {
+   const searchParams = useSearchParams();
+   const initialTab = (searchParams.get("tab") as PageTab | null) || "timeline";
+   const [tab, setTab] = useState<PageTab>(
+-    initialTab === "batch" || initialTab === "invoices" || initialTab === "master" ? initialTab : "timeline",
++    initialTab === "batch" || initialTab === "invoices" || initialTab === "orders" || initialTab === "master" ? initialTab : "timeline",
+   );
+ 
+   const refresh = useCallback(async () => {
+@@ -139,7 +140,7 @@ export default function ChangeJournalPage() {
+     <div className="mx-auto max-w-5xl" data-testid="journal-page">
+       <PageHeader
+         title="Change journal"
+-        description="Change timeline · Journal batch · Invoices & bills (CSV → draft account.move)"
++        description="Change timeline · Journal batch · Invoices & bills · Orders (CSV → draft SO/PO)"
+       />
+       <VersionAwarenessBanner capabilities={connection?.capabilities} />
+ 
+@@ -169,6 +170,15 @@ export default function ChangeJournalPage() {
+         >
+           Invoices & bills
+         </Button>
++        <Button
++          type="button"
++          variant={tab === "orders" ? "secondary" : "ghost"}
++          size="sm"
++          onClick={() => setTab("orders")}
++          data-testid="journal-tab-orders"
++        >
++          Orders
++        </Button>
+         <Button
+           type="button"
+           variant={tab === "master" ? "secondary" : "ghost"}
+@@ -188,6 +198,10 @@ export default function ChangeJournalPage() {
+         <div className="mt-6">
+           <DocumentBatchPanel connectionId={connectionId} />
+         </div>
++      ) : tab === "orders" ? (
++        <div className="mt-6">
++          <OrderBatchPanel connectionId={connectionId} />
++        </div>
+       ) : tab === "master" ? (
+         <div className="mt-6">
+           <MasterDataBatchPanel connectionId={connectionId} />
+diff --git a/apps/web/src/components/batch-os/OrderBatchPanel.test.tsx b/apps/web/src/components/batch-os/OrderBatchPanel.test.tsx
+new file mode 100644
+index 0000000..0e52988
+--- /dev/null
++++ b/apps/web/src/components/batch-os/OrderBatchPanel.test.tsx
+@@ -0,0 +1,16 @@
++import { render, screen } from "@testing-library/react";
++import { describe, expect, it, vi } from "vitest";
++import { OrderBatchPanel } from "@/components/batch-os/OrderBatchPanel";
++
++vi.mock("@/lib/api", () => ({
++  api: {},
++  ConfirmationRequiredError: class extends Error {},
++}));
++
++describe("OrderBatchPanel smoke", () => {
++  it("shows preview ≠ confirmed honesty", () => {
++    render(<OrderBatchPanel connectionId="conn-1" />);
++    expect(screen.getByTestId("order-batch-panel")).toBeInTheDocument();
++    expect(screen.getByText(/Preview ≠ confirmed/i)).toBeInTheDocument();
++  });
++});
+diff --git a/apps/web/src/components/batch-os/OrderBatchPanel.tsx b/apps/web/src/components/batch-os/OrderBatchPanel.tsx
+new file mode 100644
+index 0000000..41adf85
+--- /dev/null
++++ b/apps/web/src/components/batch-os/OrderBatchPanel.tsx
+@@ -0,0 +1,291 @@
++"use client";
++
++import { useCallback, useMemo, useState } from "react";
++import {
++  api,
++  BatchOsJob,
++  ConfirmationRequiredError,
++} from "@/lib/api";
++import { Badge } from "@/components/ui/Badge";
++import { Button } from "@/components/ui/Button";
++import { Callout } from "@/components/ui/Callout";
++import { ConfirmDialogV2 } from "@/components/ui/ConfirmDialogV2";
++import { ErrorNotice } from "@/components/ui/ErrorNotice";
++import { Card } from "@/components/ui/layout-primitives";
++
++const CONFIRM_PHRASE = "I understand the risks";
++
++const TARGETS = [
++  "order_type",
++  "partner",
++  "date",
++  "product",
++  "label",
++  "qty",
++  "price",
++  "ref",
++  "order_group",
++] as const;
++
++type Props = { connectionId: string };
++
++export function OrderBatchPanel({ connectionId }: Props) {
++  const [job, setJob] = useState<BatchOsJob | null>(null);
++  const [file, setFile] = useState<File | null>(null);
++  const [columnMap, setColumnMap] = useState<Record<string, string>>({});
++  const [error, setError] = useState<string | null>(null);
++  const [busy, setBusy] = useState(false);
++  const [postAfter, setPostAfter] = useState(false);
++  const [confirmOpen, setConfirmOpen] = useState(false);
++
++  const headers = job?.headers ?? [];
++
++  const onUpload = useCallback(async () => {
++    if (!file) {
++      setError("Choose a CSV or XLSX file first");
++      return;
++    }
++    setBusy(true);
++    setError(null);
++    try {
++      const next = await api.batchOsOrderIntake(connectionId, file);
++      setJob(next);
++      setColumnMap(next.column_map || {});
++    } catch (err) {
++      setError(err instanceof Error ? err.message : "Upload failed");
++    } finally {
++      setBusy(false);
++    }
++  }, [connectionId, file]);
++
++  const runMap = useCallback(async () => {
++    if (!job) return;
++    setBusy(true);
++    setError(null);
++    try {
++      const next = await api.batchOsOrderMap(connectionId, {
++        job_id: job.job_id,
++        column_map: columnMap,
++      });
++      setJob(next);
++    } catch (err) {
++      setError(err instanceof Error ? err.message : "Map failed");
++    } finally {
++      setBusy(false);
++    }
++  }, [connectionId, job, columnMap]);
++
++  const runDryRun = useCallback(async () => {
++    if (!job) return;
++    setBusy(true);
++    setError(null);
++    try {
++      await api.batchOsOrderMap(connectionId, {
++        job_id: job.job_id,
++        column_map: columnMap,
++      });
++      const next = await api.batchOsOrderDryRun(connectionId, {
++        job_id: job.job_id,
++      });
++      setJob(next);
++    } catch (err) {
++      setError(err instanceof Error ? err.message : "Dry-run failed");
++    } finally {
++      setBusy(false);
++    }
++  }, [connectionId, job, columnMap]);
++
++  const doApply = useCallback(
++    async (confirmed: boolean) => {
++      if (!job) return;
++      setBusy(true);
++      setError(null);
++      try {
++        const next = await api.batchOsOrderApply(connectionId, {
++          job_id: job.job_id,
++          post_after_create: false,
++          confirm_advanced: confirmed,
++          confirm_phrase: confirmed ? CONFIRM_PHRASE : null,
++        });
++        setJob(next);
++        setConfirmOpen(false);
++      } catch (err) {
++        if (err instanceof ConfirmationRequiredError) {
++          setConfirmOpen(true);
++        } else {
++          setError(err instanceof Error ? err.message : "Apply failed");
++        }
++      } finally {
++        setBusy(false);
++      }
++    },
++    [connectionId, job, postAfter],
++  );
++
++  const blocking = useMemo(
++    () => (job?.errors || []).filter((e) => e.code === "blocking"),
++    [job],
++  );
++
++  return (
++    <div className="space-y-4" data-testid="order-batch-panel">
++      <Callout variant="info" title="Preview ≠ confirmed">
++        Dry-run resolves partners/products via public RPC. Apply creates{" "}
++        <strong>draft</strong> <code className="text-xs">sale.order</code> /{" "}
++        <code className="text-xs">purchase.order</code> rows. Never auto-confirms.
++      </Callout>
++
++      {error ? <ErrorNotice message={error} /> : null}
++
++      <Card className="space-y-3 p-4">
++        <p className="text-sm font-medium text-ink">1. Upload CSV / XLSX</p>
++        <input
++          type="file"
++          accept=".csv,.xlsx,.xlsm,.txt"
++          data-testid="order-batch-file"
++          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
++        />
++        <Button
++          type="button"
++          size="sm"
++          variant="primary"
++          disabled={busy || !file}
++          onClick={() => void onUpload()}
++        >
++          Intake
++        </Button>
++      </Card>
++
++      {job ? (
++        <>
++          <Card className="space-y-3 p-4">
++            <div className="flex flex-wrap items-center gap-2">
++              <Badge variant="info">{job.phase}</Badge>
++              <Badge variant={job.risk === "L2" || job.risk === "L3" ? "danger" : "default"}>
++                {job.risk}
++              </Badge>
++              <span className="text-xs text-muted">
++                {job.filename} · {job.raw_row_count} rows · job {job.job_id.slice(0, 8)}
++              </span>
++            </div>
++            <p className="text-sm text-muted">{job.message}</p>
++
++            <p className="text-sm font-medium text-ink">2. Column map</p>
++            <div className="grid gap-2 sm:grid-cols-2">
++              {headers.map((h) => (
++                <label key={h} className="flex items-center gap-2 text-xs">
++                  <span className="w-28 truncate font-mono text-ink" title={h}>
++                    {h}
++                  </span>
++                  <select
++                    className="flex-1 rounded border border-border-subtle bg-surface px-2 py-1"
++                    value={columnMap[h] || ""}
++                    onChange={(e) =>
++                      setColumnMap((prev) => ({ ...prev, [h]: e.target.value }))
++                    }
++                  >
++                    <option value="">— skip —</option>
++                    {TARGETS.map((t) => (
++                      <option key={t} value={t}>
++                        {t}
++                      </option>
++                    ))}
++                  </select>
++                </label>
++              ))}
++            </div>
++            <div className="flex flex-wrap gap-2">
++              <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void runMap()}>
++                Map
++              </Button>
++              <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => void runDryRun()}>
++                Dry-run
++              </Button>
++            </div>
++          </Card>
++
++          {job.moves?.length ? (
++            <Card className="space-y-2 p-4" data-testid="order-batch-docs">
++              <p className="text-sm font-medium text-ink">Orders preview</p>
++              <ul className="space-y-2 text-xs">
++                {job.moves.map((m) => (
++                  <li
++                    key={m.group_key}
++                    className="rounded border border-border-subtle p-2 font-mono"
++                  >
++                    <span className={m.balanced ? "text-success" : "text-danger"}>
++                      {m.balanced ? "ready" : "INVALID"}
++                    </span>{" "}
++                    · {m.date} · ref={m.ref} · lines={m.line_count} · Dr {m.total_debit} / Cr{" "}
++                    {m.total_credit}
++                    {m.move_id ? ` · move#${m.move_id}${m.posted ? " POSTED" : " draft"}` : ""}
++                    {m.errors?.length ? (
++                      <span className="block text-muted">{m.errors.join("; ")}</span>
++                    ) : null}
++                  </li>
++                ))}
++              </ul>
++            </Card>
++          ) : null}
++
++          {blocking.length ? (
++            <Callout variant="danger" title="Blocking errors">
++              <ul className="list-disc pl-4 text-xs">
++                {blocking.map((e, i) => (
++                  <li key={`${e.row_index}-${i}`}>
++                    row {e.row_index}
++                    {e.field ? ` · ${e.field}` : ""}: {e.message}
++                  </li>
++                ))}
++              </ul>
++            </Callout>
++          ) : null}
++
++          <Card className="space-y-3 p-4">
++            <p className="text-sm font-medium text-ink">3. Apply</p>
++            <label className="flex items-center gap-2 text-sm text-muted">
++              <input
++                type="checkbox"
++                checked={postAfter}
++                onChange={(e) => setPostAfter(e.target.checked)}
++              />
++              Also post after create (L2)
++            </label>
++            <Button
++              type="button"
++              size="sm"
++              variant="primary"
++              disabled={busy || job.phase === "failed"}
++              onClick={() => void doApply(false)}
++            >
++              Apply drafts
++            </Button>
++            {job.created_move_ids?.length ? (
++              <p className="text-xs text-ink">
++                Created: {job.created_move_ids.join(", ")}
++                {job.posted_move_ids?.length
++                  ? ` · Posted: ${job.posted_move_ids.join(", ")}`
++                  : ""}
++              </p>
++            ) : null}
++          </Card>
++        </>
++      ) : null}
++
++      <ConfirmDialogV2
++        open={confirmOpen}
++        title="Confirm invoice/bill batch apply"
++        warning="Invoices & bills apply writes to live Odoo Accounting"
++        phrase={CONFIRM_PHRASE}
++        riskLevel={postAfter ? "danger" : "standard"}
++        risks={[
++          "Writes account.move invoice/bill drafts to live Odoo",
++          postAfter ? "Will post (L2)" : "Drafts only unless you checked post",
++        ]}
++        onCancel={() => setConfirmOpen(false)}
++        onConfirm={() => void doApply(true)}
++        busy={busy}
++      />
++    </div>
++  );
++}
+diff --git a/apps/web/src/components/config/ConfigAtlasBrowser.test.tsx b/apps/web/src/components/config/ConfigAtlasBrowser.test.tsx
+index 7fc2417..5c56814 100644
+--- a/apps/web/src/components/config/ConfigAtlasBrowser.test.tsx
++++ b/apps/web/src/components/config/ConfigAtlasBrowser.test.tsx
+@@ -30,5 +30,6 @@ describe("ConfigAtlasBrowser", () => {
+     });
+     expect(screen.getByTestId("atlas-class-filter")).toBeInTheDocument();
+     expect(screen.getByText(/All eight atlas classes are complete/i)).toBeInTheDocument();
++    expect(screen.getByText(/zero stub intents/i)).toBeInTheDocument();
+   });
+ });
+diff --git a/apps/web/src/components/config/ConfigAtlasBrowser.tsx b/apps/web/src/components/config/ConfigAtlasBrowser.tsx
+index 1f2647b..3ba893d 100644
+--- a/apps/web/src/components/config/ConfigAtlasBrowser.tsx
++++ b/apps/web/src/components/config/ConfigAtlasBrowser.tsx
+@@ -80,7 +80,7 @@ export function ConfigAtlasBrowser({ connectionId }: Props) {
+     <div className="space-y-4" data-testid="config-atlas-browser">
+       <Callout variant="info" title="Config Atlas">
+         Intent → class → models → risk → recipe. All eight atlas classes are complete —
+-        master data, settings, access, automation, UI Studio, and housekeeping included.
++        zero stub intents (orders included). Preview ≠ posted/confirmed. L3 lock dates need confirm.
+       </Callout>
+       {error ? <ErrorNotice message={error} /> : null}
+ 
+diff --git a/apps/web/src/components/expert/IntentRouterPanel.tsx b/apps/web/src/components/expert/IntentRouterPanel.tsx
+index 01f7aa5..70fd28a 100644
+--- a/apps/web/src/components/expert/IntentRouterPanel.tsx
++++ b/apps/web/src/components/expert/IntentRouterPanel.tsx
+@@ -18,7 +18,10 @@ const STARTERS = [
+   "upload 200 journal entries",
+   "bulk create customers",
+   "upload invoices",
++  "upload sales orders",
+   "lock accounting dates",
++  "tax pack",
++  "settings board",
+   "build a visitor log app",
+ ];
+ 
+@@ -34,10 +37,17 @@ function MatchRow({
+   const pct = Math.round((match.confidence || 0) * 100);
+   function onGo() {
+     const fid = String(match.feature_id || "");
++    const src = String(match.source || "");
++    const isAtlas =
++      src === "atlas" ||
++      src === "batch_os" ||
++      src === "recipe" ||
++      Boolean(match.atlas_class) ||
++      Boolean(match.recipe);
+     const mode = fid.includes("designer")
+       ? resolveBuildModeLocal({ grain: "field_pack", artifact_kind: "field_pack" })
+-      : fid.includes("job")
+-        ? resolveBuildModeLocal({ capability: "stock_reuse" })
++      : isAtlas || fid.includes("job") || fid.includes("journal") || fid.includes("config")
++        ? resolveBuildModeLocal({ capability: "stock_reuse", artifact_kind: "stock_config" })
+         : resolveBuildModeLocal({ capability: "residual_app", grain: "full_app" });
+     if (prompt.trim()) {
+       stashBuildSpineHandoff(connectionId, {
+@@ -45,6 +55,13 @@ function MatchRow({
+         brief: prompt.trim(),
+         prompt: prompt.trim(),
+         build_mode: mode,
++        capability: isAtlas ? "stock_reuse" : undefined,
++        grain: isAtlas ? "stock" : undefined,
++        delivery_lane: isAtlas ? "online_metadata" : undefined,
++        artifact_kind: isAtlas ? "stock_config" : undefined,
++        atlas_class: match.atlas_class ?? null,
++        recipe_id: match.recipe ?? null,
++        risk: match.risk ?? null,
+       });
+     }
+   }
+diff --git a/apps/web/src/lib/api.ts b/apps/web/src/lib/api.ts
+index e800173..d4854b5 100644
+--- a/apps/web/src/lib/api.ts
++++ b/apps/web/src/lib/api.ts
+@@ -4313,6 +4313,38 @@ listConfigRecipes: (id: string) =>
+       method: "POST",
+       body: JSON.stringify(body),
+     }),
++  batchOsOrderIntake: async (id: string, file: File, recipeId = "document_batch.orders") => {
++    const fd = new FormData();
++    fd.append("file", file);
++    fd.append("recipe_id", recipeId);
++    return requestForm<BatchOsJob>(`/api/connections/${id}/batch-os/order/intake`, fd);
++  },
++  batchOsOrderMap: (
++    id: string,
++    body: { job_id: string; column_map: Record<string, string> },
++  ) =>
++    request<BatchOsJob>(`/api/connections/${id}/batch-os/order/map`, {
++      method: "POST",
++      body: JSON.stringify(body),
++    }),
++  batchOsOrderDryRun: (id: string, body: { job_id: string }) =>
++    request<BatchOsJob>(`/api/connections/${id}/batch-os/order/dry-run`, {
++      method: "POST",
++      body: JSON.stringify(body),
++    }),
++  batchOsOrderApply: (
++    id: string,
++    body: {
++      job_id: string;
++      post_after_create?: boolean;
++      confirm_advanced?: boolean;
++      confirm_phrase?: string | null;
++    },
++  ) =>
++    request<BatchOsJob>(`/api/connections/${id}/batch-os/order/apply`, {
++      method: "POST",
++      body: JSON.stringify(body),
++    }),
+   batchOsPaymentIntake: async (id: string, file: File, recipeId = "document_batch.payments") => {
+     const fd = new FormData();
+     fd.append("file", file);
+diff --git a/apps/web/src/lib/build-spine-handoff.test.ts b/apps/web/src/lib/build-spine-handoff.test.ts
+index 176aa56..29111c9 100644
+--- a/apps/web/src/lib/build-spine-handoff.test.ts
++++ b/apps/web/src/lib/build-spine-handoff.test.ts
+@@ -31,6 +31,24 @@ describe("build-spine-handoff", () => {
+     expect(readJobAutopilotBrief(id)).toContain("markup");
+   });
+ 
++  it("carries atlas_class / recipe_id / risk for config batch handoff", () => {
++    stashBuildSpineHandoff(id, {
++      version: 1,
++      brief: "lock accounting dates",
++      prompt: "lock accounting dates",
++      build_mode: "stock_autopilot",
++      delivery_lane: "online_metadata",
++      artifact_kind: "stock_config",
++      atlas_class: "accounting",
++      recipe_id: "accounting.lock_dates",
++      risk: "L3",
++    });
++    const got = readBuildSpineHandoff(id);
++    expect(got?.atlas_class).toBe("accounting");
++    expect(got?.recipe_id).toBe("accounting.lock_dates");
++    expect(got?.risk).toBe("L3");
++  });
++
+   it("handoffFromDraft reads IR stamps", () => {
+     const h = handoffFromDraft({
+       _user_prompt: "scrub delivery slip address",
+diff --git a/apps/web/src/lib/build-spine-handoff.ts b/apps/web/src/lib/build-spine-handoff.ts
+index 2faf4fc..1c189fe 100644
+--- a/apps/web/src/lib/build-spine-handoff.ts
++++ b/apps/web/src/lib/build-spine-handoff.ts
+@@ -26,6 +26,9 @@ export type BuildSpineHandoff = {
+   diagnosis?: Record<string, unknown> | null;
+   contract?: Record<string, unknown> | null;
+   generation_ir?: Record<string, unknown> | null;
++  atlas_class?: string | null;
++  recipe_id?: string | null;
++  risk?: string | null;
+   updated_at?: string;
+ };
+ 
+@@ -129,5 +132,9 @@ export function handoffFromDraft(
+     diagnosis: ir,
+     contract,
+     generation_ir: ir,
++    atlas_class:
++      ir && typeof ir.atlas_class === "string" ? ir.atlas_class : null,
++    recipe_id: ir && typeof ir.recipe_id === "string" ? ir.recipe_id : null,
++    risk: ir && typeof ir.risk === "string" ? ir.risk : null,
+   };
+ }
+diff --git a/apps/web/src/lib/build-spine.ts b/apps/web/src/lib/build-spine.ts
+index 2df34d2..5be2e3c 100644
+--- a/apps/web/src/lib/build-spine.ts
++++ b/apps/web/src/lib/build-spine.ts
+@@ -37,6 +37,10 @@ export type BuildSpinePayload = {
+   contract?: Record<string, unknown>;
+   surfaces?: Record<string, string>;
+   honesty?: string;
++  atlas_class?: string | null;
++  recipe_id?: string | null;
++  risk?: string | null;
++  atlas_route?: string | null;
+ };
+ 
+ export const BUILD_MODE_META: Record<
+-- 
+2.47.3
+

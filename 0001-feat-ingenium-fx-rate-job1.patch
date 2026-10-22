@@ -1,0 +1,1234 @@
+From cf802babeb562786cffa5430680117bb696320f0 Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 11:35:08 +0100
+Subject: [PATCH] feat(ingenium): P1 Job1 FX / rate-provider sync CLASS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Class-wide FX sync into stock res.currency.rate. CBN remains earned gold
+(currency_rate_cbn); generic providers get Option A scaffold under gates.
+Online → external_connector runbook; never Prefer / Nigeria Autopilot alone
+for live HTTP. Acceptance proves rates/currencies/no x_fx. Completeness ≠
+Cert ≠ Autopilot. Promote stays human.
+---
+ APPLY_FX_RATE_JOB1_ON_MAC.sh           |  56 +++
+ DOCKET.md                              |   9 +-
+ MEMORY.md                              |   8 +-
+ apps/api/app/ai_class_stamp.py         |   7 +
+ apps/api/app/ai_fx_rate_class.py       | 632 +++++++++++++++++++++++++
+ apps/api/app/ai_generation_engine.py   |  43 ++
+ apps/api/app/ai_option_a_acceptance.py |  65 ++-
+ apps/api/app/ai_option_a_author.py     |  25 +-
+ apps/api/app/option_a_templates.py     |   5 +
+ apps/api/tests/test_fx_rate_class.py   | 204 ++++++++
+ 10 files changed, 1047 insertions(+), 7 deletions(-)
+ create mode 100755 APPLY_FX_RATE_JOB1_ON_MAC.sh
+ create mode 100644 apps/api/app/ai_fx_rate_class.py
+ create mode 100644 apps/api/tests/test_fx_rate_class.py
+
+diff --git a/APPLY_FX_RATE_JOB1_ON_MAC.sh b/APPLY_FX_RATE_JOB1_ON_MAC.sh
+new file mode 100755
+index 0000000..57a1f13
+--- /dev/null
++++ b/APPLY_FX_RATE_JOB1_ON_MAC.sh
+@@ -0,0 +1,56 @@
++#!/usr/bin/env bash
++# Apply P1 Job1 FX / rate-provider sync CLASS onto Tope's Mac checkout.
++# machineId: 4fc0d119-8958-4a46-954b-7411355d96ce
++set -euo pipefail
++REPO="${1:-/Users/temitopeolaitanmichael/Odoo_Customization_App}"
++PATCH="${2:-/workspace/0001-feat-ingenium-fx-rate-job1.patch}"
++cd "$REPO"
++git checkout premium-local-tip
++git status -sb
++
++STASHED=0
++if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
++  echo "Local WIP present — stashing before apply"
++  git stash push -u -m "pre-fx-rate-job1-apply"
++  STASHED=1
++fi
++
++git fetch origin premium-local-tip || true
++
++if [ -f "$PATCH" ]; then
++  git am --3way "$PATCH" || {
++    git am --abort 2>/dev/null || true
++    git apply --check "$PATCH" && git apply "$PATCH"
++    git add \
++      DOCKET.md MEMORY.md \
++      apps/api/app/ai_fx_rate_class.py \
++      apps/api/app/ai_generation_engine.py \
++      apps/api/app/ai_option_a_author.py \
++      apps/api/app/ai_option_a_acceptance.py \
++      apps/api/app/ai_class_stamp.py \
++      apps/api/app/option_a_templates.py \
++      apps/api/tests/test_fx_rate_class.py \
++      APPLY_FX_RATE_JOB1_ON_MAC.sh
++    git commit -m "feat(ingenium): P1 Job1 FX / rate-provider sync CLASS"
++  }
++else
++  echo "WARN: patch missing at $PATCH — pull/cherry-pick from tip instead"
++  git pull --ff-only origin premium-local-tip || true
++fi
++
++git push origin premium-local-tip || echo "WARN: push failed — push manually"
++
++if [ "$STASHED" = "1" ]; then
++  git stash pop || echo "WARN: stash pop conflict — resolve manually"
++fi
++
++pkill -f "uvicorn .*8001" 2>/dev/null || true
++sleep 1
++cd "$REPO/apps/api"
++if [ -f ../../.venv/bin/uvicorn ]; then UV=../../.venv/bin/uvicorn
++elif [ -f .venv/bin/uvicorn ]; then UV=.venv/bin/uvicorn
++else UV=uvicorn; fi
++nohup "$UV" app.main:app --host 127.0.0.1 --port 8001 --reload \
++  > /tmp/ingenium-api-8001.log 2>&1 &
++echo "API restarting on :8001 — log /tmp/ingenium-api-8001.log"
++echo "Done. ingenium Job1 FX rate CLASS. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+diff --git a/DOCKET.md b/DOCKET.md
+index 8d2ee92..d81eb54 100644
+--- a/DOCKET.md
++++ b/DOCKET.md
+@@ -23,9 +23,9 @@ Never Prefer when Option A required; never Online Python promote.
+ | Phase | Focus | Status |
+ |-------|-------|--------|
+ | **P0** | Contract docs · intent class routes · `delivery_lane`/`artifact_kind`/`prove_status` stamps · Online+Python host gate · goldens | **done** (this tip) |
+-| **P1** | Job 2 markup+WHT CLASS + Job 3 report scrub CLASS | **done** |
+-| **P2** | Build spine chips | deferred |
+-| **P3** | Job1 CBN full close | next |
++| **P1** | Job 1 FX/CBN rate CLASS + Job 2 markup+WHT + Job 3 report scrub | **done** |
++| **P2** | Build spine chips | deferred (note only) |
++| **P3** | (was Job1) — closed under P1 | **done** |
+ | **P4** | Atlas elite | out of scope this tip |
+ 
+ ## Done
+@@ -33,6 +33,9 @@ Never Prefer when Option A required; never Online Python promote.
+ - [x] **Intent → feature router (Expert)** — 2026-09-21  
+   Plain language → best-fitting feature + can/can't. Expert UI (`IntentRouterPanel`), `POST /connections/{id}/expert/route` (+ `/batch-os/intent-route`). Deterministic catalog (YAML/JSON + Atlas + recipes); `AI_INTENT_LLM` optional only.
+ 
++- [x] **P1 Job 1 FX / rate-provider sync CLASS** — 2026-09-22  
++  CBN gold shortcut inside class (`currency_rate_cbn`); generic provider → Option A scaffold writing `res.currency.rate`; Online → `external_connector` runbook. Never Prefer / Nigeria Autopilot stock_reuse alone for live HTTP.
++
+ - [x] **P1 Job 2 sale markup % + WHT CLASS** — 2026-09-22  
+   Option A fiscal/compute on sale.order: markup % drives amounts; WHT base = markup only; never purchase; Prefer/Studio % alone on Online = incomplete interim. Class scaffold + static prove.
+ 
+diff --git a/MEMORY.md b/MEMORY.md
+index 6445642..c34a5af 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -1,8 +1,14 @@
++### 2026-09-22 — P1 Job 1: FX / rate-provider sync CLASS closed
++**Decided:** Class-wide FX rate sync into stock `res.currency.rate` (parameterized USD/GBP/EUR or brief ISOs). CBN / Central Bank of Nigeria remains the earned gold shortcut (`currency_rate_cbn`) inside the class — not the only member. Generic HTTP/ECB/Open Exchange briefs → Option A authored scaffold (`ai_fx_rate_class.py`, marker `ingenium:fx_rate_provider_class`) on `res.company` + settings + cron. Online cannot promote Python → `external_connector` runbook IR + host stamps (`module_sh_or_self` vs `external_connector` vs online block copy). Never Prefer / Nigeria Autopilot `stock_reuse` alone for live HTTP fetch. Acceptance: writes_currency_rate, currencies_parameterized, no_x_fx_app, not_nigeria_autopilot_alone, gold_or_scaffold_present. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++**Why:** Operators asked for CBN as exemplar; any-customization needs the whole rate-provider class under gates.
++**Rejected:** One-off CBN-only path as the whole product; inventing x_fx residual; Prefer/metadata-only as live HTTP done; Online Python Autopilot.
++**P1 Job1:** done. P2 Build spine chips still deferred.
++
+ ### 2026-09-22 — P1 Job 2: sale markup % + WHT-on-markup CLASS closed
+ **Decided:** Class-wide Option A on sale.order (not one client SOW). Deterministic CE-safe scaffold (`ai_markup_wht_class.py`): x_markup_percent + x_markup_amount + x_wht_on_markup / x_wht_rate; onchange price effect; tax_totals xpath; never purchase.order inherit; never account.tax.create. Acceptance checks: markup_present, wht_base_is_markup, purchase_untouched, no_tax_create (+ existing labeled/xpath/price_effect/fields). Online Prefer/Studio % field alone → `online_metadata_incomplete_interim` (module lane still required). Mutant briefs parameterized. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Online Python promote blocked (.sh/self-host).
+ **Why:** Markup+WHT briefs need automated math under gates; Prefer % metadata on Online is incomplete interim, not done.
+ **Rejected:** Purchase-order markup in this class; inventing account.tax; claiming Online Python Autopilot.
+-**P1 Job2:** done. Job1 CBN still open.
++**P1 Job2:** done. Job1 CBN CLASS closed same tip.
+ 
+ ### 2026-09-22 — P1 Job 3: report/document layout address scrub CLASS closed
+ **Decided:** Class-wide QWeb partner-name scrub on stock reports (delivery slip, picking, invoice, sale/PO) via parameterized inherits in `ai_report_layout_scrub.py`. Option A seed attaches `report/*_address_scrub.xml` with contact widget fields `["address","phone"]` (no name) + `.name` replace + `ingenium:partner_name_scrubbed` marker. Acceptance smoke proves `qweb_inherit_present` / `partner_name_scrubbed` / `address_block_preserved` / `not_contacts_prefer` statically. `preferred_inherit_host` + classify early-route scrub before invoice Pay/QR gold; Prefer Contacts delivery-notes stays designer/Contacts. Online checklist IR = `online_metadata`; module lane = `module_sh_or_self`. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+diff --git a/apps/api/app/ai_class_stamp.py b/apps/api/app/ai_class_stamp.py
+index 0ebccd9..e4bc97e 100644
+--- a/apps/api/app/ai_class_stamp.py
++++ b/apps/api/app/ai_class_stamp.py
+@@ -76,6 +76,13 @@ _PREFER_FIELD_RE = re.compile(
+ 
+ 
+ def is_fx_rate_class(prompt: str) -> bool:
++    try:
++        from app.ai_fx_rate_class import is_fx_rate_provider_class_brief
++
++        if is_fx_rate_provider_class_brief(prompt or ""):
++            return True
++    except Exception:  # noqa: BLE001
++        pass
+     return bool(_FX_CONNECTOR_RE.search(prompt or ""))
+ 
+ 
+diff --git a/apps/api/app/ai_fx_rate_class.py b/apps/api/app/ai_fx_rate_class.py
+new file mode 100644
+index 0000000..a92a685
+--- /dev/null
++++ b/apps/api/app/ai_fx_rate_class.py
+@@ -0,0 +1,632 @@
++"""FX / rate-provider sync CLASS — write stock res.currency.rate (P1 Job 1).
++
++Class-wide: live HTTP rate providers sync into ``res.currency.rate`` (or
++equivalent stock rate model). CBN is the earned gold shortcut inside the class
++(``currency_rate_cbn``), not the only member. Generic providers → Option A
++author scaffold or ``external_connector`` lane when Online cannot run Python.
++
++Never Prefer / Nigeria Autopilot ``stock_reuse`` alone for live HTTP fetch.
++Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++"""
++
++from __future__ import annotations
++
++import re
++from typing import Any, Literal
++
++CLASS_INTENT_ID = "fx_rate_provider_sync"
++CLASS_MARKER = "ingenium:fx_rate_provider_class"
++GOLD_CBN_ID = "currency_rate_cbn"
++HOST_MODEL = "res.company"
++RATE_MODEL = "res.currency.rate"
++DEFAULT_CURRENCIES: tuple[str, ...] = ("USD", "GBP", "EUR")
++
++FxMember = Literal["cbn_gold", "generic_option_a", "external_connector"]
++
++_RATE_WRITE_RE = re.compile(
++    r"(?i)\b("
++    r"res\.currency\.rate|currency\s+rates?|exchange\s+rates?|fx\s+rates?|"
++    r"live\s+rates?|automatic\s+currency\s+rates?|rate\s+provider|"
++    r"pull(?:s|ing)?\s+(?:live\s+)?(?:fx\s+|currency\s+|exchange\s+)?rates?|"
++    r"sync(?:s|ing)?\s+(?:live\s+)?(?:fx\s+|currency\s+|exchange\s+)?rates?|"
++    r"write(?:s|ing)?\s+(?:to\s+)?(?:stock\s+)?(?:currency\s+)?rates?"
++    r")\b"
++)
++_PROVIDER_RE = re.compile(
++    r"(?i)\b("
++    r"cbn|central\s+bank|ecb|european\s+central\s+bank|"
++    r"open\s*exchange|fixer\.io|xe\.com|currencyapi|"
++    r"http\s+provider|rate\s+provider|fx\s+provider|"
++    r"api\s+(?:endpoint|url|key)|https?://|"
++    r"service\s+(?:dropdown|field|provider)|"
++    r"external\s+(?:connector|http|api)"
++    r")\b"
++)
++_NIGERIA_STOCK_ONLY_RE = re.compile(
++    r"(?i)\b("
++    r"nigeria\s+autopilot|stock[_\s-]?first|activate\s+ngn|"
++    r"custom\s+residual\s*:\s*none|capability\s+path\s*:\s*stock"
++    r")\b"
++)
++_PREFER_ONLY_RE = re.compile(
++    r"(?i)\b(prefer\s+for|add\s+(?:a\s+)?field\s+on|checkbox\s+on)\b"
++)
++_CURRENCY_ISO_RE = re.compile(r"\b([A-Z]{3})\b")
++_KNOWN_ISO = frozenset(
++    {
++        "USD",
++        "GBP",
++        "EUR",
++        "JPY",
++        "CNY",
++        "CHF",
++        "CAD",
++        "AUD",
++        "ZAR",
++        "AED",
++        "SAR",
++        "XOF",
++        "XDR",
++        "DKK",
++        "NGN",
++    }
++)
++_X_FX_APP_RE = re.compile(r"(?i)\b(_name\s*=\s*['\"]x_(?:fx|exchange)|model=['\"]x_(?:fx|exchange))")
++_RATE_WRITE_CODE_RE = re.compile(
++    r"(?i)res\.currency\.rate|env\s*\[\s*['\"]res\.currency\.rate['\"]\s*\]"
++)
++_QUOTED_CURRENCIES_CODE_RE = re.compile(
++    r"(?i)(?:CBN_QUOTED_ISO|QUOTED_ISO|TARGET_CURRENCIES)\s*=\s*\(([^)]+)\)"
++)
++
++
++def is_nigeria_autopilot_stock_only(prompt: str) -> bool:
++    """True for Nigeria Autopilot / activate-NGN stock_reuse — not this class."""
++    text = prompt or ""
++    if not _NIGERIA_STOCK_ONLY_RE.search(text):
++        return False
++    # Explicit live-rate / CBN / provider cues keep the brief in this class.
++    if _PROVIDER_RE.search(text) and _RATE_WRITE_RE.search(text):
++        if re.search(r"(?i)\b(cbn|central\s+bank|live\s+rates?|rate\s+provider)\b", text):
++            return False
++    return True
++
++
++def is_fx_rate_provider_class_brief(prompt: str) -> bool:
++    """True for rate-provider + write-to-odoo-currency-rates CLASS briefs."""
++    text = prompt or ""
++    if is_nigeria_autopilot_stock_only(text):
++        return False
++    if _PREFER_ONLY_RE.search(text) and not _RATE_WRITE_RE.search(text):
++        return False
++    if not _RATE_WRITE_RE.search(text):
++        return False
++    # Provider / HTTP / bank / Automatic Currency Rates service cue.
++    if _PROVIDER_RE.search(text):
++        return True
++    # Explicit write/sync into Odoo rates without naming a bank still qualifies
++    # when the brief mentions sync/pull/HTTP-ish language.
++    if re.search(r"(?i)\b(sync|pull|fetch|cron|http|api|provider)\b", text):
++        return True
++    return False
++
++
++def is_cbn_class_match(prompt: str) -> bool:
++    """Earned gold shortcut — CBN / Central Bank of Nigeria + rate cue."""
++    from app.ai_operator_brief import is_cbn_currency_rates_prompt
++
++    return is_cbn_currency_rates_prompt(prompt or "")
++
++
++def resolve_fx_member(prompt: str) -> FxMember:
++    """Pick class member: CBN gold vs generic Option A vs connector honesty."""
++    text = prompt or ""
++    if is_cbn_class_match(text):
++        return "cbn_gold"
++    if re.search(r"(?i)\b(external\s+connector|connector\s+runbook|online\s+only)\b", text):
++        return "external_connector"
++    return "generic_option_a"
++
++
++def quoted_currencies_from_prompt(prompt: str) -> tuple[str, ...]:
++    """Parameterized quoted currencies — default USD/GBP/EUR (exclude company NGN)."""
++    text = prompt or ""
++    found: list[str] = []
++    for m in _CURRENCY_ISO_RE.finditer(text.upper()):
++        iso = m.group(1)
++        if iso in _KNOWN_ISO and iso != "NGN" and iso not in found:
++            found.append(iso)
++    if found:
++        return tuple(found)
++    return DEFAULT_CURRENCIES
++
++
++def class_mutant_briefs() -> list[dict[str, str]]:
++    """Parameterized mutants — not one client SOW string."""
++    return [
++        {
++            "id": "cbn_classic",
++            "prompt": (
++                "Company currency NGN. Activate USD, GBP, and EUR. "
++                "Add Central Bank of Nigeria as the Service on Automatic Currency Rates "
++                "so the cron pulls live CBN rates."
++            ),
++        },
++        {
++            "id": "cbn_short",
++            "prompt": (
++                "Pull CBN FX rates into Accounting Automatic Currency Rates "
++                "and write stock res.currency.rate."
++            ),
++        },
++        {
++            "id": "generic_http_provider",
++            "prompt": (
++                "Sync live FX rates from an HTTPS rate provider into res.currency.rate "
++                "for USD, GBP, and EUR when company currency is NGN. Cron daily."
++            ),
++        },
++        {
++            "id": "ecb_service",
++            "prompt": (
++                "Add ECB as Automatic Currency Rates service and pull daily exchange "
++                "rates into Odoo stock currency rates for USD and GBP."
++            ),
++        },
++        {
++            "id": "open_exchange",
++            "prompt": (
++                "Use Open Exchange Rates API as the FX provider; write rates to "
++                "res.currency.rate for EUR, USD, GBP. Never invent an x_fx app."
++            ),
++        },
++        {
++            "id": "online_connector",
++            "prompt": (
++                "Online only: external connector runbook to sync FX rates into "
++                "res.currency.rate for USD/GBP/EUR — cannot promote Python on Online."
++            ),
++        },
++    ]
++
++
++def online_connector_runbook(*, prompt: str = "") -> dict[str, Any]:
++    """Online honesty appendix — cannot promote Python; connector runbook IR."""
++    from app.ai_class_stamp import LANE_COPY, online_python_block_alternatives
++    from app.hosting import online_python_promote_block
++
++    currencies = list(quoted_currencies_from_prompt(prompt))
++    block = online_python_promote_block(hosting_hint="online")
++    ir: dict[str, Any] = {
++        "intent_id": "fx_rate_online_connector_runbook",
++        "host_model": HOST_MODEL,
++        "rate_model": RATE_MODEL,
++        "path": "external_connector",
++        "complete": False,
++        "online_python_promote": False,
++        "quoted_currencies": currencies,
++        "checks": [
++            {"id": "no_online_python_promote", "required": True, "status": "blocked"},
++            {"id": "connector_writes_currency_rates", "required": True, "status": "pending"},
++            {"id": "currencies_parameterized", "required": True, "status": "pending"},
++            {"id": "module_lane_or_sh_alternative", "required": True, "status": "pending"},
++        ],
++        "operator_copy": (
++            "Online cannot install Option A Python. Use an external connector to "
++            f"POST/write stock {RATE_MODEL} for {', '.join(currencies)} (company NGN), "
++            "or promote the gold/authored module on Odoo.sh / self-host after sandbox "
++            "prove. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
++        ),
++        "alternatives": list(online_python_block_alternatives()),
++        "online_block": block,
++        "delivery_lane": "external_connector",
++        "delivery_lane_copy": LANE_COPY["external_connector"],
++        "module_lane_copy": LANE_COPY["module_sh_or_self"],
++        "online_lane_copy": LANE_COPY["online_metadata"],
++        "artifact_kind": "external_connector",
++        "prove_status": "pending",
++        "promote_human": True,
++        "completeness_is_not_cert": True,
++    }
++    return ir
++
++
++def resolve_fx_host_stamp(
++    *,
++    prompt: str = "",
++    hosting_hint: str | None = None,
++    gold_artifact_id: str | None = None,
++) -> dict[str, Any]:
++    """Host stamps: module_sh_or_self vs external_connector vs online block copy."""
++    from app.ai_class_stamp import LANE_COPY, apply_class_stamp, resolve_class_stamp
++    from app.hosting import online_option_a_python_blocked
++
++    member = resolve_fx_member(prompt)
++    gold = gold_artifact_id or (GOLD_CBN_ID if member == "cbn_gold" else None)
++    hint = (hosting_hint or "").strip() or None
++    online_blocked = bool(hint and online_option_a_python_blocked(hint))
++
++    if member == "external_connector" or online_blocked:
++        stamp = {
++            "delivery_lane": "external_connector",
++            "artifact_kind": "external_connector",
++            "prove_status": "pending",
++            "delivery_lane_copy": LANE_COPY["external_connector"],
++            "artifact_kind_copy": (
++                "FX / HTTP provider class — gold Option A or external connector."
++            ),
++            "promote_human": True,
++            "completeness_is_not_cert": True,
++            "online_python_promote": False,
++            "module_lane_copy": LANE_COPY["module_sh_or_self"],
++            "online_lane_copy": LANE_COPY["online_metadata"],
++            "fx_member": member,
++        }
++        if online_blocked:
++            stamp["online_block"] = online_connector_runbook(prompt=prompt)
++        return stamp
++
++    base = resolve_class_stamp(
++        prompt=prompt,
++        capability="option_a_standalone" if gold else "option_a_authored",
++        grain="full_app",
++        needs_module=True,
++        gold_artifact_id=gold,
++        module_delivery=True,
++    )
++    apply_class_stamp(base, {"fx_member": member})
++    base["fx_member"] = member
++    base["module_lane_copy"] = LANE_COPY["module_sh_or_self"]
++    base["connector_lane_copy"] = LANE_COPY["external_connector"]
++    return base
++
++
++def acceptance_contract_for_prompt(prompt: str = "", *, draft: dict[str, Any] | None = None) -> dict[str, Any]:
++    """Class-wide acceptance: rates land on parameterized currencies; gold prove."""
++    text = prompt or str((draft or {}).get("_user_prompt") or "")
++    currencies = list(quoted_currencies_from_prompt(text))
++    member = resolve_fx_member(text)
++    gold = GOLD_CBN_ID if member == "cbn_gold" else None
++    return {
++        "intent_id": CLASS_INTENT_ID,
++        "host_model": HOST_MODEL,
++        "rate_model": RATE_MODEL,
++        "quoted_currencies": currencies,
++        "fx_member": member,
++        "gold_artifact_id": gold,
++        "checks": [
++            {"id": "writes_currency_rate", "required": True},
++            {"id": "currencies_parameterized", "required": True},
++            {"id": "no_x_fx_app", "required": True},
++            {"id": "not_nigeria_autopilot_alone", "required": True},
++            {"id": "gold_or_scaffold_present", "required": True},
++            {"id": "online_honesty_appendix", "required": False},
++        ],
++        "fixtures": {
++            "brief_class": "fx_rate_provider_sync",
++            "rate_model": RATE_MODEL,
++            "quoted_currencies": currencies,
++            "forbid": ["x_fx", "x_exchange", "prefer_stock_reuse_alone"],
++            "gold_artifact_id": gold,
++        },
++    }
++
++
++def scaffold_generic_fx_blocks(
++    draft: dict[str, Any],
++    *,
++    prompt: str = "",
++) -> list[dict[str, Any]]:
++    """CE-safe Option A scaffold for generic (non-CBN-gold) FX members."""
++    text = prompt or str(draft.get("_user_prompt") or "")
++    if resolve_fx_member(text) == "cbn_gold":
++        return []
++    currencies = quoted_currencies_from_prompt(text)
++    iso_tuple = ", ".join(f'"{c}"' for c in currencies)
++    py = f'''# -*- coding: utf-8 -*-
++"""{CLASS_MARKER} — FX rate provider → stock {RATE_MODEL}.
++
++Writes parameterized quoted currencies ({", ".join(currencies)}) when company
++currency is NGN (Odoo rate = 1 / provider naira-per-unit). Never invent x_fx.
++Never Prefer / Nigeria Autopilot stock_reuse alone for live HTTP fetch.
++"""
++import json
++import logging
++from urllib.error import HTTPError, URLError
++from urllib.request import Request, urlopen
++
++from odoo import fields, models
++from odoo.exceptions import UserError
++
++_logger = logging.getLogger(__name__)
++
++# Placeholder HTTPS provider — operator replaces with the real public endpoint.
++# Gate forbids private/SSRF hosts; keep this a public HTTPS URL.
++FX_PROVIDER_URL = "https://example.com/fx/rates.json"
++QUOTED_ISO = ({iso_tuple})
++
++
++class ResCompany(models.Model):
++    _inherit = "res.company"
++
++    x_fx_provider_url = fields.Char(
++        string="FX provider URL",
++        default=FX_PROVIDER_URL,
++        help="Public HTTPS rate JSON endpoint. Writes stock res.currency.rate.",
++    )
++    x_fx_interval_unit = fields.Selection(
++        [("manually", "Manually"), ("daily", "Daily"), ("weekly", "Weekly"), ("monthly", "Monthly")],
++        string="FX rate interval",
++        default="daily",
++    )
++
++    def action_activate_quoted_currencies(self):
++        Currency = self.env["res.currency"].sudo()
++        for iso in QUOTED_ISO:
++            cur = Currency.search([("name", "=", iso)], limit=1)
++            if cur and not cur.active:
++                cur.active = True
++        return True
++
++    def update_currency_rates(self):
++        self.ensure_one()
++        return self._ingenium_sync_fx_rates()
++
++    def _ingenium_sync_fx_rates(self):
++        self.ensure_one()
++        url = (self.x_fx_provider_url or FX_PROVIDER_URL).strip()
++        if not url.startswith("https://"):
++            raise UserError("FX provider URL must be public HTTPS.")
++        req = Request(url, headers={{"User-Agent": "ingenium-fx-rate-class/1.0"}})
++        try:
++            with urlopen(req, timeout=30) as resp:  # noqa: S310 — gated HTTPS only
++                payload = json.loads(resp.read().decode("utf-8"))
++        except (URLError, HTTPError, TimeoutError, ValueError) as err:
++            raise UserError(f"FX provider fetch failed: {{err}}") from err
++        rates = payload.get("rates") if isinstance(payload, dict) else None
++        if not isinstance(rates, dict):
++            raise UserError("FX provider JSON must include a rates object.")
++        company = self
++        today = fields.Date.context_today(self)
++        Rate = self.env["res.currency.rate"].sudo()
++        Currency = self.env["res.currency"].sudo()
++        written = []
++        company_is_ngn = bool(
++            company.currency_id and company.currency_id.name == "NGN"
++        )
++        for iso in QUOTED_ISO:
++            raw = rates.get(iso)
++            if raw is None:
++                continue
++            try:
++                provider_rate = float(raw)
++            except (TypeError, ValueError):
++                continue
++            if provider_rate <= 0:
++                continue
++            # When company is NGN and provider quotes naira-per-unit, invert.
++            odoo_rate = (1.0 / provider_rate) if company_is_ngn else provider_rate
++            currency = Currency.search([("name", "=", iso)], limit=1)
++            if not currency:
++                _logger.warning("fx_rate_class: ISO %s not in res.currency", iso)
++                continue
++            existing = Rate.search(
++                [
++                    ("currency_id", "=", currency.id),
++                    ("name", "=", today),
++                    ("company_id", "=", company.id),
++                ],
++                limit=1,
++            )
++            if existing:
++                existing.write({{"rate": odoo_rate}})
++            else:
++                Rate.create(
++                    {{
++                        "currency_id": currency.id,
++                        "name": today,
++                        "company_id": company.id,
++                        "rate": odoo_rate,
++                    }}
++                )
++            written.append(iso)
++        if not written:
++            raise UserError("No quoted currencies could be written.")
++        return written
++
++
++class ResConfigSettings(models.TransientModel):
++    _inherit = "res.config.settings"
++
++    x_fx_provider_url = fields.Char(
++        related="company_id.x_fx_provider_url",
++        readonly=False,
++        string="FX provider URL",
++    )
++    x_fx_interval_unit = fields.Selection(
++        related="company_id.x_fx_interval_unit",
++        readonly=False,
++        string="FX rate interval",
++    )
++
++    def action_update_fx_rates(self):
++        self.ensure_one()
++        self.company_id.update_currency_rates()
++        return True
++
++    def action_activate_quoted_currencies(self):
++        self.ensure_one()
++        self.company_id.action_activate_quoted_currencies()
++        return True
++'''
++    settings_xml = f'''<?xml version="1.0" encoding="utf-8"?>
++<odoo>
++    <record id="res_config_settings_view_form_fx_rate" model="ir.ui.view">
++        <field name="name">res.config.settings.view.form.inherit.fx.rate</field>
++        <field name="model">res.config.settings</field>
++        <field name="inherit_id" ref="account.res_config_settings_view_form"/>
++        <field name="arch" type="xml">
++            <xpath expr="//setting[@id='update_exchange_rates']" position="after">
++                <setting id="ingenium_fx_currency_rates"
++                         string="Automatic Currency Rates"
++                         help="{CLASS_MARKER} — writes stock {RATE_MODEL} for {", ".join(currencies)}.">
++                    <div class="content-group">
++                        <div class="row mt16">
++                            <label for="x_fx_provider_url" class="col-lg-3 o_light_label"/>
++                            <field name="x_fx_provider_url"/>
++                        </div>
++                        <div class="row mt8">
++                            <label for="x_fx_interval_unit" class="col-lg-3 o_light_label"/>
++                            <field name="x_fx_interval_unit"/>
++                        </div>
++                        <div class="mt8">
++                            <button name="action_update_fx_rates" type="object"
++                                    string="Update now" class="btn-link"/>
++                            <button name="action_activate_quoted_currencies" type="object"
++                                    string="Activate {", ".join(currencies)}" class="btn-link"/>
++                        </div>
++                    </div>
++                </setting>
++            </xpath>
++        </field>
++    </record>
++</odoo>
++'''
++    cron_xml = '''<?xml version="1.0" encoding="utf-8"?>
++<odoo>
++    <record forcecreate="True" id="ir_cron_fx_currency_rates" model="ir.cron">
++        <field name="name">ingenium: update FX currency rates</field>
++        <field name="model_id" ref="base.model_res_company"/>
++        <field name="state">code</field>
++        <field name="code">model.search([])._ingenium_sync_fx_rates()</field>
++        <field name="interval_number">1</field>
++        <field name="interval_type">days</field>
++        <field name="numbercall">-1</field>
++        <field name="active" eval="True"/>
++    </record>
++</odoo>
++'''
++    return [
++        {
++            "source_file": "models/fx_rates.py",
++            "kind": "python",
++            "reason": f"{CLASS_MARKER}: generic provider → {RATE_MODEL}",
++            "content": py,
++        },
++        {
++            "source_file": "views/res_config_settings_views.xml",
++            "kind": "xml",
++            "reason": f"{CLASS_MARKER}: settings UX",
++            "content": settings_xml,
++        },
++        {
++            "source_file": "data/ir_cron_data.xml",
++            "kind": "xml",
++            "reason": f"{CLASS_MARKER}: daily cron",
++            "content": cron_xml,
++        },
++    ]
++
++
++def apply_generic_fx_scaffold(draft: dict[str, Any], *, prompt: str = "") -> dict[str, Any]:
++    """Attach generic FX scaffold onto an Option A authored draft."""
++    text = prompt or str(draft.get("_user_prompt") or "")
++    blocks = scaffold_generic_fx_blocks(draft, prompt=text)
++    if not blocks:
++        return draft
++    draft["custom_code_blocks"] = blocks
++    draft["models"] = [
++        {"model": HOST_MODEL, "mode": "inherit", "fields": []},
++    ]
++    draft["depends"] = ["account"]
++    draft["_pipeline"] = "option_a_fx_rate_class"
++    draft["display_name"] = draft.get("display_name") or "FX Currency Rates"
++    # Marker for static prove.
++    draft["_fx_rate_class"] = {
++        "intent_id": CLASS_INTENT_ID,
++        "quoted_currencies": list(quoted_currencies_from_prompt(text)),
++        "fx_member": resolve_fx_member(text),
++        "marker": CLASS_MARKER,
++    }
++    return draft
++
++
++def static_fx_rate_findings(
++    draft: dict[str, Any],
++    *,
++    prompt: str = "",
++) -> dict[str, Any]:
++    """Static acceptance floor for FX rate CLASS (no live RPC required)."""
++    text = prompt or str(draft.get("_user_prompt") or "")
++    blob_parts: list[str] = []
++    for b in draft.get("custom_code_blocks") or []:
++        if isinstance(b, dict):
++            blob_parts.append(str(b.get("content") or ""))
++    blob = "\n".join(blob_parts)
++    tech = str(draft.get("technical_name") or "")
++    ir = draft.get("_generation_engine") if isinstance(draft.get("_generation_engine"), dict) else {}
++    gold = str(ir.get("gold_artifact_id") or "")
++    expected = set(quoted_currencies_from_prompt(text))
++
++    writes_rate = bool(_RATE_WRITE_CODE_RE.search(blob) or gold == GOLD_CBN_ID)
++    no_x_fx = not bool(_X_FX_APP_RE.search(blob)) and "x_fx" not in tech and "x_exchange" not in tech
++    not_nigeria_alone = not is_nigeria_autopilot_stock_only(text)
++
++    found_isos: set[str] = set()
++    m = _QUOTED_CURRENCIES_CODE_RE.search(blob)
++    if m:
++        for iso in _CURRENCY_ISO_RE.findall(m.group(1).upper()):
++            if iso in _KNOWN_ISO:
++                found_isos.add(iso)
++    # Gold CBN always quotes USD/GBP/EUR.
++    if gold == GOLD_CBN_ID or "CBN_QUOTED_ISO" in blob:
++        found_isos.update(DEFAULT_CURRENCIES)
++    # Also accept ISO literals present in blob when expected.
++    for iso in expected:
++        if re.search(rf"""['\"]{iso}['\"]""", blob) or iso in blob:
++            found_isos.add(iso)
++
++    currencies_ok = expected.issubset(found_isos) if expected else bool(found_isos)
++    gold_or_scaffold = bool(
++        gold == GOLD_CBN_ID
++        or CLASS_MARKER in blob
++        or draft.get("_pipeline") in {"gold_template", "option_a_fx_rate_class"}
++        or tech == GOLD_CBN_ID
++    )
++
++    return {
++        "writes_currency_rate": writes_rate,
++        "currencies_parameterized": currencies_ok,
++        "no_x_fx_app": no_x_fx,
++        "not_nigeria_autopilot_alone": not_nigeria_alone,
++        "gold_or_scaffold_present": gold_or_scaffold,
++        "online_honesty_appendix": True,  # appendix always available via runbook helper
++        "quoted_currencies": sorted(expected),
++        "found_currencies": sorted(found_isos),
++        "host_model": HOST_MODEL,
++        "rate_model": RATE_MODEL,
++        "fx_member": resolve_fx_member(text),
++        "gold_artifact_id": gold or None,
++    }
++
++
++__all__ = [
++    "CLASS_INTENT_ID",
++    "CLASS_MARKER",
++    "DEFAULT_CURRENCIES",
++    "GOLD_CBN_ID",
++    "HOST_MODEL",
++    "RATE_MODEL",
++    "acceptance_contract_for_prompt",
++    "apply_generic_fx_scaffold",
++    "class_mutant_briefs",
++    "is_cbn_class_match",
++    "is_fx_rate_provider_class_brief",
++    "is_nigeria_autopilot_stock_only",
++    "online_connector_runbook",
++    "quoted_currencies_from_prompt",
++    "resolve_fx_host_stamp",
++    "resolve_fx_member",
++    "scaffold_generic_fx_blocks",
++    "static_fx_rate_findings",
++]
+diff --git a/apps/api/app/ai_generation_engine.py b/apps/api/app/ai_generation_engine.py
+index 277001d..97c0fe8 100644
+--- a/apps/api/app/ai_generation_engine.py
++++ b/apps/api/app/ai_generation_engine.py
+@@ -211,6 +211,49 @@ def classify_generation(prompt: str) -> GenerationPlan:
+             notes=["gold: currency_rate_cbn"],
+         )
+ 
++    try:
++        from app.ai_fx_rate_class import (
++            is_fx_rate_provider_class_brief,
++            resolve_fx_member,
++        )
++    except Exception:  # noqa: BLE001
++        is_fx_rate_provider_class_brief = lambda _p: False  # type: ignore[misc, assignment]
++        resolve_fx_member = lambda _p: "generic_option_a"  # type: ignore[misc, assignment]
++
++    if is_fx_rate_provider_class_brief(text) and not cbn:
++        member = resolve_fx_member(text)
++        if member == "external_connector":
++            return GenerationPlan(
++                capability="option_a_authored",
++                grain="full_app",
++                module_delivery=True,
++                needs_clarification=clarify,
++                honesty=(
++                    "FX / rate-provider CLASS — Online cannot promote Python. "
++                    "Use external_connector runbook to write stock res.currency.rate "
++                    "(parameterized currencies), or promote Option A on Odoo.sh / "
++                    "self-host after sandbox prove. Never Prefer / Nigeria Autopilot "
++                    "stock_reuse alone for live HTTP fetch. Completeness ≠ Cert. "
++                    "Promote stays human."
++                ),
++                notes=["option_a_authored: fx_rate_external_connector"],
++            )
++        return GenerationPlan(
++            capability="option_a_authored",
++            grain="full_app",
++            module_delivery=True,
++            needs_clarification=clarify,
++            honesty=(
++                "FX / rate-provider CLASS — Option A module writes stock "
++                "res.currency.rate (parameterized currencies). CBN is the earned "
++                "gold shortcut inside this class; generic providers are LLM/scaffold "
++                "authored under gates. Never Prefer / Nigeria Autopilot stock_reuse "
++                "alone for live HTTP. Online → connector/.sh alternatives. "
++                "Completeness ≠ Cert. Promote stays human."
++            ),
++            notes=["option_a_authored: fx_rate_provider_sync"],
++        )
++
+     try:
+         from app.ai_report_layout_scrub import is_report_layout_scrub_brief
+     except Exception:  # noqa: BLE001
+diff --git a/apps/api/app/ai_option_a_acceptance.py b/apps/api/app/ai_option_a_acceptance.py
+index 5ca3e95..c607c6e 100644
+--- a/apps/api/app/ai_option_a_acceptance.py
++++ b/apps/api/app/ai_option_a_acceptance.py
+@@ -49,6 +49,20 @@ def is_report_layout_scrub_prompt(prompt: str) -> bool:
+     return is_report_layout_scrub_brief(prompt)
+ 
+ 
++def is_fx_rate_provider_prompt(prompt: str) -> bool:
++    """FX / rate-provider sync CLASS — write stock res.currency.rate."""
++    from app.ai_fx_rate_class import is_fx_rate_provider_class_brief
++
++    return is_fx_rate_provider_class_brief(prompt)
++
++
++def fx_rate_online_connector_runbook(*, prompt: str = "") -> dict[str, Any]:
++    """Online honesty appendix for FX CLASS — connector runbook IR."""
++    from app.ai_fx_rate_class import online_connector_runbook
++
++    return online_connector_runbook(prompt=prompt)
++
++
+ def online_metadata_incomplete_interim(*, prompt: str = "", host_model: str = "sale.order") -> dict[str, Any]:
+     """Prefer/Studio % field alone on Online — incomplete interim for markup CLASS."""
+     from app.ai_markup_wht_class import online_metadata_incomplete_interim as _interim
+@@ -156,6 +170,10 @@ def acceptance_for_draft(draft: dict[str, Any], *, prompt: str = "") -> dict[str
+                 "report_xmlids": report_ids,
+             },
+         }
++    if is_fx_rate_provider_prompt(text):
++        from app.ai_fx_rate_class import acceptance_contract_for_prompt
++
++        return acceptance_contract_for_prompt(text, draft=draft)
+     checks: list[dict[str, Any]] = [
+         {"id": "field_labeled", "required": True},
+         {"id": "fields_present", "required": True},
+@@ -288,12 +306,21 @@ def ensure_python_field_strings(content: str) -> str:
+             return full
+         if _STRING_KW_RE.search(args):
+             return full
++        # Regex stops at the first ")"; nested Selection([...("a","b")]) or
++        # multi-line fields.Selection([...) captures are unbalanced — skip.
++        if args.count("(") != args.count(")") or "[" in args:
++            return full
+         label = _label_from_fname(fname)
+         insert = f"string={label!r}"
+         # Append after positional comodel (Many2one/One2many) — never
+         # `string=..., 'model'` which is a SyntaxError and blanks field extract.
+-        if args.strip():
+-            new_args = f"{args.strip()}, {insert}"
++        stripped = args.strip()
++        if stripped:
++            # Avoid `readonly=False,, string=...` when args already end with a comma.
++            if stripped.endswith(","):
++                new_args = f"{stripped} {insert}"
++            else:
++                new_args = f"{stripped}, {insert}"
+         else:
+             new_args = insert
+         return full[: m.start(2) - m.start(0)] + new_args + full[m.end(2) - m.start(0) :]
+@@ -508,6 +535,15 @@ def _run_one_check(
+         "no_tax_create",
+     }:
+         return _check_markup_wht_class(cid, draft=draft, hint=hint)
++    if cid in {
++        "writes_currency_rate",
++        "currencies_parameterized",
++        "no_x_fx_app",
++        "not_nigeria_autopilot_alone",
++        "gold_or_scaffold_present",
++        "online_honesty_appendix",
++    }:
++        return _check_fx_rate_class(cid, draft=draft, hint=hint)
+     return {"id": cid, "ok": True, "detail": "unknown check skipped", "repair_hint": hint}
+ 
+ 
+@@ -527,6 +563,29 @@ def _check_markup_wht_class(
+     return {"id": cid, "ok": ok, "detail": detail, "repair_hint": hint, "findings": findings}
+ 
+ 
++def _check_fx_rate_class(
++    cid: str,
++    *,
++    draft: dict[str, Any],
++    hint: str,
++) -> dict[str, Any]:
++    from app.ai_fx_rate_class import static_fx_rate_findings
++
++    findings = static_fx_rate_findings(
++        draft, prompt=str(draft.get("_user_prompt") or "")
++    )
++    ok = bool(findings.get(cid))
++    detail = (
++        "ok"
++        if ok
++        else (
++            f"failed — {cid} currencies={findings.get('quoted_currencies')} "
++            f"found={findings.get('found_currencies')}"
++        )
++    )
++    return {"id": cid, "ok": ok, "detail": detail, "repair_hint": hint, "findings": findings}
++
++
+ def _check_report_layout_scrub(
+     cid: str,
+     *,
+@@ -864,6 +923,8 @@ __all__ = [
+     "ensure_python_field_strings",
+     "is_sales_markup_prompt",
+     "is_report_layout_scrub_prompt",
++    "is_fx_rate_provider_prompt",
++    "fx_rate_online_connector_runbook",
+     "report_layout_online_checklist",
+     "online_metadata_incomplete_interim",
+     "python_fields_missing_labels",
+diff --git a/apps/api/app/ai_option_a_author.py b/apps/api/app/ai_option_a_author.py
+index 878442b..4c5db97 100644
+--- a/apps/api/app/ai_option_a_author.py
++++ b/apps/api/app/ai_option_a_author.py
+@@ -179,13 +179,36 @@ def seed_option_a_authored(prompt: str, plan: Any) -> dict[str, Any]:
+         ir["module_delivery"] = True
+         ir["gold_artifact_id"] = None
+ 
++    from app.ai_fx_rate_class import (
++        apply_generic_fx_scaffold,
++        is_cbn_class_match,
++        is_fx_rate_provider_class_brief,
++        resolve_fx_host_stamp,
++    )
+     from app.ai_report_layout_scrub import (
+         is_report_layout_scrub_brief,
+         report_scrub_host_from_prompt,
+         scaffold_address_scrub_blocks,
+     )
+ 
+-    if is_report_layout_scrub_brief(prompt):
++    if is_fx_rate_provider_class_brief(prompt) and not is_cbn_class_match(prompt):
++        apply_generic_fx_scaffold(draft, prompt=prompt)
++        if isinstance(ir, dict):
++            stamp = resolve_fx_host_stamp(prompt=prompt)
++            for k, v in stamp.items():
++                if k in {
++                    "delivery_lane",
++                    "artifact_kind",
++                    "prove_status",
++                    "delivery_lane_copy",
++                    "artifact_kind_copy",
++                    "promote_human",
++                    "completeness_is_not_cert",
++                }:
++                    ir[k] = v
++            ir["class_id"] = "fx_rate_provider_sync"
++            ir["fx_member"] = stamp.get("fx_member")
++    elif is_report_layout_scrub_brief(prompt):
+         scrub_host = report_scrub_host_from_prompt(prompt)
+         draft["models"] = [{"model": scrub_host, "mode": "inherit", "fields": []}]
+         draft["depends"] = [module_for_model(scrub_host)]
+diff --git a/apps/api/app/option_a_templates.py b/apps/api/app/option_a_templates.py
+index 251cf4a..e951a38 100644
+--- a/apps/api/app/option_a_templates.py
++++ b/apps/api/app/option_a_templates.py
+@@ -296,6 +296,11 @@ def _currency_rate_cbn_draft(
+                 },
+             ],
+         }
++        ir["class_id"] = "fx_rate_provider_sync"
++        ir["fx_member"] = "cbn_gold"
++    from app.ai_option_a_acceptance import stamp_option_a_acceptance
++
++    stamp_option_a_acceptance(draft, prompt=prompt)
+     return draft
+ 
+ 
+diff --git a/apps/api/tests/test_fx_rate_class.py b/apps/api/tests/test_fx_rate_class.py
+new file mode 100644
+index 0000000..c673e09
+--- /dev/null
++++ b/apps/api/tests/test_fx_rate_class.py
+@@ -0,0 +1,204 @@
++"""P1 Job 1 — FX / rate-provider sync CLASS (parameterized mutants)."""
++
++from __future__ import annotations
++
++import os
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_fx_rate_class import (
++    CLASS_INTENT_ID,
++    CLASS_MARKER,
++    DEFAULT_CURRENCIES,
++    GOLD_CBN_ID,
++    class_mutant_briefs,
++    is_cbn_class_match,
++    is_fx_rate_provider_class_brief,
++    is_nigeria_autopilot_stock_only,
++    online_connector_runbook,
++    quoted_currencies_from_prompt,
++    resolve_fx_host_stamp,
++    resolve_fx_member,
++    static_fx_rate_findings,
++)
++from app.ai_generation_engine import classify_generation, maybe_seed_from_capability
++from app.ai_option_a_acceptance import (
++    fx_rate_online_connector_runbook,
++    is_fx_rate_provider_prompt,
++    run_acceptance_smoke,
++    stamp_option_a_acceptance,
++)
++from app.ai_option_a_gate import evaluate_authoring_gate
++from app.ai_option_a_policy import policy_findings
++from app.intent_router import route_intent
++from app.intent_router.loader import reload_catalog
++
++
++NIGERIA_AUTOPILOT = (
++    "We are a company in Lagos, Nigeria. Stand up Community Accounting. "
++    "Company currency NGN. Custom residual: None. Capability path: stock_first."
++)
++PREFER_ONLY = "Prefer for delivery checkbox on Contacts under Delivery group."
++
++
++@pytest.fixture(autouse=True)
++def _reload():
++    reload_catalog()
++    yield
++    reload_catalog()
++
++
++def test_mutants_detect_as_class():
++    for row in class_mutant_briefs():
++        assert is_fx_rate_provider_class_brief(row["prompt"]), row["id"]
++        assert is_fx_rate_provider_prompt(row["prompt"]), row["id"]
++
++
++def test_nigeria_autopilot_and_prefer_not_this_class():
++    assert is_nigeria_autopilot_stock_only(NIGERIA_AUTOPILOT) is True
++    assert is_fx_rate_provider_class_brief(NIGERIA_AUTOPILOT) is False
++    assert is_fx_rate_provider_class_brief(PREFER_ONLY) is False
++    assert is_fx_rate_provider_class_brief("activate NGN for Nigeria") is False
++
++
++def test_cbn_mutants_select_gold():
++    for row in class_mutant_briefs():
++        if not row["id"].startswith("cbn"):
++            continue
++        assert is_cbn_class_match(row["prompt"]), row["id"]
++        assert resolve_fx_member(row["prompt"]) == "cbn_gold"
++        plan = classify_generation(row["prompt"])
++        assert plan.gold_artifact_id == GOLD_CBN_ID, row["id"]
++        assert plan.capability == "option_a_standalone"
++        seed = maybe_seed_from_capability(row["prompt"])
++        assert seed is not None
++        assert seed.get("technical_name") == GOLD_CBN_ID
++        contract = seed.get("_option_a_acceptance") or {}
++        assert contract.get("intent_id") == CLASS_INTENT_ID, row["id"]
++        ids = {c["id"] for c in contract.get("checks") or []}
++        assert "writes_currency_rate" in ids
++        assert "currencies_parameterized" in ids
++        assert "no_x_fx_app" in ids
++        assert contract.get("delivery_lane") == "module_sh_or_self"
++        assert contract.get("artifact_kind") == "external_connector"
++
++
++def test_generic_mutants_option_a_scaffold():
++    for row in class_mutant_briefs():
++        if row["id"].startswith("cbn") or row["id"] == "online_connector":
++            continue
++        plan = classify_generation(row["prompt"])
++        assert plan.capability == "option_a_authored", (row["id"], plan)
++        assert plan.gold_artifact_id is None
++        assert plan.module_delivery is True
++        assert "Prefer" not in plan.honesty or "Never Prefer" in plan.honesty
++        seed = maybe_seed_from_capability(row["prompt"])
++        assert seed is not None, row["id"]
++        assert seed.get("_pipeline") == "option_a_fx_rate_class", row["id"]
++        blob = "\n".join(
++            str(b.get("content") or "") for b in seed.get("custom_code_blocks") or []
++        )
++        assert CLASS_MARKER in blob, row["id"]
++        assert "res.currency.rate" in blob, row["id"]
++        assert '_name = "x_fx"' not in blob and "model=\"x_fx\"" not in blob
++        findings = static_fx_rate_findings(seed, prompt=row["prompt"])
++        assert findings["writes_currency_rate"], (row["id"], findings)
++        assert findings["currencies_parameterized"], (row["id"], findings)
++        assert findings["no_x_fx_app"], (row["id"], findings)
++        assert findings["gold_or_scaffold_present"], (row["id"], findings)
++
++
++def test_online_connector_member_and_runbook():
++    row = next(r for r in class_mutant_briefs() if r["id"] == "online_connector")
++    assert resolve_fx_member(row["prompt"]) == "external_connector"
++    plan = classify_generation(row["prompt"])
++    assert plan.capability == "option_a_authored"
++    assert "external_connector" in " ".join(plan.notes) or "connector" in plan.honesty.lower()
++    runbook = online_connector_runbook(prompt=row["prompt"])
++    assert runbook["delivery_lane"] == "external_connector"
++    assert runbook["online_python_promote"] is False
++    assert "USD" in runbook["quoted_currencies"]
++    assert fx_rate_online_connector_runbook(prompt=row["prompt"])["intent_id"] == (
++        "fx_rate_online_connector_runbook"
++    )
++    stamp = resolve_fx_host_stamp(prompt=row["prompt"], hosting_hint="online")
++    assert stamp["delivery_lane"] == "external_connector"
++    assert stamp["online_python_promote"] is False
++
++
++def test_host_stamps_module_vs_online():
++    cbn = class_mutant_briefs()[0]["prompt"]
++    sh = resolve_fx_host_stamp(prompt=cbn, hosting_hint="odoo_sh", gold_artifact_id=GOLD_CBN_ID)
++    assert sh["delivery_lane"] == "module_sh_or_self"
++    assert sh["artifact_kind"] == "external_connector"
++    online = resolve_fx_host_stamp(prompt=cbn, hosting_hint="online", gold_artifact_id=GOLD_CBN_ID)
++    assert online["delivery_lane"] == "external_connector"
++    assert "online_block" in online
++
++
++def test_quoted_currencies_parameterized():
++    assert quoted_currencies_from_prompt("rates for USD and JPY") == ("USD", "JPY")
++    assert quoted_currencies_from_prompt("pull live FX rates") == DEFAULT_CURRENCIES
++
++
++def test_nigeria_not_gold():
++    plan = classify_generation(NIGERIA_AUTOPILOT)
++    assert plan.gold_artifact_id != GOLD_CBN_ID
++    assert plan.capability != "option_a_standalone" or plan.gold_artifact_id is None
++
++
++def test_acceptance_smoke_cbn_and_generic():
++    cbn = class_mutant_briefs()[0]["prompt"]
++    seed = maybe_seed_from_capability(cbn)
++    assert seed is not None
++
++    def _rpc_fail(*_a, **_k):
++        raise RuntimeError("no live odoo in unit test")
++
++    result = run_acceptance_smoke(seed, execute_kw=_rpc_fail)
++    assert result["ok"] is True, result
++    by_id = {c["id"]: c for c in result["checks"]}
++    assert by_id["writes_currency_rate"]["ok"]
++    assert by_id["currencies_parameterized"]["ok"]
++    assert by_id["no_x_fx_app"]["ok"]
++    assert by_id["not_nigeria_autopilot_alone"]["ok"]
++    assert by_id["gold_or_scaffold_present"]["ok"]
++
++    generic = next(r for r in class_mutant_briefs() if r["id"] == "generic_http_provider")
++    gseed = maybe_seed_from_capability(generic["prompt"])
++    assert gseed is not None
++    gresult = run_acceptance_smoke(gseed, execute_kw=_rpc_fail)
++    assert gresult["ok"] is True, gresult
++
++
++def test_policy_and_gate_green_on_generic_scaffold():
++    row = next(r for r in class_mutant_briefs() if r["id"] == "generic_http_provider")
++    seed = maybe_seed_from_capability(row["prompt"])
++    assert seed is not None
++    findings = policy_findings(seed)
++    assert findings == [], findings
++    gate = evaluate_authoring_gate(seed)
++    assert gate["status"] == "pass", gate
++
++
++def test_intent_routes_fx_to_studio_not_prefer():
++    r = route_intent(
++        "pull CBN FX rates into Accounting Automatic Currency Rates",
++        connection_id="c1",
++    )
++    top = r["matches"][0]
++    assert top["feature_id"] in {"studio.app", "draft.studio"}
++    assert top["feature_id"] != "designer"
++
++
++def test_stamp_option_a_acceptance_on_generic():
++    row = next(r for r in class_mutant_briefs() if r["id"] == "ecb_service")
++    seed = maybe_seed_from_capability(row["prompt"])
++    assert seed is not None
++    contract = stamp_option_a_acceptance(seed, prompt=row["prompt"])
++    assert contract["intent_id"] == CLASS_INTENT_ID
++    assert contract["artifact_kind"] == "external_connector"
+-- 
+2.47.3
+

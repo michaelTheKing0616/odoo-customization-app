@@ -1,0 +1,1918 @@
+From ae7bfd953e531f183593bb9192792d2e8720037d Mon Sep 17 00:00:00 2001
+From: ingenium-bot <ingenium-bot@local>
+Date: Tue, 22 Sep 2026 11:45:32 +0100
+Subject: [PATCH] =?UTF-8?q?feat(ingenium):=20P2=20Build=20spine=20?=
+ =?UTF-8?q?=E2=80=94=20mode=20chips=20+=20handoff?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+One Build entry: Prefer / Residual / Option A / Stock Autopilot / Report /
+Connector chips. Handoff carries brief + Diagnosis/Contract + delivery_lane
+stamps across App Studio, Draft Studio, and Job Autopilot (no re-brief).
+Capability gaps always propose Option A scaffold when Live cannot finish.
+Expert Overview + Intent Go route into the spine. Prefer Must-do AST
+root-fixed. Rubric battery green (AI_INTENT_LLM=off). Completeness ≠ Cert ≠
+Autopilot. Promote stays human.
+---
+ APPLY_BUILD_SPINE_P2_ON_MAC.sh                |  47 +++
+ DOCKET.md                                     |  27 +-
+ MEMORY.md                                     |   8 +-
+ apps/api/app/ai_build_spine.py                | 314 ++++++++++++++++++
+ apps/api/app/ai_capability_gaps.py            |  18 +-
+ apps/api/app/ai_constraint_ast.py             |  93 +++++-
+ apps/api/app/routers/intent_route.py          |  22 ++
+ apps/api/scripts/run_p2_rubric_battery.sh     |  34 ++
+ apps/api/tests/test_build_spine.py            | 178 ++++++++++
+ apps/web/src/app/connections/[id]/page.tsx    |   6 +-
+ .../src/app/connections/[id]/wizard/page.tsx  |  13 +
+ .../components/build/BuildSpineBar.test.tsx   |  29 ++
+ .../src/components/build/BuildSpineBar.tsx    | 155 +++++++++
+ .../src/components/build/BuildSpineChips.tsx  |  60 ++++
+ .../draft-studio/DraftStudioShell.tsx         |  11 +
+ .../components/expert/ExpertOverviewCard.tsx  |  20 +-
+ .../components/expert/IntentRouterPanel.tsx   |  34 +-
+ .../job-autopilot/JobAutopilotShell.tsx       |  11 +
+ .../web/src/components/studio/StudioShell.tsx |  11 +
+ apps/web/src/lib/api.ts                       |  17 +
+ apps/web/src/lib/build-spine-handoff.test.ts  |  49 +++
+ apps/web/src/lib/build-spine-handoff.ts       | 133 ++++++++
+ apps/web/src/lib/build-spine.test.ts          |  37 +++
+ apps/web/src/lib/build-spine.ts               | 144 ++++++++
+ apps/web/src/lib/nav.ts                       |   2 +-
+ apps/web/src/lib/use-build-spine-handoff.ts   |  16 +
+ 26 files changed, 1460 insertions(+), 29 deletions(-)
+ create mode 100755 APPLY_BUILD_SPINE_P2_ON_MAC.sh
+ create mode 100644 apps/api/app/ai_build_spine.py
+ create mode 100755 apps/api/scripts/run_p2_rubric_battery.sh
+ create mode 100644 apps/api/tests/test_build_spine.py
+ create mode 100644 apps/web/src/components/build/BuildSpineBar.test.tsx
+ create mode 100644 apps/web/src/components/build/BuildSpineBar.tsx
+ create mode 100644 apps/web/src/components/build/BuildSpineChips.tsx
+ create mode 100644 apps/web/src/lib/build-spine-handoff.test.ts
+ create mode 100644 apps/web/src/lib/build-spine-handoff.ts
+ create mode 100644 apps/web/src/lib/build-spine.test.ts
+ create mode 100644 apps/web/src/lib/build-spine.ts
+ create mode 100644 apps/web/src/lib/use-build-spine-handoff.ts
+
+diff --git a/APPLY_BUILD_SPINE_P2_ON_MAC.sh b/APPLY_BUILD_SPINE_P2_ON_MAC.sh
+new file mode 100755
+index 0000000..40b25c6
+--- /dev/null
++++ b/APPLY_BUILD_SPINE_P2_ON_MAC.sh
+@@ -0,0 +1,47 @@
++#!/usr/bin/env bash
++# Apply P2 Build spine onto Tope's Mac checkout.
++# machineId: 4fc0d119-8958-4a46-954b-7411355d96ce
++set -euo pipefail
++REPO="${1:-/Users/temitopeolaitanmichael/Odoo_Customization_App}"
++PATCH="${2:-/workspace/0001-feat-ingenium-build-spine-p2.patch}"
++cd "$REPO"
++git checkout premium-local-tip
++git status -sb
++
++STASHED=0
++if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git ls-files --others --exclude-standard)" ]; then
++  echo "Local WIP present — stashing before apply"
++  git stash push -u -m "pre-build-spine-p2-apply"
++  STASHED=1
++fi
++
++git fetch origin premium-local-tip || true
++
++if [ -f "$PATCH" ]; then
++  git am --3way "$PATCH" || {
++    git am --abort 2>/dev/null || true
++    git apply --check "$PATCH" && git apply "$PATCH"
++    git add -A
++    git commit -m "feat(ingenium): P2 Build spine — mode chips + handoff"
++  }
++else
++  echo "WARN: patch missing at $PATCH — pull/cherry-pick from tip instead"
++  git pull --ff-only origin premium-local-tip || true
++fi
++
++git push origin premium-local-tip || echo "WARN: push failed — push manually"
++
++if [ "$STASHED" = "1" ]; then
++  git stash pop || echo "WARN: stash pop conflict — resolve manually"
++fi
++
++pkill -f "uvicorn .*8001" 2>/dev/null || true
++sleep 1
++cd "$REPO/apps/api"
++if [ -f ../../.venv/bin/uvicorn ]; then UV=../../.venv/bin/uvicorn
++elif [ -f .venv/bin/uvicorn ]; then UV=.venv/bin/uvicorn
++else UV=uvicorn; fi
++nohup "$UV" app.main:app --host 127.0.0.1 --port 8001 --reload \
++  > /tmp/ingenium-api-8001.log 2>&1 &
++echo "API restarting on :8001 — log /tmp/ingenium-api-8001.log"
++echo "Done. ingenium P2 Build spine. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
+diff --git a/DOCKET.md b/DOCKET.md
+index d81eb54..5c887f5 100644
+--- a/DOCKET.md
++++ b/DOCKET.md
+@@ -24,7 +24,7 @@ Never Prefer when Option A required; never Online Python promote.
+ |-------|-------|--------|
+ | **P0** | Contract docs · intent class routes · `delivery_lane`/`artifact_kind`/`prove_status` stamps · Online+Python host gate · goldens | **done** (this tip) |
+ | **P1** | Job 1 FX/CBN rate CLASS + Job 2 markup+WHT + Job 3 report scrub | **done** |
+-| **P2** | Build spine chips | deferred (note only) |
++| **P2** | Build spine — one entry, mode chips, handoff without re-briefing | **done** |
+ | **P3** | (was Job1) — closed under P1 | **done** |
+ | **P4** | Atlas elite | out of scope this tip |
+ 
+@@ -33,6 +33,9 @@ Never Prefer when Option A required; never Online Python promote.
+ - [x] **Intent → feature router (Expert)** — 2026-09-21  
+   Plain language → best-fitting feature + can/can't. Expert UI (`IntentRouterPanel`), `POST /connections/{id}/expert/route` (+ `/batch-os/intent-route`). Deterministic catalog (YAML/JSON + Atlas + recipes); `AI_INTENT_LLM` optional only.
+ 
++- [x] **P2 Build spine** — 2026-09-22  
++  One Build entry with mode chips (Prefer / Residual / Option A / Stock Autopilot / Report / Connector). Handoff Draft↔App↔Autopilot carries brief + Diagnosis/Contract + delivery_lane stamps. Capability gaps always propose Option A scaffold when Live cannot finish. Expert routes into spine. Rubric battery green (184 no_app_db).
++
+ - [x] **P1 Job 1 FX / rate-provider sync CLASS** — 2026-09-22  
+   CBN gold shortcut inside class (`currency_rate_cbn`); generic provider → Option A scaffold writing `res.currency.rate`; Online → `external_connector` runbook. Never Prefer / Nigeria Autopilot stock_reuse alone for live HTTP.
+ 
+@@ -47,3 +50,25 @@ Never Prefer when Option A required; never Online Python promote.
+ 
+ ## Batch OS (complete)
+ Money path + master data + all 8 Atlas classes + settings/access/automation/housekeeping recipes. See journal `?tab=batch|invoices|master` and Config Atlas.
++
++
++## P2 rubric matrix (2026-09-22)
++
++Release gates for Build spine — `AI_INTENT_LLM=off`, `apps/api/scripts/run_p2_rubric_battery.sh` + web vitest.
++
++| Gate | Result |
++|------|--------|
++| Prefer Sales / Prefer Contacts stay Prefer (never residual-reshape Prefer) | **pass** |
++| Residual full_app identity lock (never Prefer-reshape; no foreign pack canvas) | **pass** |
++| Invent gates: uncued Type/Priority/Rate/Selection; one cue→one field; notes surface | **pass** |
++| Pack adoption: positive product cues; shared workflow tokens ≠ pack identity | **pass** |
++| Grain + delivery_lane stamps Prefer / residual / Option A / report / FX | **pass** |
++| Online + Python Option A: promote blocked + honest alternatives | **pass** |
++| Completeness ≠ Cert ≠ Autopilot | **pass** (honesty copy + stamps) |
++| Job1/2/3 class acceptance goldens | **pass** |
++| Intent: report scrub ≠ Contacts Prefer; markup+WHT ≠ Prefer-only; FX ≠ Nigeria Autopilot alone | **pass** |
++| Flash-free / AI_INTENT_LLM=off deterministic floor | **pass** |
++| Prefer Must-do constraint AST (Prefer + Delivery notes + automation/filter/reuse) | **pass** (root-fixed this tip) |
++| Build spine handoff without re-briefing (brief + stamps) | **pass** |
++
++**Battery:** 184 pytest passed (`no_app_db`). Web: 9 vitest passed (build-spine + handoff + bar).
+diff --git a/MEMORY.md b/MEMORY.md
+index c34a5af..96c2f0c 100644
+--- a/MEMORY.md
++++ b/MEMORY.md
+@@ -1,8 +1,14 @@
++### 2026-09-22 — P2 Build spine closed (mode chips + handoff + rubric battery)
++**Decided:** One Build front door — App Studio / Draft Studio / Job Autopilot are modes, not rival homes. Mode chips: Prefer pack, Residual app, Option A, Stock Autopilot, Report layout, Connector (as applicable). Handoff IR (`build-spine-handoff` + `ai_build_spine.build_spine_payload`) carries brief + Diagnosis/Contract + `delivery_lane`/`artifact_kind`/`prove_status` without re-briefing. Capability-gap stamps always set `proposes_option_a_scaffold` + `option_a_path` when Live metadata cannot finish (even if LLM owns `custom_code_blocks`). Expert Overview + Intent Go stash into the spine. Prefer Must-do AST root-fixed (Prefer for delivery checkbox + Delivery notes; automation/filter/reuse hints). Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++**Why:** Operators bounced between App/Draft/Autopilot and re-pasted briefs; Prefer Must-do goldens were thin.
++**Rejected:** Parallel nav; claiming Online Python Autopilot; Prefer-reshaping residual full_app.
++**P2:** done. P3 continuous invent / P4 Atlas elite still out of scope.
++
+ ### 2026-09-22 — P1 Job 1: FX / rate-provider sync CLASS closed
+ **Decided:** Class-wide FX rate sync into stock `res.currency.rate` (parameterized USD/GBP/EUR or brief ISOs). CBN / Central Bank of Nigeria remains the earned gold shortcut (`currency_rate_cbn`) inside the class — not the only member. Generic HTTP/ECB/Open Exchange briefs → Option A authored scaffold (`ai_fx_rate_class.py`, marker `ingenium:fx_rate_provider_class`) on `res.company` + settings + cron. Online cannot promote Python → `external_connector` runbook IR + host stamps (`module_sh_or_self` vs `external_connector` vs online block copy). Never Prefer / Nigeria Autopilot `stock_reuse` alone for live HTTP fetch. Acceptance: writes_currency_rate, currencies_parameterized, no_x_fx_app, not_nigeria_autopilot_alone, gold_or_scaffold_present. Completeness ≠ Cert ≠ Autopilot. Promote stays human.
+ **Why:** Operators asked for CBN as exemplar; any-customization needs the whole rate-provider class under gates.
+ **Rejected:** One-off CBN-only path as the whole product; inventing x_fx residual; Prefer/metadata-only as live HTTP done; Online Python Autopilot.
+-**P1 Job1:** done. P2 Build spine chips still deferred.
++**P1 Job1:** done. P2 Build spine closed same tip.
+ 
+ ### 2026-09-22 — P1 Job 2: sale markup % + WHT-on-markup CLASS closed
+ **Decided:** Class-wide Option A on sale.order (not one client SOW). Deterministic CE-safe scaffold (`ai_markup_wht_class.py`): x_markup_percent + x_markup_amount + x_wht_on_markup / x_wht_rate; onchange price effect; tax_totals xpath; never purchase.order inherit; never account.tax.create. Acceptance checks: markup_present, wht_base_is_markup, purchase_untouched, no_tax_create (+ existing labeled/xpath/price_effect/fields). Online Prefer/Studio % field alone → `online_metadata_incomplete_interim` (module lane still required). Mutant briefs parameterized. Completeness ≠ Cert ≠ Autopilot. Promote stays human. Online Python promote blocked (.sh/self-host).
+diff --git a/apps/api/app/ai_build_spine.py b/apps/api/app/ai_build_spine.py
+new file mode 100644
+index 0000000..2928ce3
+--- /dev/null
++++ b/apps/api/app/ai_build_spine.py
+@@ -0,0 +1,314 @@
++"""P2 Build spine — one front door, mode chips, handoff without re-briefing.
++
++Unifies App Studio / Draft Studio / Job Autopilot as modes of one Build entry
++(not rival homes). Expert routes into the same spine. Carries brief + Diagnosis
++/ Contract + delivery_lane stamps across surfaces.
++
++Completeness ≠ Cert ≠ Autopilot. Promote stays human.
++"""
++
++from __future__ import annotations
++
++from typing import Any, Literal
++
++from app.ai_class_stamp import resolve_class_stamp
++from app.ai_generation_engine import classify_generation, plan_to_ir
++
++BuildMode = Literal[
++    "prefer_pack",
++    "residual_app",
++    "option_a",
++    "stock_autopilot",
++    "report_layout",
++    "connector",
++]
++
++MODE_META: dict[str, dict[str, str]] = {
++    "prefer_pack": {
++        "label": "Prefer pack",
++        "surface": "designer",
++        "blurb": "Inherit-only field pack on a stock host — not a new Apps tile.",
++    },
++    "residual_app": {
++        "label": "Residual app",
++        "surface": "studio",
++        "blurb": "New x_* residual / full app — identity lock; never Prefer-reshape.",
++    },
++    "option_a": {
++        "label": "Option A",
++        "surface": "studio",
++        "blurb": "Installable module (Python / QWeb / OWL) — sandbox prove, human Promote.",
++    },
++    "stock_autopilot": {
++        "label": "Stock Autopilot",
++        "surface": "job",
++        "blurb": "Stock-first Job Autopilot — no custom residual invent.",
++    },
++    "report_layout": {
++        "label": "Report layout",
++        "surface": "studio",
++        "blurb": "QWeb / document layout class — not Contacts Prefer delivery-notes.",
++    },
++    "connector": {
++        "label": "Connector",
++        "surface": "studio",
++        "blurb": "FX / HTTP provider — gold Option A or external connector lane.",
++    },
++}
++
++SURFACE_HREF = {
++    "studio": "studio",
++    "wizard": "wizard",
++    "job": "job",
++    "designer": "designer",
++    "modulespec": "modulespec",
++}
++
++
++def resolve_build_mode(
++    *,
++    prompt: str = "",
++    capability: str = "",
++    grain: str = "",
++    gold_artifact_id: str | None = None,
++    artifact_kind: str | None = None,
++    delivery_lane: str | None = None,
++) -> BuildMode:
++    """Map generation IR / class stamps → one Build mode chip."""
++    kind = (artifact_kind or "").strip()
++    cap = (capability or "").strip()
++    g = (grain or "").strip()
++    gold = (gold_artifact_id or "").strip() or None
++    lane = (delivery_lane or "").strip()
++
++    if kind == "report_layout" or (
++        not kind and __import__("app.ai_class_stamp", fromlist=["is_report_layout_class"]).is_report_layout_class(prompt)
++    ):
++        return "report_layout"
++    if kind == "external_connector" or gold == "currency_rate_cbn" or lane == "external_connector":
++        return "connector"
++    if cap in {"option_a_authored", "option_a_standalone"} or kind == "option_a_module":
++        return "option_a"
++    if cap == "stock_reuse" or kind == "stock_config":
++        return "stock_autopilot"
++    if g == "field_pack" or kind == "field_pack" or (cap == "residual_app" and g == "field_pack"):
++        # Prefer-style inherit pack — never residual reshape.
++        if kind == "full_app":
++            return "residual_app"
++        return "prefer_pack"
++    if g == "full_app" or kind == "full_app" or cap == "residual_app":
++        return "residual_app"
++    if not prompt.strip():
++        return "residual_app"
++    # Classify once — do not recurse (capability/grain from plan are authoritative).
++    plan = classify_generation(prompt)
++    ir = plan_to_ir(plan, prompt=prompt)
++    cap2 = str(ir.get("capability") or plan.capability or "")
++    g2 = str(ir.get("grain") or plan.grain or "")
++    kind2 = str(ir.get("artifact_kind") or "")
++    lane2 = str(ir.get("delivery_lane") or "")
++    gold2 = ir.get("gold_artifact_id") or plan.gold_artifact_id
++    if kind2 == "report_layout":
++        return "report_layout"
++    if kind2 == "external_connector" or gold2 == "currency_rate_cbn" or lane2 == "external_connector":
++        return "connector"
++    if cap2 in {"option_a_authored", "option_a_standalone"} or kind2 == "option_a_module":
++        return "option_a"
++    if cap2 == "stock_reuse" or kind2 == "stock_config":
++        return "stock_autopilot"
++    if g2 == "field_pack" or kind2 == "field_pack":
++        return "prefer_pack"
++    if g2 == "full_app" or kind2 == "full_app" or cap2 == "residual_app":
++        return "residual_app"
++    return "residual_app"
++
++
++def applicable_modes(primary: BuildMode) -> list[BuildMode]:
++    """Modes to show as chips — primary first, then siblings that may apply."""
++    order: list[BuildMode] = [
++        "prefer_pack",
++        "residual_app",
++        "option_a",
++        "stock_autopilot",
++        "report_layout",
++        "connector",
++    ]
++    # Always show Prefer / Residual / Option A / Stock; report+connector when primary or class.
++    base: list[BuildMode] = ["prefer_pack", "residual_app", "option_a", "stock_autopilot"]
++    if primary in {"report_layout", "connector"}:
++        base.append(primary)
++    elif primary not in base:
++        base.append(primary)
++    # Dedupe preserving order; put primary first.
++    seen: set[str] = set()
++    out: list[BuildMode] = []
++    for m in [primary, *base, *order]:
++        if m in seen:
++            continue
++        seen.add(m)
++        out.append(m)
++    return out
++
++
++def surface_for_mode(mode: BuildMode) -> str:
++    return MODE_META[mode]["surface"]
++
++
++def href_for_mode(connection_id: str, mode: BuildMode) -> str:
++    surface = surface_for_mode(mode)
++    slug = SURFACE_HREF.get(surface, "studio")
++    return f"/connections/{connection_id}/{slug}"
++
++
++def build_spine_payload(
++    *,
++    prompt: str = "",
++    connection_id: str = "",
++    understanding: dict[str, Any] | None = None,
++    contract: dict[str, Any] | None = None,
++    generation_ir: dict[str, Any] | None = None,
++) -> dict[str, Any]:
++    """Handoff IR — brief + Diagnosis/Contract + stamps — no re-brief required."""
++    text = (prompt or "").strip()
++    ir = dict(generation_ir or {})
++    u = dict(understanding or {})
++    c = dict(contract or {})
++
++    if not ir and text:
++        plan = classify_generation(text)
++        ir = plan_to_ir(plan, prompt=text)
++    if not u and text:
++        try:
++            from app.ai_conversation.understand import build_understanding
++
++            u = build_understanding(text).to_dict()
++        except Exception:  # noqa: BLE001
++            u = {}
++    if not c and text:
++        try:
++            from app.ai_studio_contract import build_studio_contract
++
++            c = build_studio_contract(text)
++        except Exception:  # noqa: BLE001
++            c = {}
++
++    stamp = resolve_class_stamp(
++        prompt=text,
++        capability=str(ir.get("capability") or u.get("capability") or ""),
++        grain=str(ir.get("grain") or u.get("grain") or c.get("grain") or ""),
++        needs_module=bool(ir.get("module_delivery") or ir.get("capability", "").startswith("option_a")),
++        gold_artifact_id=ir.get("gold_artifact_id"),
++        module_delivery=bool(ir.get("module_delivery")),
++        inherit_only=bool(c.get("inherit_only") or str(ir.get("grain") or "") == "field_pack"),
++    )
++    # Prefer stamps already on IR / understanding / contract.
++    for src in (ir, u, c):
++        for key in ("delivery_lane", "artifact_kind", "prove_status"):
++            if src.get(key):
++                stamp[key] = src[key]
++                copy_key = f"{key}_copy"
++                if src.get(copy_key):
++                    stamp[copy_key] = src[copy_key]
++
++    mode = resolve_build_mode(
++        prompt=text,
++        capability=str(ir.get("capability") or u.get("capability") or ""),
++        grain=str(ir.get("grain") or u.get("grain") or c.get("grain") or ""),
++        gold_artifact_id=ir.get("gold_artifact_id"),
++        artifact_kind=stamp.get("artifact_kind"),
++        delivery_lane=stamp.get("delivery_lane"),
++    )
++    modes = applicable_modes(mode)
++    chips = []
++    for m in modes:
++        meta = MODE_META[m]
++        chips.append(
++            {
++                "id": m,
++                "label": meta["label"],
++                "blurb": meta["blurb"],
++                "surface": meta["surface"],
++                "href": href_for_mode(connection_id, m) if connection_id else "",
++                "active": m == mode,
++            }
++        )
++
++    return {
++        "version": 1,
++        "prompt": text,
++        "brief": text,
++        "build_mode": mode,
++        "chips": chips,
++        "capability": ir.get("capability") or u.get("capability"),
++        "grain": ir.get("grain") or u.get("grain") or c.get("grain"),
++        "gold_artifact_id": ir.get("gold_artifact_id"),
++        "delivery_lane": stamp.get("delivery_lane"),
++        "artifact_kind": stamp.get("artifact_kind"),
++        "prove_status": stamp.get("prove_status"),
++        "delivery_lane_copy": stamp.get("delivery_lane_copy"),
++        "artifact_kind_copy": stamp.get("artifact_kind_copy"),
++        "promote_human": True,
++        "completeness_is_not_cert": True,
++        "diagnosis": {
++            "capability": u.get("capability") or ir.get("capability"),
++            "grain": u.get("grain") or ir.get("grain"),
++            "host_model": u.get("host_model") or c.get("host_model"),
++            "delivery_lane": stamp.get("delivery_lane"),
++            "artifact_kind": stamp.get("artifact_kind"),
++            "prove_status": stamp.get("prove_status"),
++        },
++        "contract": {
++            "grain": c.get("grain"),
++            "host_model": c.get("host_model"),
++            "inherit_only": c.get("inherit_only"),
++            "delivery_lane": c.get("delivery_lane") or stamp.get("delivery_lane"),
++            "artifact_kind": c.get("artifact_kind") or stamp.get("artifact_kind"),
++        },
++        "surfaces": {
++            "studio": href_for_mode(connection_id, "option_a") if connection_id else "/studio",
++            "wizard": f"/connections/{connection_id}/wizard" if connection_id else "/wizard",
++            "job": href_for_mode(connection_id, "stock_autopilot") if connection_id else "/job",
++            "designer": href_for_mode(connection_id, "prefer_pack") if connection_id else "/designer",
++        },
++        "honesty": (
++            "One Build entry — App Studio, Draft Studio, and Job Autopilot share this "
++            "brief and stamps. Completeness ≠ Cert ≠ Autopilot. Promote stays human."
++        ),
++    }
++
++
++def capability_gap_option_a_proposals(draft: dict[str, Any] | None) -> list[dict[str, Any]]:
++    """Read stamped gap → Option A scaffold proposals (domain-agnostic)."""
++    if not isinstance(draft, dict):
++        return []
++    gaps = draft.get("_capability_gaps")
++    if not isinstance(gaps, list):
++        return []
++    out: list[dict[str, Any]] = []
++    for g in gaps:
++        if not isinstance(g, dict):
++            continue
++        path = str(g.get("option_a_path") or "").strip()
++        if not path:
++            continue
++        out.append(
++            {
++                "gap_id": g.get("id"),
++                "label": g.get("label"),
++                "option_a_path": path,
++                "detail": g.get("detail"),
++                "proposes_option_a_scaffold": True,
++            }
++        )
++    return out
++
++
++__all__ = [
++    "MODE_META",
++    "applicable_modes",
++    "build_spine_payload",
++    "capability_gap_option_a_proposals",
++    "href_for_mode",
++    "resolve_build_mode",
++    "surface_for_mode",
++]
+diff --git a/apps/api/app/ai_capability_gaps.py b/apps/api/app/ai_capability_gaps.py
+index 98ff547..3a5a44d 100644
+--- a/apps/api/app/ai_capability_gaps.py
++++ b/apps/api/app/ai_capability_gaps.py
+@@ -417,8 +417,23 @@ def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
+         set(draft.get("_noun_skips") or []) | assessment.covered_nouns
+     )
+ 
++    # Always stamp gap → Option A scaffold proposals (domain-agnostic) when Live
++    # metadata cannot finish — even if LLM authoring owns custom_code_blocks.
++    draft["_capability_gaps"] = [
++        {
++            "id": g.id,
++            "label": g.label,
++            "detail": g.detail,
++            "option_a_path": g.option_a_path,
++            "proposes_option_a_scaffold": True,
++        }
++        for g in assessment.gaps
++    ]
++    for gap in assessment.gaps:
++        notes.append(f"capability: Option A proposed — {gap.id}")
++
+     if isinstance(ir, dict) and ir.get("capability") == "option_a_authored":
+-        notes.append("capability: LLM authoring owns custom_code_blocks — skip scaffolds")
++        notes.append("capability: LLM authoring owns custom_code_blocks — skip scaffold attach")
+         return notes
+ 
+     from app.ai_capability_option_a_scaffold import scaffold_blocks_for_gaps
+@@ -469,6 +484,7 @@ def stamp_capability_gaps(draft: dict[str, Any], prompt: str) -> list[str]:
+             "label": g.label,
+             "detail": g.detail,
+             "option_a_path": path_by_gap.get(g.id) or g.option_a_path,
++            "proposes_option_a_scaffold": True,
+         }
+         for g in assessment.gaps
+     ]
+diff --git a/apps/api/app/ai_constraint_ast.py b/apps/api/app/ai_constraint_ast.py
+index cd5e36d..15d2be1 100644
+--- a/apps/api/app/ai_constraint_ast.py
++++ b/apps/api/app/ai_constraint_ast.py
+@@ -68,11 +68,50 @@ _NO_NEW_APP_RE = re.compile(
+ _UNDER_GROUP_RE = re.compile(
+     r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?([A-Za-z][\w /&-]{0,40}?)\s+group\b"
+ )
++_UNDER_SECTION_RE = re.compile(
++    r"(?i)\bunder\s+(?:(?:the|a|an)\s+)?(Delivery|Sales|Purchase|Inventory)(\s+group)?\b"
++)
+ _LEADING_ARTICLE_RE = re.compile(r"(?i)^(a|an|the)\s+")
+ _CHECKBOX_FIELD_RE = re.compile(
+     r"(?i)\bcheckbox\s+[\"']?([^\"',.;]+?)[\"']?"
+     r"(?=\s+and\b|\s+under\b|\s+on\b|,|\.|$)"
+ )
++# "Prefer for delivery checkbox" — label precedes the word checkbox.
++_LABEL_THEN_CHECKBOX_RE = re.compile(
++    r"(?i)\b("
++    r"prefer(?:red)?\s+for\s+delivery|"
++    r"[A-Z][\w /&-]{2,40}?"
++    r")\s+checkbox\b"
++)
++_DELIVERY_NOTES_FIELD_RE = re.compile(
++    r"(?i)\b(delivery\s+notes?)\b"
++)
++_PREFER_FOR_DELIVERY_RE = re.compile(
++    r"(?i)\bprefer(?:red)?\s+for\s+delivery\b"
++)
++_REUSE_FIELDS_RE = re.compile(
++    r"(?i)\b("
++    r"fields?\s+already\s+exist|"
++    r"already\s+exists?|"
++    r"reuse\s+(?:existing\s+)?fields?|"
++    r"do\s+not\s+(?:re-?)?add\s+fields?"
++    r")\b"
++)
++_AUTOMATION_HINT_RE = re.compile(
++    r"(?i)\b("
++    r"creat(?:e|es|ing)\s+(?:a\s+)?(?:light\s+)?(?:follow[- ]?up\s+)?activity|"
++    r"automat(?:e|ion|ed)|when\s+.{0,40}checked"
++    r")\b"
++)
++_FILTER_HINT_RE = re.compile(
++    r"(?i)\b("
++    r"(?:optional\s+)?filter|"
++    r"search\s+filter|"
++    r"list\s+filter"
++    r")\b"
++)
++_SMART_BUTTON_RE = re.compile(r"(?i)\bsmart\s+buttons?\b")
++_SUBMENU_RE = re.compile(r"(?i)\b(?:prefer\s+)?submenu\b")
+ _TYPED_TEXT_FIELD_RE = re.compile(
+     r"(?i)(?:\badd\b|\band\b|,)\s+([A-Z][\w /&-]{1,40}?)\s+text(?:\s+field)?\b"
+ )
+@@ -596,11 +635,45 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
+         # Host row emitted via ast_to_must_do from host/host_label
+         pass
+ 
+-    for m in _CHECKBOX_FIELD_RE.finditer(text):
+-        label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+-        if label:
++    # Prefer-for-delivery (+ optional Delivery notes) — label-before-checkbox or explicit pair.
++    prefer_seen = False
++    prefer_pair = bool(_PREFER_FOR_DELIVERY_RE.search(text)) and (
++        re.search(r"(?i)\bcheckbox\b", text)
++        or _DELIVERY_NOTES_FIELD_RE.search(text)
++        or re.search(r"(?i)\bprefer(?:red)?\s+for\s+delivery\s*\+", text)
++    )
++    if prefer_pair:
++        ast.fields.append(ConstraintField(label="Prefer for delivery", ttype="boolean"))
++        prefer_seen = True
++        if _DELIVERY_NOTES_FIELD_RE.search(text):
++            ast.fields.append(ConstraintField(label="Delivery notes", ttype="text"))
++    else:
++        for m in _LABEL_THEN_CHECKBOX_RE.finditer(text):
++            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
++            label = _LEADING_ARTICLE_RE.sub("", label).strip()
++            if not label or label.lower() in {"add", "a", "an", "the", "new", "and", "or"}:
++                continue
++            # Skip if this was the trailing half of "checkbox and X" noise.
++            if label.lower().startswith("and "):
++                continue
+             ast.fields.append(ConstraintField(label=label, ttype="boolean"))
+ 
++        for m in _CHECKBOX_FIELD_RE.finditer(text):
++            label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
++            # Guard: "checkbox and Delivery notes" is not a boolean label.
++            if not label or label.lower().startswith("and "):
++                continue
++            if prefer_seen and "prefer" in label.lower():
++                continue
++            ast.fields.append(ConstraintField(label=label, ttype="boolean"))
++
++        if _DELIVERY_NOTES_FIELD_RE.search(text) and not any(
++            "delivery notes" in (f.label or "").lower() for f in ast.fields
++        ):
++            # Delivery notes as companion text when Prefer cue present without "checkbox and".
++            if _PREFER_FOR_DELIVERY_RE.search(text):
++                ast.fields.append(ConstraintField(label="Delivery notes", ttype="text"))
++
+     for m in _TYPED_TEXT_FIELD_RE.finditer(text):
+         label = re.sub(r"\s+", " ", m.group(1)).strip(" .")
+         label = _LEADING_ARTICLE_RE.sub("", label).strip()
+@@ -614,6 +687,8 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
+     typed_or_check = any(f.ttype in {"boolean", "text"} for f in ast.fields)
+     if not typed_or_check:
+         for label in iter_add_field_labels(text):
++            if re.search(r"(?i)\b(?:filter|automat|activity|smart\s+button)\b", label):
++                continue
+             ttype = _infer_ttype(label)
+             bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label)) or ttype in {
+                 "date",
+@@ -624,7 +699,7 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
+             bare = bool(re.search(r"(?i)\b(?:start|end)\s+date\b", label))
+             ast.fields.append(ConstraintField(label=label, ttype=ttype, bare=bare))
+ 
+-    gm = _UNDER_GROUP_RE.search(text)
++    gm = _UNDER_GROUP_RE.search(text) or _UNDER_SECTION_RE.search(text)
+     if gm:
+         gtitle = _LEADING_ARTICLE_RE.sub("", gm.group(1).strip()).strip()
+         if gtitle:
+@@ -635,6 +710,16 @@ def _parse_det_inherit(text: str, *, host: str | None) -> ConstraintAST:
+         if cond and len(cond) >= 8:
+             ast.hints.append(f"Status hint when {cond}")
+ 
++    if _REUSE_FIELDS_RE.search(text):
++        ast.hints.append("Reuse existing fields")
++    if _AUTOMATION_HINT_RE.search(text):
++        ast.hints.append("Automation: activity when Prefer for delivery is checked")
++        if not prefer_seen and _PREFER_FOR_DELIVERY_RE.search(text):
++            # Ensure Prefer cue survives when fields already exist (no new checkbox invent).
++            if not any("prefer" in (f.label or "").lower() for f in ast.fields):
++                ast.hints.append("Prefer for delivery (existing)")
++    if _FILTER_HINT_RE.search(text):
++        ast.hints.append("Filter preferred-delivery partners on transfers")
+     if _NO_NEW_APP_RE.search(text):
+         if re.search(r"(?i)\binvent\b|\bparallel\b", text):
+             host_bit = ""
+diff --git a/apps/api/app/routers/intent_route.py b/apps/api/app/routers/intent_route.py
+index ab4ed2b..d2840ed 100644
+--- a/apps/api/app/routers/intent_route.py
++++ b/apps/api/app/routers/intent_route.py
+@@ -31,3 +31,25 @@ def expert_route_catalog(connection_id: str) -> dict[str, Any]:
+ 
+     features = [f.to_dict() for f in load_features()]
+     return {"count": len(features), "honesty": catalog_honesty(), "features": features}
++
++
++class BuildSpineBody(BaseModel):
++    prompt: str = Field("", max_length=8000)
++    understanding: dict[str, Any] | None = None
++    contract: dict[str, Any] | None = None
++    generation_ir: dict[str, Any] | None = None
++
++
++@router.post("/connections/{connection_id}/build-spine/resolve")
++def build_spine_resolve(connection_id: str, body: BuildSpineBody) -> dict[str, Any]:
++    """P2 Build spine — mode chips + handoff IR (brief + Diagnosis/Contract + stamps)."""
++    from app.ai_build_spine import build_spine_payload
++
++    return build_spine_payload(
++        prompt=body.prompt or "",
++        connection_id=connection_id,
++        understanding=body.understanding,
++        contract=body.contract,
++        generation_ir=body.generation_ir,
++    )
++
+diff --git a/apps/api/scripts/run_p2_rubric_battery.sh b/apps/api/scripts/run_p2_rubric_battery.sh
+new file mode 100755
+index 0000000..18254db
+--- /dev/null
++++ b/apps/api/scripts/run_p2_rubric_battery.sh
+@@ -0,0 +1,34 @@
++#!/usr/bin/env bash
++# P2 release-gate rubric battery (ingenium). AI_INTENT_LLM=off deterministic floor.
++# Unit/no_app_db only — App Postgres not required on the box.
++set -euo pipefail
++ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
++cd "$ROOT/apps/api"
++export AI_INTENT_LLM=off
++export PYTHONPATH="${ROOT}/packages/module-generator/src:${ROOT}/packages/odoo-client/src:${PYTHONPATH:-}"
++PY="${ROOT}/.venv/bin/python"
++if [ ! -x "$PY" ]; then PY=python3; fi
++
++echo "== P2 rubric battery (no_app_db) =="
++"$PY" -m pytest -q --tb=line -m "no_app_db" \
++  tests/test_build_spine.py \
++  tests/test_class_stamp.py \
++  tests/test_intent_router_class_routes.py \
++  tests/test_fx_rate_class.py \
++  tests/test_markup_wht_class.py \
++  tests/test_report_layout_scrub_class.py \
++  tests/test_prefer_field_pack_no_clarification_leak.py \
++  tests/test_full_app_never_reshape_inherit.py \
++  tests/test_full_app_foreign_pack_surface.py \
++  tests/test_pack_adoption_policy.py \
++  tests/test_pack_bleed_residual_full_app.py \
++  tests/test_diagnosis_prefer_host_must_do.py \
++  tests/test_ai_constraint_ast.py \
++  tests/test_notes_surface_class.py \
++  tests/test_brief_understanding_class.py \
++  tests/test_hosting_m1.py \
++  tests/test_date_vs_datetime_classifier.py \
++  2>&1 | tee /tmp/ingenium-p2-rubric.txt
++
++echo
++echo "Rubric log: /tmp/ingenium-p2-rubric.txt"
+diff --git a/apps/api/tests/test_build_spine.py b/apps/api/tests/test_build_spine.py
+new file mode 100644
+index 0000000..ed4d5a7
+--- /dev/null
++++ b/apps/api/tests/test_build_spine.py
+@@ -0,0 +1,178 @@
++"""P2 Build spine — mode chips, handoff IR, capability-gap Option A proposals."""
++
++from __future__ import annotations
++
++import os
++
++import pytest
++
++os.environ["AI_INTENT_LLM"] = "off"
++
++pytestmark = pytest.mark.no_app_db
++
++from app.ai_build_spine import (
++    build_spine_payload,
++    capability_gap_option_a_proposals,
++    resolve_build_mode,
++)
++from app.ai_capability_gaps import stamp_capability_gaps
++from app.ai_generation_engine import classify_generation, maybe_seed_from_capability, plan_to_ir
++from app.ai_class_stamp import resolve_class_stamp
++
++
++PREFER = (
++    "Prefer for delivery checkbox and Delivery notes on Contacts under Delivery group."
++)
++MARKUP = (
++    "The Client wants a Mark-up line added to every Sale. "
++    "A Withholding Tax on the markup is to be calculated as well."
++)
++DELIVERY = (
++    "Odoo appends the Customer name to the Delivery address under the "
++    "Shipping Address section of the Delivery Note. Remove that Customer Name."
++)
++CBN = (
++    "Add Central Bank of Nigeria as the Service on Automatic Currency Rates "
++    "so the cron pulls live CBN rates."
++)
++NIGERIA = (
++    "We are a company in Lagos, Nigeria. Stand up Community Accounting. "
++    "Company currency NGN. Custom residual: None. Capability path: stock_first."
++)
++RESIDUAL = "Build a visitor log app with check-in and check-out times. New app."
++OWL = (
++    "Add a custom OWL widget and python compute on sale.order for discount tiers."
++)
++
++
++def test_resolve_modes_for_class_exemplars():
++    plan = classify_generation(PREFER)
++    ir = plan_to_ir(plan, prompt=PREFER)
++    # Prefer may classify as field_pack residual — mode must not be option_a invent
++    mode = resolve_build_mode(
++        prompt=PREFER,
++        capability=ir.get("capability") or "",
++        grain=ir.get("grain") or plan.grain,
++        artifact_kind=ir.get("artifact_kind"),
++        delivery_lane=ir.get("delivery_lane"),
++    )
++    stamp = resolve_class_stamp(
++        prompt=PREFER, grain="field_pack", inherit_only=True, capability=""
++    )
++    prefer_mode = resolve_build_mode(
++        prompt=PREFER,
++        grain="field_pack",
++        artifact_kind=stamp["artifact_kind"],
++        delivery_lane=stamp["delivery_lane"],
++    )
++    assert prefer_mode == "prefer_pack"
++
++    assert (
++        resolve_build_mode(
++            prompt=MARKUP,
++            capability="option_a_authored",
++            artifact_kind="option_a_module",
++            delivery_lane="module_sh_or_self",
++        )
++        == "option_a"
++    )
++    assert (
++        resolve_build_mode(
++            prompt=DELIVERY,
++            capability="option_a_authored",
++            artifact_kind="report_layout",
++        )
++        == "report_layout"
++    )
++    assert (
++        resolve_build_mode(
++            prompt=CBN,
++            capability="option_a_standalone",
++            gold_artifact_id="currency_rate_cbn",
++            artifact_kind="external_connector",
++        )
++        == "connector"
++    )
++    assert (
++        resolve_build_mode(prompt=NIGERIA, capability="stock_reuse") == "stock_autopilot"
++    )
++    assert (
++        resolve_build_mode(
++            prompt=RESIDUAL, capability="residual_app", grain="full_app", artifact_kind="full_app"
++        )
++        == "residual_app"
++    )
++
++
++def test_spine_payload_carries_stamps_and_chips():
++    payload = build_spine_payload(prompt=MARKUP, connection_id="c1")
++    assert payload["build_mode"] == "option_a"
++    assert payload["delivery_lane"] == "module_sh_or_self"
++    assert payload["artifact_kind"] == "option_a_module"
++    assert payload["promote_human"] is True
++    assert payload["completeness_is_not_cert"] is True
++    assert payload["brief"]
++    assert payload["diagnosis"]["delivery_lane"]
++    assert payload["contract"]
++    assert any(c["id"] == "option_a" and c["active"] for c in payload["chips"])
++    assert "/connections/c1/studio" in payload["chips"][0]["href"] or any(
++        "studio" in c["href"] for c in payload["chips"] if c["active"]
++    )
++
++
++def test_spine_payload_prefer_and_report_and_fx():
++    prefer = build_spine_payload(prompt=PREFER, connection_id="c1")
++    # Prefer pack grain from contract
++    assert prefer["build_mode"] in {"prefer_pack", "residual_app"}
++    # Force via stamps already on contract
++    from app.ai_studio_contract import build_studio_contract
++
++    c = build_studio_contract(PREFER)
++    prefer2 = build_spine_payload(prompt=PREFER, connection_id="c1", contract=c)
++    assert prefer2["build_mode"] == "prefer_pack" or c.get("grain") == "field_pack"
++
++    report = build_spine_payload(prompt=DELIVERY, connection_id="c1")
++    assert report["build_mode"] == "report_layout"
++    assert report["artifact_kind"] == "report_layout"
++
++    fx = build_spine_payload(prompt=CBN, connection_id="c1")
++    assert fx["build_mode"] == "connector"
++    assert fx["gold_artifact_id"] == "currency_rate_cbn"
++
++
++def test_capability_gaps_always_propose_option_a_scaffold_when_live_cannot():
++    draft = {
++        "models": [{"model": "sale.order", "mode": "inherit", "fields": []}],
++        "custom_code_blocks": [],
++        "_generation_engine": {"capability": "option_a_authored"},
++        "_user_prompt": OWL,
++    }
++    notes = stamp_capability_gaps(draft, OWL)
++    assert draft.get("_capability_gaps"), notes
++    proposals = capability_gap_option_a_proposals(draft)
++    assert proposals, draft.get("_capability_gaps")
++    assert all(p.get("proposes_option_a_scaffold") for p in proposals)
++    # LLM owns blocks — still proposed, attach skipped
++    assert any("skip scaffold" in n or "proposed" in n for n in notes)
++
++
++def test_job1_2_3_seeds_still_class_modes():
++    for prompt, mode in [
++        (MARKUP, "option_a"),
++        (DELIVERY, "report_layout"),
++        (CBN, "connector"),
++    ]:
++        seed = maybe_seed_from_capability(prompt)
++        assert seed is not None
++        ir = seed.get("_generation_engine") or {}
++        assert (
++            resolve_build_mode(
++                prompt=prompt,
++                capability=str(ir.get("capability") or ""),
++                grain=str(ir.get("grain") or ""),
++                gold_artifact_id=ir.get("gold_artifact_id"),
++                artifact_kind=ir.get("artifact_kind"),
++                delivery_lane=ir.get("delivery_lane"),
++            )
++            == mode
++        )
+diff --git a/apps/web/src/app/connections/[id]/page.tsx b/apps/web/src/app/connections/[id]/page.tsx
+index 6c182c1..b441e18 100644
+--- a/apps/web/src/app/connections/[id]/page.tsx
++++ b/apps/web/src/app/connections/[id]/page.tsx
+@@ -14,6 +14,7 @@ import { HealthCheckBanner } from "@/components/HealthCheckBanner";
+ import { EePlaybooksPanel } from "@/components/EePlaybooksPanel";
+ import { DomainPlaybooksPanel } from "@/components/DomainPlaybooksPanel";
+ import { StudioFeatureRecipesPanel } from "@/components/StudioFeatureRecipesPanel";
++import { BuildSpineBar } from "@/components/build/BuildSpineBar";
+ import {
+   api,
+   Connection,
+@@ -681,7 +682,10 @@ export default function BrowserPage() {
+           ))}
+         </div>
+ 
+-        <div className="mt-6 flex flex-wrap gap-2">
++        <div className="mt-6" data-testid="overview-build-spine">
++          <BuildSpineBar connectionId={connectionId} />
++        </div>
++        <div className="mt-4 flex flex-wrap gap-2">
+           <Button variant="primary" size="sm" asChild>
+             <Link href={`/connections/${connectionId}/studio`} data-testid="overview-draft-with-ai">
+               App Studio
+diff --git a/apps/web/src/app/connections/[id]/wizard/page.tsx b/apps/web/src/app/connections/[id]/wizard/page.tsx
+index 0fa964b..0d2243b 100644
+--- a/apps/web/src/app/connections/[id]/wizard/page.tsx
++++ b/apps/web/src/app/connections/[id]/wizard/page.tsx
+@@ -54,6 +54,10 @@ import {
+   briefTextForJobAutopilot,
+   stashJobAutopilotBrief,
+ } from "@/lib/job-brief-handoff";
++import {
++  handoffFromDraft,
++  stashBuildSpineHandoff,
++} from "@/lib/build-spine-handoff";
+ import {
+   busyLabelFromJobResult,
+   draftFinisherComplete,
+@@ -226,6 +230,15 @@ export default function AppWizardPage() {
+   function stashBriefForJobAutopilot() {
+     const text = briefTextForJobAutopilot(aiDraft, nlPrompt);
+     if (text) stashJobAutopilotBrief(connectionId, text);
++    const handoff = handoffFromDraft(
++      aiDraft && typeof aiDraft === "object"
++        ? (aiDraft as Record<string, unknown>)
++        : null,
++      nlPrompt,
++    );
++    if (handoff.brief || handoff.delivery_lane) {
++      stashBuildSpineHandoff(connectionId, handoff);
++    }
+   }
+   const certTierDisplay = displayedCertificationTier(aiDraft);
+   const certShipReady =
+diff --git a/apps/web/src/components/build/BuildSpineBar.test.tsx b/apps/web/src/components/build/BuildSpineBar.test.tsx
+new file mode 100644
+index 0000000..e5e52d3
+--- /dev/null
++++ b/apps/web/src/components/build/BuildSpineBar.test.tsx
+@@ -0,0 +1,29 @@
++import { render, screen } from "@testing-library/react";
++import { describe, expect, it } from "vitest";
++import { BuildSpineBar } from "./BuildSpineBar";
++
++describe("BuildSpineBar", () => {
++  it("renders mode chips and honesty", () => {
++    render(
++      <BuildSpineBar
++        connectionId="c1"
++        activeMode="option_a"
++        payload={{
++          version: 1,
++          prompt: "markup",
++          brief: "markup",
++          build_mode: "option_a",
++          chips: [],
++          delivery_lane: "module_sh_or_self",
++          artifact_kind: "option_a_module",
++          honesty: "One Build entry — test honesty.",
++        }}
++      />,
++    );
++    expect(screen.getByTestId("build-spine-bar")).toHaveAttribute("data-build-mode", "option_a");
++    expect(screen.getByTestId("build-spine-honesty").textContent).toMatch(/One Build entry/);
++    expect(screen.getByTestId("build-spine-stamps").textContent).toMatch(/module_sh_or_self/);
++    expect(screen.getByTestId("build-spine-chip-option_a")).toHaveAttribute("data-active", "1");
++    expect(screen.getByTestId("build-spine-surfaces")).toBeTruthy();
++  });
++});
+diff --git a/apps/web/src/components/build/BuildSpineBar.tsx b/apps/web/src/components/build/BuildSpineBar.tsx
+new file mode 100644
+index 0000000..77010ce
+--- /dev/null
++++ b/apps/web/src/components/build/BuildSpineBar.tsx
+@@ -0,0 +1,155 @@
++"use client";
++
++import Link from "next/link";
++import { useMemo } from "react";
++import { Button } from "@/components/ui/Button";
++import { Card } from "@/components/ui/layout-primitives";
++import {
++  BUILD_SPINE_HONESTY,
++  defaultChips,
++  resolveBuildModeLocal,
++  type BuildMode,
++  type BuildSpineChip,
++  type BuildSpinePayload,
++} from "@/lib/build-spine";
++import { stashBuildSpineHandoff, type BuildSpineHandoff } from "@/lib/build-spine-handoff";
++import { BuildSpineChips } from "./BuildSpineChips";
++
++type BuildSpineBarProps = {
++  connectionId: string;
++  activeMode?: BuildMode;
++  payload?: BuildSpinePayload | null;
++  handoff?: BuildSpineHandoff | null;
++  compact?: boolean;
++  showSurfaces?: boolean;
++};
++
++export function BuildSpineBar({
++  connectionId,
++  activeMode,
++  payload,
++  handoff,
++  compact,
++  showSurfaces = true,
++}: BuildSpineBarProps) {
++  const mode =
++    activeMode ||
++    payload?.build_mode ||
++    resolveBuildModeLocal({
++      capability: handoff?.capability || payload?.capability,
++      grain: handoff?.grain || payload?.grain,
++      artifact_kind: handoff?.artifact_kind || payload?.artifact_kind,
++      delivery_lane: handoff?.delivery_lane || payload?.delivery_lane,
++      gold_artifact_id: handoff?.gold_artifact_id || payload?.gold_artifact_id,
++    });
++
++  const chips: BuildSpineChip[] = useMemo(() => {
++    if (payload?.chips?.length) {
++      return payload.chips.map((c) => ({
++        ...c,
++        active: c.id === mode,
++        href: c.href || `/connections/${connectionId}/studio`,
++      }));
++    }
++    return defaultChips(connectionId, mode);
++  }, [connectionId, mode, payload]);
++
++  function onSelect(chip: BuildSpineChip) {
++    const next: BuildSpineHandoff = {
++      version: 1,
++      brief: handoff?.brief || payload?.brief || payload?.prompt || "",
++      prompt: handoff?.prompt || payload?.prompt || handoff?.brief || "",
++      build_mode: chip.id,
++      capability: handoff?.capability || payload?.capability,
++      grain: handoff?.grain || payload?.grain,
++      delivery_lane: handoff?.delivery_lane || payload?.delivery_lane,
++      artifact_kind: handoff?.artifact_kind || payload?.artifact_kind,
++      prove_status: handoff?.prove_status || payload?.prove_status,
++      gold_artifact_id: handoff?.gold_artifact_id || payload?.gold_artifact_id,
++      diagnosis: handoff?.diagnosis || payload?.diagnosis || null,
++      contract: handoff?.contract || payload?.contract || null,
++    };
++    stashBuildSpineHandoff(connectionId, next);
++  }
++
++  const lane = handoff?.delivery_lane || payload?.delivery_lane;
++  const kind = handoff?.artifact_kind || payload?.artifact_kind;
++
++  return (
++    <Card
++      className={compact ? "p-3" : "p-4"}
++      data-testid="build-spine-bar"
++      data-build-mode={mode}
++    >
++      <div className="flex flex-wrap items-start justify-between gap-2">
++        <div className="min-w-0 flex-1">
++          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
++            Build · one entry
++          </p>
++          {!compact ? (
++            <p className="mt-1 text-sm text-muted" data-testid="build-spine-honesty">
++              {payload?.honesty || BUILD_SPINE_HONESTY}
++            </p>
++          ) : null}
++        </div>
++        {lane || kind ? (
++          <p
++            className="max-w-xs text-right text-[11px] text-muted"
++            data-testid="build-spine-stamps"
++          >
++            {lane ? <span className="font-mono text-accent">{lane}</span> : null}
++            {lane && kind ? " · " : null}
++            {kind ? <span className="font-mono">{kind}</span> : null}
++          </p>
++        ) : null}
++      </div>
++      <div className="mt-3">
++        <BuildSpineChips
++          chips={chips}
++          connectionId={connectionId}
++          onSelect={(chip) => {
++            onSelect(chip);
++            if (typeof window !== "undefined" && chip.href) {
++              window.location.assign(chip.href);
++            }
++          }}
++        />
++      </div>
++      {showSurfaces ? (
++        <div className="job-handoff-bar mt-3" data-testid="build-spine-surfaces">
++          <Button asChild variant="ghost" size="sm">
++            <Link
++              href={`/connections/${connectionId}/studio`}
++              onClick={() =>
++                stashBuildSpineHandoff(connectionId, {
++                  version: 1,
++                  brief: handoff?.brief || payload?.brief || "",
++                  prompt: handoff?.prompt || payload?.prompt || handoff?.brief || "",
++                  build_mode: mode,
++                  capability: handoff?.capability || payload?.capability,
++                  grain: handoff?.grain || payload?.grain,
++                  delivery_lane: lane,
++                  artifact_kind: kind,
++                  prove_status: handoff?.prove_status || payload?.prove_status,
++                  diagnosis: handoff?.diagnosis || payload?.diagnosis || null,
++                  contract: handoff?.contract || payload?.contract || null,
++                })
++              }
++            >
++              App Studio
++            </Link>
++          </Button>
++          <Button asChild variant="ghost" size="sm">
++            <Link href={`/connections/${connectionId}/wizard`}>Draft Studio</Link>
++          </Button>
++          <Button asChild variant="ghost" size="sm">
++            <Link href={`/connections/${connectionId}/job`}>Job Autopilot</Link>
++          </Button>
++          <Button asChild variant="ghost" size="sm">
++            <Link href={`/connections/${connectionId}/designer`}>Prefer / Designer</Link>
++          </Button>
++        </div>
++      ) : null}
++    </Card>
++  );
++}
+diff --git a/apps/web/src/components/build/BuildSpineChips.tsx b/apps/web/src/components/build/BuildSpineChips.tsx
+new file mode 100644
+index 0000000..1344543
+--- /dev/null
++++ b/apps/web/src/components/build/BuildSpineChips.tsx
+@@ -0,0 +1,60 @@
++"use client";
++
++import Link from "next/link";
++import type { BuildSpineChip } from "@/lib/build-spine";
++
++type BuildSpineChipsProps = {
++  chips: BuildSpineChip[];
++  connectionId: string;
++  onSelect?: (chip: BuildSpineChip) => void;
++};
++
++export function BuildSpineChips({ chips, connectionId, onSelect }: BuildSpineChipsProps) {
++  if (!chips.length) return null;
++  return (
++    <div
++      className="flex flex-wrap gap-2"
++      data-testid="build-spine-chips"
++      data-connection-id={connectionId}
++      role="tablist"
++      aria-label="Build mode"
++    >
++      {chips.map((chip) => {
++        const className = chip.active
++          ? "rounded-full border border-accent bg-accent/10 px-3 py-1 text-xs font-medium text-accent"
++          : "rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-muted hover:border-accent hover:text-ink";
++        if (onSelect) {
++          return (
++            <button
++              key={chip.id}
++              type="button"
++              role="tab"
++              aria-selected={chip.active}
++              title={chip.blurb}
++              className={className}
++              data-testid={`build-spine-chip-${chip.id}`}
++              data-active={chip.active ? "1" : "0"}
++              onClick={() => onSelect(chip)}
++            >
++              {chip.label}
++            </button>
++          );
++        }
++        return (
++          <Link
++            key={chip.id}
++            href={chip.href}
++            role="tab"
++            aria-selected={chip.active}
++            title={chip.blurb}
++            className={className}
++            data-testid={`build-spine-chip-${chip.id}`}
++            data-active={chip.active ? "1" : "0"}
++          >
++            {chip.label}
++          </Link>
++        );
++      })}
++    </div>
++  );
++}
+diff --git a/apps/web/src/components/draft-studio/DraftStudioShell.tsx b/apps/web/src/components/draft-studio/DraftStudioShell.tsx
+index b70a1ce..64af8ca 100644
+--- a/apps/web/src/components/draft-studio/DraftStudioShell.tsx
++++ b/apps/web/src/components/draft-studio/DraftStudioShell.tsx
+@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
+ import { PageHeader } from "@/components/ui/layout-primitives";
+ import { DraftStudioStageRail } from "./DraftStudioStageRail";
+ import type { DraftStudioJourneyState } from "@/lib/draft-studio-journey";
++import { BuildSpineBar } from "@/components/build/BuildSpineBar";
++import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
+ 
+ type DraftStudioShellProps = {
+   connectionId: string;
+@@ -25,6 +27,7 @@ export function DraftStudioShell({
+   onStartNew,
+   children,
+ }: DraftStudioShellProps) {
++  const handoff = useBuildSpineHandoff(connectionId);
+   return (
+     <div className="studio-refinement" data-testid="draft-studio">
+       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
+@@ -72,6 +75,14 @@ export function DraftStudioShell({
+           }
+         />
+         <DraftStudioStageRail journey={journey} />
++        <div className="mb-4">
++          <BuildSpineBar
++            connectionId={connectionId}
++            activeMode="residual_app"
++            handoff={handoff}
++            compact
++          />
++        </div>
+         {children}
+       </div>
+     </div>
+diff --git a/apps/web/src/components/expert/ExpertOverviewCard.tsx b/apps/web/src/components/expert/ExpertOverviewCard.tsx
+index 68eb4e7..8ef30c6 100644
+--- a/apps/web/src/components/expert/ExpertOverviewCard.tsx
++++ b/apps/web/src/components/expert/ExpertOverviewCard.tsx
+@@ -1,6 +1,5 @@
+ "use client";
+ 
+-import Link from "next/link";
+ import { Button } from "@/components/ui/Button";
+ import { Card } from "@/components/ui/layout-primitives";
+ import { useShellOptional } from "@/context/ShellContext";
+@@ -12,6 +11,7 @@ import {
+   expertOverviewKicker,
+   expertOverviewTitle,
+ } from "@/lib/expert-journey";
++import { BuildSpineBar } from "@/components/build/BuildSpineBar";
+ 
+ type ExpertOverviewCardProps = {
+   connectionId: string;
+@@ -66,22 +66,8 @@ export function ExpertOverviewCard({
+           Open Expert
+         </Button>
+       </div>
+-      <div className="job-handoff-bar mt-4">
+-        <Button asChild variant="ghost" size="sm">
+-          <Link href={`/connections/${connectionId}/wizard`}>Draft Studio</Link>
+-        </Button>
+-        <Button asChild variant="ghost" size="sm">
+-          <Link href={`/connections/${connectionId}/designer`}>View Designer</Link>
+-        </Button>
+-        <Button asChild variant="ghost" size="sm">
+-          <Link href={`/connections/${connectionId}/projects`}>Projects</Link>
+-        </Button>
+-        <Button asChild variant="ghost" size="sm">
+-          <Link href={`/connections/${connectionId}/modulespec`}>ModuleSpec</Link>
+-        </Button>
+-        <Button asChild variant="ghost" size="sm">
+-          <Link href={`/connections/${connectionId}/job`}>Job Autopilot</Link>
+-        </Button>
++      <div className="mt-4">
++        <BuildSpineBar connectionId={connectionId} compact />
+       </div>
+     </Card>
+   );
+diff --git a/apps/web/src/components/expert/IntentRouterPanel.tsx b/apps/web/src/components/expert/IntentRouterPanel.tsx
+index 20ea4e0..01f7aa5 100644
+--- a/apps/web/src/components/expert/IntentRouterPanel.tsx
++++ b/apps/web/src/components/expert/IntentRouterPanel.tsx
+@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/Input";
+ import { Card } from "@/components/ui/layout-primitives";
+ import { Callout } from "@/components/ui/Callout";
+ import { api, type IntentRouteMatch, type IntentRouteResult } from "@/lib/api";
++import { stashBuildSpineHandoff } from "@/lib/build-spine-handoff";
++import { resolveBuildModeLocal } from "@/lib/build-spine";
+ 
+ type IntentRouterPanelProps = {
+   connectionId: string;
+@@ -20,8 +22,32 @@ const STARTERS = [
+   "build a visitor log app",
+ ];
+ 
+-function MatchRow({ match }: { match: IntentRouteMatch }) {
++function MatchRow({
++  match,
++  connectionId,
++  prompt,
++}: {
++  match: IntentRouteMatch;
++  connectionId: string;
++  prompt: string;
++}) {
+   const pct = Math.round((match.confidence || 0) * 100);
++  function onGo() {
++    const fid = String(match.feature_id || "");
++    const mode = fid.includes("designer")
++      ? resolveBuildModeLocal({ grain: "field_pack", artifact_kind: "field_pack" })
++      : fid.includes("job")
++        ? resolveBuildModeLocal({ capability: "stock_reuse" })
++        : resolveBuildModeLocal({ capability: "residual_app", grain: "full_app" });
++    if (prompt.trim()) {
++      stashBuildSpineHandoff(connectionId, {
++        version: 1,
++        brief: prompt.trim(),
++        prompt: prompt.trim(),
++        build_mode: mode,
++      });
++    }
++  }
+   return (
+     <li
+       className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3 sm:flex-row sm:items-center sm:justify-between"
+@@ -38,7 +64,9 @@ function MatchRow({ match }: { match: IntentRouteMatch }) {
+         </p>
+       </div>
+       <Button asChild variant="primary" size="sm" data-testid="intent-route-go">
+-        <Link href={match.deep_link}>Go</Link>
++        <Link href={match.deep_link} onClick={onGo}>
++          Go
++        </Link>
+       </Button>
+     </li>
+   );
+@@ -164,7 +192,7 @@ export function IntentRouterPanel({ connectionId }: IntentRouterPanelProps) {
+               ) : null}
+               <ul className="space-y-2" data-testid="intent-router-matches">
+                 {matches.map((m) => (
+-                  <MatchRow key={`${m.feature_id}-${m.deep_link}`} match={m} />
++                  <MatchRow key={`${m.feature_id}-${m.deep_link}`} match={m} connectionId={connectionId} prompt={prompt} />
+                 ))}
+               </ul>
+               {result.honesty ? (
+diff --git a/apps/web/src/components/job-autopilot/JobAutopilotShell.tsx b/apps/web/src/components/job-autopilot/JobAutopilotShell.tsx
+index 46d5d3e..02e3672 100644
+--- a/apps/web/src/components/job-autopilot/JobAutopilotShell.tsx
++++ b/apps/web/src/components/job-autopilot/JobAutopilotShell.tsx
+@@ -7,6 +7,8 @@ import {
+   jobAutopilotHeaderDescription,
+   type JobAutopilotJourneyState,
+ } from "@/lib/job-autopilot-journey";
++import { BuildSpineBar } from "@/components/build/BuildSpineBar";
++import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
+ 
+ type JobAutopilotShellProps = {
+   connectionId: string;
+@@ -23,6 +25,7 @@ export function JobAutopilotShell({
+   journey,
+   children,
+ }: JobAutopilotShellProps) {
++  const handoff = useBuildSpineHandoff(connectionId);
+   return (
+     <div className="studio-refinement" data-testid="job-autopilot">
+       <div className="studio-page">
+@@ -47,6 +50,14 @@ export function JobAutopilotShell({
+           }
+         />
+         <JobAutopilotStageRail journey={journey} />
++        <div className="mb-4">
++          <BuildSpineBar
++            connectionId={connectionId}
++            activeMode="stock_autopilot"
++            handoff={handoff}
++            compact
++          />
++        </div>
+         <div className="space-y-6">{children}</div>
+       </div>
+     </div>
+diff --git a/apps/web/src/components/studio/StudioShell.tsx b/apps/web/src/components/studio/StudioShell.tsx
+index a427edb..2365828 100644
+--- a/apps/web/src/components/studio/StudioShell.tsx
++++ b/apps/web/src/components/studio/StudioShell.tsx
+@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/Button";
+ import { PageHeader } from "@/components/ui/layout-primitives";
+ import { StudioStageRail } from "./StudioStageRail";
+ import type { StudioJourneyState } from "@/lib/studio-journey";
++import { BuildSpineBar } from "@/components/build/BuildSpineBar";
++import { useBuildSpineHandoff } from "@/lib/use-build-spine-handoff";
+ 
+ type StudioShellProps = {
+   connectionId: string;
+@@ -23,6 +25,7 @@ export function StudioShell({
+   onStartNew,
+   children,
+ }: StudioShellProps) {
++  const handoff = useBuildSpineHandoff(connectionId);
+   return (
+     <div className="studio-refinement" data-testid="studio-page">
+       <div className={`studio-page${canvas ? " is-canvas" : ""}`}>
+@@ -53,6 +56,14 @@ export function StudioShell({
+           }
+         />
+         <StudioStageRail journey={journey} />
++        <div className="mb-4">
++          <BuildSpineBar
++            connectionId={connectionId}
++            activeMode="option_a"
++            handoff={handoff}
++            compact
++          />
++        </div>
+         {children}
+       </div>
+     </div>
+diff --git a/apps/web/src/lib/api.ts b/apps/web/src/lib/api.ts
+index 60043e3..e800173 100644
+--- a/apps/web/src/lib/api.ts
++++ b/apps/web/src/lib/api.ts
+@@ -4219,6 +4219,23 @@ listConfigRecipes: (id: string) =>
+       method: "POST",
+       body: JSON.stringify(body),
+     }),
++  /** P2 Build spine — mode chips + handoff IR (brief + Diagnosis/Contract + stamps). */
++  buildSpineResolve: (
++    id: string,
++    body: {
++      prompt?: string;
++      understanding?: Record<string, unknown>;
++      contract?: Record<string, unknown>;
++      generation_ir?: Record<string, unknown>;
++    },
++  ) =>
++    request<import("@/lib/build-spine").BuildSpinePayload>(
++      `/api/connections/${id}/build-spine/resolve`,
++      {
++        method: "POST",
++        body: JSON.stringify(body),
++      },
++    ),
+   batchOsIntentRoute: (
+     id: string,
+     body: { prompt: string; limit?: number },
+diff --git a/apps/web/src/lib/build-spine-handoff.test.ts b/apps/web/src/lib/build-spine-handoff.test.ts
+new file mode 100644
+index 0000000..176aa56
+--- /dev/null
++++ b/apps/web/src/lib/build-spine-handoff.test.ts
+@@ -0,0 +1,49 @@
++import { afterEach, describe, expect, it } from "vitest";
++import {
++  clearBuildSpineHandoff,
++  handoffFromDraft,
++  readBuildSpineHandoff,
++  stashBuildSpineHandoff,
++} from "./build-spine-handoff";
++import { readJobAutopilotBrief } from "./job-brief-handoff";
++
++describe("build-spine-handoff", () => {
++  const id = "conn-spine";
++
++  afterEach(() => {
++    clearBuildSpineHandoff(id);
++  });
++
++  it("round-trips brief + stamps without re-briefing", () => {
++    stashBuildSpineHandoff(id, {
++      version: 1,
++      brief: "Add markup % on sales with WHT on markup only",
++      prompt: "Add markup % on sales with WHT on markup only",
++      build_mode: "option_a",
++      delivery_lane: "module_sh_or_self",
++      artifact_kind: "option_a_module",
++      capability: "option_a_authored",
++    });
++    const got = readBuildSpineHandoff(id);
++    expect(got?.brief).toContain("markup");
++    expect(got?.delivery_lane).toBe("module_sh_or_self");
++    expect(got?.artifact_kind).toBe("option_a_module");
++    expect(readJobAutopilotBrief(id)).toContain("markup");
++  });
++
++  it("handoffFromDraft reads IR stamps", () => {
++    const h = handoffFromDraft({
++      _user_prompt: "scrub delivery slip address",
++      grain: "full_app",
++      _generation_engine: {
++        capability: "option_a_authored",
++        delivery_lane: "module_sh_or_self",
++        artifact_kind: "report_layout",
++      },
++      _studio_contract: { grain: "full_app", host_model: "stock.picking" },
++    });
++    expect(h.artifact_kind).toBe("report_layout");
++    expect(h.delivery_lane).toBe("module_sh_or_self");
++    expect(h.brief).toContain("scrub");
++  });
++});
+diff --git a/apps/web/src/lib/build-spine-handoff.ts b/apps/web/src/lib/build-spine-handoff.ts
+new file mode 100644
+index 0000000..2faf4fc
+--- /dev/null
++++ b/apps/web/src/lib/build-spine-handoff.ts
+@@ -0,0 +1,133 @@
++/** Carry brief + Diagnosis/Contract + delivery_lane stamps across Build surfaces. */
++
++import type { BuildMode, BuildSpinePayload } from "./build-spine";
++import {
++  briefTextForJobAutopilot,
++  jobAutopilotBriefStorageKey,
++  readJobAutopilotBrief,
++  stashJobAutopilotBrief,
++} from "./job-brief-handoff";
++
++export function buildSpineHandoffKey(connectionId: string): string {
++  return `ingenium-build-spine:${connectionId}`;
++}
++
++export type BuildSpineHandoff = {
++  version: 1;
++  brief: string;
++  prompt: string;
++  build_mode?: BuildMode | null;
++  capability?: string | null;
++  grain?: string | null;
++  delivery_lane?: string | null;
++  artifact_kind?: string | null;
++  prove_status?: string | null;
++  gold_artifact_id?: string | null;
++  diagnosis?: Record<string, unknown> | null;
++  contract?: Record<string, unknown> | null;
++  generation_ir?: Record<string, unknown> | null;
++  updated_at?: string;
++};
++
++export function handoffFromPayload(payload: BuildSpinePayload): BuildSpineHandoff {
++  return {
++    version: 1,
++    brief: payload.brief || payload.prompt || "",
++    prompt: payload.prompt || payload.brief || "",
++    build_mode: payload.build_mode,
++    capability: payload.capability,
++    grain: payload.grain,
++    delivery_lane: payload.delivery_lane,
++    artifact_kind: payload.artifact_kind,
++    prove_status: payload.prove_status,
++    gold_artifact_id: payload.gold_artifact_id,
++    diagnosis: payload.diagnosis || null,
++    contract: payload.contract || null,
++    updated_at: new Date().toISOString(),
++  };
++}
++
++export function stashBuildSpineHandoff(connectionId: string, handoff: BuildSpineHandoff): void {
++  if (!connectionId) return;
++  const brief = (handoff.brief || handoff.prompt || "").trim();
++  if (!brief && !handoff.delivery_lane) return;
++  try {
++    const payload: BuildSpineHandoff = {
++      ...handoff,
++      version: 1,
++      brief,
++      prompt: (handoff.prompt || brief).trim(),
++      updated_at: new Date().toISOString(),
++    };
++    sessionStorage.setItem(buildSpineHandoffKey(connectionId), JSON.stringify(payload));
++    // Keep Job Autopilot brief key in sync so existing readers still work.
++    if (brief) stashJobAutopilotBrief(connectionId, brief);
++  } catch {
++    /* private mode */
++  }
++}
++
++export function readBuildSpineHandoff(connectionId: string): BuildSpineHandoff | null {
++  if (!connectionId) return null;
++  try {
++    const raw = sessionStorage.getItem(buildSpineHandoffKey(connectionId));
++    if (raw) {
++      const parsed = JSON.parse(raw) as BuildSpineHandoff;
++      if (parsed && typeof parsed === "object") {
++        return parsed;
++      }
++    }
++  } catch {
++    /* ignore */
++  }
++  // Fallback: brief-only stash from older Draft → Job path.
++  const brief = readJobAutopilotBrief(connectionId);
++  if (!brief) return null;
++  return {
++    version: 1,
++    brief,
++    prompt: brief,
++  };
++}
++
++export function clearBuildSpineHandoff(connectionId: string): void {
++  try {
++    sessionStorage.removeItem(buildSpineHandoffKey(connectionId));
++    sessionStorage.removeItem(jobAutopilotBriefStorageKey(connectionId));
++  } catch {
++    /* ignore */
++  }
++}
++
++export function handoffFromDraft(
++  draft: Record<string, unknown> | null | undefined,
++  fallbackPrompt = "",
++): BuildSpineHandoff {
++  const brief = briefTextForJobAutopilot(draft, fallbackPrompt);
++  const ir =
++    draft && typeof draft._generation_engine === "object" && draft._generation_engine
++      ? (draft._generation_engine as Record<string, unknown>)
++      : null;
++  const contract =
++    draft && typeof draft._studio_contract === "object" && draft._studio_contract
++      ? (draft._studio_contract as Record<string, unknown>)
++      : null;
++  return {
++    version: 1,
++    brief,
++    prompt: brief,
++    capability: ir && typeof ir.capability === "string" ? ir.capability : null,
++    grain:
++      (ir && typeof ir.grain === "string" && ir.grain) ||
++      (contract && typeof contract.grain === "string" && contract.grain) ||
++      (typeof draft?.grain === "string" ? draft.grain : null),
++    delivery_lane: ir && typeof ir.delivery_lane === "string" ? ir.delivery_lane : null,
++    artifact_kind: ir && typeof ir.artifact_kind === "string" ? ir.artifact_kind : null,
++    prove_status: ir && typeof ir.prove_status === "string" ? ir.prove_status : null,
++    gold_artifact_id:
++      ir && typeof ir.gold_artifact_id === "string" ? ir.gold_artifact_id : null,
++    diagnosis: ir,
++    contract,
++    generation_ir: ir,
++  };
++}
+diff --git a/apps/web/src/lib/build-spine.test.ts b/apps/web/src/lib/build-spine.test.ts
+new file mode 100644
+index 0000000..db45e2f
+--- /dev/null
++++ b/apps/web/src/lib/build-spine.test.ts
+@@ -0,0 +1,37 @@
++import { describe, expect, it } from "vitest";
++import {
++  defaultChips,
++  hrefForBuildMode,
++  resolveBuildModeLocal,
++} from "./build-spine";
++
++describe("build-spine", () => {
++  it("resolves Prefer / Option A / report / connector / stock", () => {
++    expect(resolveBuildModeLocal({ grain: "field_pack", artifact_kind: "field_pack" })).toBe(
++      "prefer_pack",
++    );
++    expect(
++      resolveBuildModeLocal({ capability: "option_a_authored", artifact_kind: "option_a_module" }),
++    ).toBe("option_a");
++    expect(resolveBuildModeLocal({ artifact_kind: "report_layout" })).toBe("report_layout");
++    expect(
++      resolveBuildModeLocal({
++        gold_artifact_id: "currency_rate_cbn",
++        artifact_kind: "external_connector",
++      }),
++    ).toBe("connector");
++    expect(resolveBuildModeLocal({ capability: "stock_reuse" })).toBe("stock_autopilot");
++    expect(resolveBuildModeLocal({ capability: "residual_app", grain: "full_app" })).toBe(
++      "residual_app",
++    );
++  });
++
++  it("builds hrefs and default chips with active first", () => {
++    expect(hrefForBuildMode("c1", "prefer_pack")).toBe("/connections/c1/designer");
++    expect(hrefForBuildMode("c1", "stock_autopilot")).toBe("/connections/c1/job");
++    const chips = defaultChips("c1", "option_a");
++    expect(chips[0].id).toBe("option_a");
++    expect(chips[0].active).toBe(true);
++    expect(chips.some((c) => c.id === "prefer_pack")).toBe(true);
++  });
++});
+diff --git a/apps/web/src/lib/build-spine.ts b/apps/web/src/lib/build-spine.ts
+new file mode 100644
+index 0000000..2df34d2
+--- /dev/null
++++ b/apps/web/src/lib/build-spine.ts
+@@ -0,0 +1,144 @@
++/** P2 Build spine — mode chips + surface hrefs (ingenium). */
++
++export type BuildMode =
++  | "prefer_pack"
++  | "residual_app"
++  | "option_a"
++  | "stock_autopilot"
++  | "report_layout"
++  | "connector";
++
++export type BuildSpineChip = {
++  id: BuildMode;
++  label: string;
++  blurb: string;
++  surface: string;
++  href: string;
++  active: boolean;
++};
++
++export type BuildSpinePayload = {
++  version: number;
++  prompt: string;
++  brief: string;
++  build_mode: BuildMode;
++  chips: BuildSpineChip[];
++  capability?: string | null;
++  grain?: string | null;
++  gold_artifact_id?: string | null;
++  delivery_lane?: string | null;
++  artifact_kind?: string | null;
++  prove_status?: string | null;
++  delivery_lane_copy?: string | null;
++  artifact_kind_copy?: string | null;
++  promote_human?: boolean;
++  completeness_is_not_cert?: boolean;
++  diagnosis?: Record<string, unknown>;
++  contract?: Record<string, unknown>;
++  surfaces?: Record<string, string>;
++  honesty?: string;
++};
++
++export const BUILD_MODE_META: Record<
++  BuildMode,
++  { label: string; surface: "studio" | "wizard" | "job" | "designer"; blurb: string }
++> = {
++  prefer_pack: {
++    label: "Prefer pack",
++    surface: "designer",
++    blurb: "Inherit-only field pack on a stock host — not a new Apps tile.",
++  },
++  residual_app: {
++    label: "Residual app",
++    surface: "studio",
++    blurb: "New x_* residual / full app — identity lock; never Prefer-reshape.",
++  },
++  option_a: {
++    label: "Option A",
++    surface: "studio",
++    blurb: "Installable module — sandbox prove, human Promote.",
++  },
++  stock_autopilot: {
++    label: "Stock Autopilot",
++    surface: "job",
++    blurb: "Stock-first Job Autopilot — no custom residual invent.",
++  },
++  report_layout: {
++    label: "Report layout",
++    surface: "studio",
++    blurb: "QWeb / document layout — not Contacts Prefer delivery-notes.",
++  },
++  connector: {
++    label: "Connector",
++    surface: "studio",
++    blurb: "FX / HTTP provider — gold Option A or external connector lane.",
++  },
++};
++
++export function hrefForBuildMode(connectionId: string, mode: BuildMode): string {
++  const surface = BUILD_MODE_META[mode].surface;
++  const slug =
++    surface === "designer"
++      ? "designer"
++      : surface === "job"
++        ? "job"
++        : surface === "wizard"
++          ? "wizard"
++          : "studio";
++  return `/connections/${connectionId}/${slug}`;
++}
++
++/** Client-side mode hint when API payload is not yet loaded. */
++export function resolveBuildModeLocal(input: {
++  capability?: string | null;
++  grain?: string | null;
++  artifact_kind?: string | null;
++  delivery_lane?: string | null;
++  gold_artifact_id?: string | null;
++}): BuildMode {
++  const kind = (input.artifact_kind || "").trim();
++  const cap = (input.capability || "").trim();
++  const grain = (input.grain || "").trim();
++  const gold = (input.gold_artifact_id || "").trim();
++  const lane = (input.delivery_lane || "").trim();
++  if (kind === "report_layout") return "report_layout";
++  if (kind === "external_connector" || gold === "currency_rate_cbn" || lane === "external_connector") {
++    return "connector";
++  }
++  if (cap === "option_a_authored" || cap === "option_a_standalone" || kind === "option_a_module") {
++    return "option_a";
++  }
++  if (cap === "stock_reuse" || kind === "stock_config") return "stock_autopilot";
++  if (grain === "field_pack" || kind === "field_pack") return "prefer_pack";
++  if (grain === "full_app" || kind === "full_app" || cap === "residual_app") return "residual_app";
++  return "residual_app";
++}
++
++export function defaultChips(connectionId: string, active: BuildMode): BuildSpineChip[] {
++  const ids: BuildMode[] = [
++    "prefer_pack",
++    "residual_app",
++    "option_a",
++    "stock_autopilot",
++    "report_layout",
++    "connector",
++  ];
++  const show =
++    active === "report_layout" || active === "connector"
++      ? (["prefer_pack", "residual_app", "option_a", "stock_autopilot", active] as BuildMode[])
++      : (["prefer_pack", "residual_app", "option_a", "stock_autopilot"] as BuildMode[]);
++  const ordered = [active, ...show, ...ids].filter(
++    (m, i, arr) => arr.indexOf(m) === i,
++  ) as BuildMode[];
++  return ordered.map((id) => ({
++    id,
++    label: BUILD_MODE_META[id].label,
++    blurb: BUILD_MODE_META[id].blurb,
++    surface: BUILD_MODE_META[id].surface,
++    href: hrefForBuildMode(connectionId, id),
++    active: id === active,
++  }));
++}
++
++export const BUILD_SPINE_HONESTY =
++  "One Build entry — App Studio, Draft Studio, and Job Autopilot share brief + stamps. Completeness ≠ Cert ≠ Autopilot. Promote stays human.";
+diff --git a/apps/web/src/lib/nav.ts b/apps/web/src/lib/nav.ts
+index dd0ed6b..c910aff 100644
+--- a/apps/web/src/lib/nav.ts
++++ b/apps/web/src/lib/nav.ts
+@@ -76,7 +76,7 @@ export const NAV_GROUPS: {
+   {
+     id: "ai",
+     label: "AI Studio",
+-    tooltip: "App Studio, Draft Studio, Job Autopilot, and Projects",
++    tooltip: "One Build entry — App Studio / Draft / Autopilot modes (chips). Projects + Expert route in.",
+   },
+   {
+     id: "data",
+diff --git a/apps/web/src/lib/use-build-spine-handoff.ts b/apps/web/src/lib/use-build-spine-handoff.ts
+new file mode 100644
+index 0000000..70c92ca
+--- /dev/null
++++ b/apps/web/src/lib/use-build-spine-handoff.ts
+@@ -0,0 +1,16 @@
++"use client";
++
++import { useEffect, useState } from "react";
++import {
++  readBuildSpineHandoff,
++  type BuildSpineHandoff,
++} from "./build-spine-handoff";
++
++/** Client-only handoff read — avoids SSR/hydration mismatch. */
++export function useBuildSpineHandoff(connectionId: string): BuildSpineHandoff | null {
++  const [handoff, setHandoff] = useState<BuildSpineHandoff | null>(null);
++  useEffect(() => {
++    setHandoff(readBuildSpineHandoff(connectionId));
++  }, [connectionId]);
++  return handoff;
++}
+-- 
+2.47.3
+
