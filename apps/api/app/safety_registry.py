@@ -74,6 +74,24 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     # HOWDO-01: minting an ask token and answering read only config; no Odoo write.
     "POST:/api/bridge-assist/token": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge-assist/ask": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
+    # MIG-01: create/files/mapping write Ingenium rows only (follow POST:/api/inbox/plans);
+    # dry-run only validates. import is the one Odoo-writing NF route: odoo_mutation=True,
+    # Live confirmation is the body's confirm flag (409 CONFLICT in the route).
+    "POST:/api/connections/{connection_id}/migrations": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/migrations/{mid}/files": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
+    "PUT:/api/connections/{connection_id}/migrations/{mid}/mapping": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/migrations/{mid}/dry-run": SafetySpec(
+        risk="read", odoo_mutation=False, confirm="none"
+    ),
+    "POST:/api/connections/{connection_id}/migrations/{mid}/import": SafetySpec(
+        risk="reversible", odoo_mutation=True, confirm="none"
+    ),
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),

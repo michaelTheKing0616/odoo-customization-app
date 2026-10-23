@@ -81,6 +81,20 @@ NF_HOWDO_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 
+# NF MIG-01: every migration studio route, resolved through the caller's workspace scope.
+# {mid} is scoped to the connection by the engine; the import body's target_connection_id
+# is resolved with get_scoped_connection_or_404 too (foreign target = 404).
+NF_MIG_ROUTES: tuple[tuple[str, str], ...] = (
+    ("POST", "/api/connections/{connection_id}/migrations"),
+    ("POST", "/api/connections/{connection_id}/migrations/{mid}/files"),
+    ("GET", "/api/connections/{connection_id}/migrations/{mid}/mapping"),
+    ("PUT", "/api/connections/{connection_id}/migrations/{mid}/mapping"),
+    ("POST", "/api/connections/{connection_id}/migrations/{mid}/dry-run"),
+    ("POST", "/api/connections/{connection_id}/migrations/{mid}/import"),
+    ("GET", "/api/connections/{connection_id}/migrations/{mid}/reconcile"),
+)
+
+
 def missing_registered_routes(
     openapi_paths: dict, routes: tuple[tuple[str, str], ...]
 ) -> list[tuple[str, str]]:

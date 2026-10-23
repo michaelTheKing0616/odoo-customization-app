@@ -49,7 +49,7 @@ FACTS: Paystack has no stock Odoo module, so Paystack flows go through Bridge. T
 ## MIG: Data migration studio (QuickBooks, Sage, Excel, other ERP; dry run and reconciliation)
 Extends FA 8.4 (migration mode; FA-S08 itemise), IMP-* (IMP-MATCH, IMP-BIG, IMP-CLEAN, IMP-TPL, IMP-OPENING), EL-IMP-RECONCILE (counts and sums reconciliation), `data_import.py`, `suite_import.py`, and the money guard rule "opening balances via try_loading only".
 1. **User / job:**
-   - A consultant moving an SME off QuickBooks, Sage or spreadsheets: "Bring customers, vendors, products, open invoices and opening balances in, prove it matches, and let me re-run until it does."
+   - A consultant moving an SME off QuickBooks, Sage, Zoho Books or spreadsheets: "Bring customers, vendors, products, open invoices and opening balances in, prove it matches, and let me re-run until it does."
    - Value: migration is part of every new Odoo project.
    - Metric:
      - For each supported source sample, a dry run reports 0 unmapped required columns.
@@ -57,7 +57,7 @@ Extends FA 8.4 (migration mode; FA-S08 itemise), IMP-* (IMP-MATCH, IMP-BIG, IMP-
      - Re-running is idempotent: no duplicates, by Ingenium external ids.
 2. **UX:**
    - Import → Migration studio.
-   - Pick the source (QuickBooks Online export, Sage 50 CSV, Excel workbook, Other ERP CSV) → upload files → auto-mapping per entity (source profile) with manual override → dependency order (partners → products → open documents → opening balances) → dry run (`try_loading`) per entity with row-level errors → fix in place or re-upload → import to the *test copy* → reconciliation report → repeat → when green, the same package goes to production through IMP-OPENING rules (drafts only, money guard) and a human confirm.
+   - Pick the source (QuickBooks Online export, Sage 50 CSV, Zoho Books export, Excel workbook, Other ERP CSV) → upload files → auto-mapping per entity (source profile) with manual override → dependency order (partners → products → open documents → opening balances) → dry run (`try_loading`) per entity with row-level errors → fix in place or re-upload → import to the *test copy* → reconciliation report → repeat → when green, the same package goes to production through IMP-OPENING rules (drafts only, money guard) and a human confirm.
    - ⌘K: "New migration".
 3. **UI:** area 09 Records tables (Airtable) for mapping and errors, area 16 for the reconciliation bars.
 4. **Security:**
@@ -70,11 +70,14 @@ Extends FA 8.4 (migration mode; FA-S08 itemise), IMP-* (IMP-MATCH, IMP-BIG, IMP-
    - Partial failure keeps imported batches and lists failed rows. Rollback archives the batch's records where allowed.
 6. **Data / API:**
    - Tables `migration_jobs` and `migration_profiles` (source, entity, column map, transforms).
-   - `POST /api/connections/{id}/migrations {source}`.
-   - `POST …/migrations/{mid}/files`.
-   - `GET …/migrations/{mid}/mapping`.
-   - `PUT …/migrations/{mid}/mapping`.
-   - `POST …/migrations/{mid}/dry-run` → `{entities[{entity, rows, errors[{row, column, message}]}]}`.
-   - `POST …/migrations/{mid}/import {target_connection_id}` (409 if Live without confirm).
-   - `GET …/migrations/{mid}/reconcile`.
+   - `POST /api/connections/{id}/migrations` body `MigrationCreate {source}` → `MigrationJob`. Pinned 2026-10-22.
+   - `MigrationJob {id, connection_id, source, created_at}`. `id` and `connection_id` are `str`. `created_at` is `datetime`. `source` is `Literal["QuickBooks Online export", "Sage 50 CSV", "Zoho Books export", "Excel workbook", "Other ERP CSV"]`.
+   - `POST …/migrations/{mid}/files` is multipart, one part named `file` (`UploadFile`). The filename is that part's filename. Not a JSON body and not `content_base64`. `python-multipart` is already a dependency, and the existing import preview takes the same `file` part. Response `MigrationFile {filename: str}`. The bytes are not echoed.
+   - `GET` and `PUT …/migrations/{mid}/mapping` body and response `MappingSet {mappings}`. `mappings` is `[EntityMapping]`.
+   - `EntityMapping {source, entity, column_map, transforms}`. `source` is the same literal as on the job. `entity` is `str`. `column_map` is `dict[str, str]` (source column → Odoo field name). `transforms` is `dict[str, str]` (source column → transform name, not code).
+   - `POST …/migrations/{mid}/dry-run` → `DryRunResult {entities}`. `entities` is `[DryRunEntity]`. `DryRunEntity {entity, rows, errors}`. `entity` is `str`. `rows` is `int` (how many data rows). `errors` is `[RowError]`. `RowError {row, column, message}`. `row` is `int` (1-based data row). `column` and `message` are `str`.
+   - `POST …/migrations/{mid}/import` body `ImportRequest {target_connection_id, confirm}` → `ImportResult`. `target_connection_id` is `str`. `confirm` is `bool`. When the target is Live and `confirm` is false, the route returns 409 with B5 code `CONFLICT`. A Live target with `confirm` true does not return that 409.
+   - `ImportResult {target_connection_id, failed}`. `failed` is `[RowError]`.
+   - `GET …/migrations/{mid}/reconcile` → `ReconcileReport {lines}`. `lines` is `[ReconcileLine]`. `ReconcileLine {entity, file_count, odoo_count, file_sum, odoo_sum, equal}`. `entity` is `str`. `file_count` and `odoo_count` are `int`. `file_sum` and `odoo_sum` are `str` (decimal strings). `equal` is `bool`.
+   - Models. A contract test compares these field names and no others.
 7. **Risks:** source export formats vary by version and region, so profiles need real samples (DEC-066). There is no direct QuickBooks or Sage API in v1: files only.
