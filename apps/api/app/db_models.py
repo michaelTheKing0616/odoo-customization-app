@@ -16,6 +16,7 @@ _TEST_WRITE_MODE_DEFAULT = os.environ.get("TEST_DEFAULT_WRITE_MODE", "observer")
 # Register account models on the same metadata (MON-1).
 from app import account_models as _account_models  # noqa: F401
 from app import billing_models as _billing_models  # noqa: F401
+from app.bot_verify import models as _bot_verify_models  # noqa: F401, E402
 
 
 class OdooConnection(Base):

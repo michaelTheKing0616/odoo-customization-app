@@ -23,6 +23,8 @@ File allow-list:
 - apps/api/app/bot_verify/store.py (new)
 - apps/api/alembic/versions/<rev>_nf_verify_runs.py (new)
 - apps/api/tests/test_nf_bot_verify_store.py (new)
+- apps/api/app/bot_verify/models.py (new) -- added 2026-10-23: drift parity
+- apps/api/app/db_models.py (import line only) -- added 2026-10-23: drift parity
 Goal: Persist verify runs and artifacts so the BV-01 routes survive restarts, with every id scoped to its connection.
 Steps:
 1. Read BOT_VERIFY.md §6 and 00_BASELINE.md B5. Build only what this card's ACs name.
