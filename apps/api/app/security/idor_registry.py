@@ -95,6 +95,15 @@ NF_MIG_ROUTES: tuple[tuple[str, str], ...] = (
 )
 
 
+# NF BV-01: every verify-run route, resolved through the caller's workspace scope.
+# {run_id} and {artifact_id} are scoped to the connection by the engine.
+NF_BV_ROUTES: tuple[tuple[str, str], ...] = (
+    ("POST", "/api/connections/{connection_id}/verify-runs"),
+    ("GET", "/api/connections/{connection_id}/verify-runs/{run_id}"),
+    ("GET", "/api/connections/{connection_id}/verify-runs/{run_id}/artifacts/{artifact_id}"),
+)
+
+
 def missing_registered_routes(
     openapi_paths: dict, routes: tuple[tuple[str, str], ...]
 ) -> list[tuple[str, str]]:

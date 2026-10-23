@@ -92,6 +92,11 @@ ROUTE_OVERRIDES: dict[str, SafetySpec] = {
     "POST:/api/connections/{connection_id}/migrations/{mid}/import": SafetySpec(
         risk="reversible", odoo_mutation=True, confirm="none"
     ),
+    # BV-01: starting a run writes Ingenium rows only; live layer is read-only and
+    # walkthrough/flows touch only a disposable clone (engine-enforced).
+    "POST:/api/connections/{connection_id}/verify-runs": SafetySpec(
+        risk="reversible", odoo_mutation=False, confirm="none", bypass_writes_paused=False
+    ),
     "POST:/api/connections": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "POST:/api/bridge/contracts/validate": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
     "GET:/api/inbox/plans": SafetySpec(risk="read", odoo_mutation=False, confirm="none"),
