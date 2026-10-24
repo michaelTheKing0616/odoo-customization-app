@@ -283,6 +283,16 @@ def _docker(*args: str) -> str:
     return cp.stdout
 
 
+def _wait_source(probe: Any, db: str, *, tries: int = 20, sleep: Any = time.sleep) -> None:
+    for _ in range(tries):
+        try:
+            probe()
+            return
+        except Exception:  # noqa: BLE001
+            sleep(1)
+    raise TimeoutError(f"source {db} not reachable after {tries}s")
+
+
 class LiveClones:
     """Clone = CREATE DATABASE ... TEMPLATE source + filestore copy, on the sandbox stack only."""
 
@@ -304,12 +314,8 @@ class LiveClones:
             f" WHERE datname = '{src}' AND pid <> pg_backend_pid()"
         )
         self._sql(f'CREATE DATABASE "{name}" TEMPLATE "{src}"')
-        for _ in range(20):  # Odoo 20 needs a moment to rebuild the source registry
-            try:
-                self.src.admin("res.users", "search_count", ([],))
-                break
-            except Exception:  # noqa: BLE001
-                time.sleep(1)
+        # Odoo 20 needs a moment to rebuild the source registry; raise if it never returns.
+        _wait_source(lambda: self.src.admin("res.users", "search_count", ([],)), src)
         fs = "/var/lib/odoo/filestore"
         _docker(
             "exec",
@@ -500,3 +506,73 @@ def test_live_source_refused(flv: Any, v: int) -> None:
     with pytest.raises(TargetNotAllowed):
         fl.run_flow_steps(port, FLOWS["crm"], source_db=port.db_name)
     assert port.admin("crm.lead", "search_count", ([],)) == 0
+
+
+# --- BV-HARDEN oracle ---------------------------------------------------------
+class _LeavePort:
+    def __init__(self, major: int, missing: bool = False) -> None:
+        self.major, self.admin_uid, self.missing = major, 2, missing
+        self.personas = {"low_privilege": 7}
+        self.calls: list[tuple] = []
+        self.xmlids: list[tuple[str, str]] = []
+
+    def admin(self, model: str, method: str, args: Any = (), kwargs: Any = None) -> Any:
+        self.calls.append((model, method, args))
+        return [] if method in ("search", "search_read") else 11
+
+    def xmlid(self, module: str, name: str) -> int:
+        self.xmlids.append((module, name))
+        if self.missing:
+            raise LookupError(f"xmlid {module}.{name} missing")
+        return 42
+
+    def call(self, *a: Any, **k: Any) -> int:
+        return 5
+
+
+def test_harden_v20_time_off_group_pinned_by_xmlid() -> None:
+    from app.bot_verify import flow_library as flib
+
+    p = _LeavePort(20)
+    flib._leave_request(p, {})
+    assert p.xmlids == [("hr_holidays", "group_hr_holidays_employee")]
+    assert not [c for c in p.calls if c[0] == "ir.model.data"]
+    w = [c for c in p.calls if c[:2] == ("res.users", "write")]
+    assert w == [("res.users", "write", ([7], {"group_ids": [(4, 42)]}))]
+
+
+def test_harden_v20_missing_group_fails_loudly() -> None:
+    from app.bot_verify import flow_library as flib
+
+    with pytest.raises(LookupError):
+        flib._leave_request(_LeavePort(20, missing=True), {})
+
+
+def test_harden_pre20_no_group_grant() -> None:
+    from app.bot_verify import flow_library as flib
+
+    for v in (17, 18, 19):
+        p = _LeavePort(v)
+        flib._leave_request(p, {})
+        assert p.xmlids == [] and not [c for c in p.calls if c[:2] == ("res.users", "write")]
+
+
+def test_harden_clone_wait_raises_on_timeout() -> None:
+    naps: list[float] = []
+
+    def dead() -> None:
+        raise ConnectionError("registry rebuilding")
+
+    with pytest.raises(TimeoutError) as ei:
+        _wait_source(dead, "ingenium_nf_bv_20", sleep=naps.append)
+    assert "ingenium_nf_bv_20" in str(ei.value) and len(naps) == 20
+    tries = iter([ConnectionError("x"), None])
+
+    def flaky() -> None:
+        e = next(tries)
+        if e:
+            raise e
+
+    naps.clear()
+    _wait_source(flaky, "ingenium_nf_bv_20", sleep=naps.append)
+    assert naps == [1]

@@ -9,6 +9,7 @@ integration-key session on an owner-approved connection. Secrets travel by env o
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -16,7 +17,7 @@ import secrets
 import subprocess
 import tempfile
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -247,6 +248,7 @@ _SYSTEM_MODELS = frozenset(
 # App models -> the least group that can open them (not the app manager unless needed).
 _APP_GROUPS: dict[str, tuple[str, str]] = {"crm.": ("sales_team", "group_sale_salesman")}
 MIN_SECRET_LEN = 16
+_GROUPS_TOKEN = object()
 
 
 @dataclass(frozen=True)
@@ -257,14 +259,28 @@ class WalkGroups:
     xmlids: tuple[str, ...]
     system_gid: int
     system: bool
+    _token: object = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # F7: groups_for is the only constructor; a hand-built WalkGroups is refused.
+        if self._token is not _GROUPS_TOKEN:
+            raise TypeError("WalkGroups must come from groups_for()")
 
 
 def needs_system(model: str) -> bool:
     return model.startswith(_SYSTEM_PREFIXES) or model in _SYSTEM_MODELS
 
 
-def groups_for(ops: Sequence[Mapping[str, Any]], port: Any) -> WalkGroups:
-    """D-BV-2: minimum groups for the walk; base.group_user always."""
+def groups_for(
+    ops: Sequence[Mapping[str, Any]],
+    port: Any,
+    *,
+    app_groups: Sequence[tuple[str, str]] = (),
+) -> WalkGroups:
+    """D-BV-2: minimum groups for the walk; base.group_user always.
+
+    app_groups adds app user groups (BV-05 flows); they can never grant group_system.
+    """
     major = int(getattr(port, "major", 17))
     plan = build_plan(ops, major=major, disposable=True)
     want: list[tuple[str, str]] = [("base", "group_user")]
@@ -279,11 +295,17 @@ def groups_for(ops: Sequence[Mapping[str, Any]], port: Any) -> WalkGroups:
         if p.action == "open" and p.view == "form" and p.model == "res.partner":
             if ("base", "group_partner_manager") not in want:
                 want.append(("base", "group_partner_manager"))
-    if system:
-        want.append(("base", "group_system"))
+    for grp in app_groups:
+        if grp not in want:
+            want.append(grp)
     sys_gid = int(port.xmlid("base", "group_system"))
     ids = tuple(int(port.xmlid(m, n)) for m, n in want)
-    return WalkGroups(ids, tuple(f"{m}.{n}" for m, n in want), sys_gid, system)
+    if sys_gid in ids:
+        raise TargetNotAllowed("app groups never grant group_system")
+    if system:
+        want.append(("base", "group_system"))
+        ids = (*ids, sys_gid)
+    return WalkGroups(ids, tuple(f"{m}.{n}" for m, n in want), sys_gid, system, _GROUPS_TOKEN)
 
 
 def create_walk_user(
@@ -305,6 +327,48 @@ def create_walk_user(
         ({"name": login, "login": login, "password": pw, gkey: [(6, 0, list(groups.ids))]},),
     )
     return WalkLogin("password", login, pw)
+
+
+def delete_walk_user(target: WalkTarget, admin: Callable[..., Any], login: WalkLogin) -> bool:
+    """F5: unlink the throwaway walk user and read back that it is gone. Idempotent."""
+    if target.kind != "disposable_clone" or not is_disposable(target.db_name):
+        raise TargetNotAllowed("walk users are only deleted on disposable clones")
+    dom = [("login", "=", login.login)]
+    ctx = {"context": {"active_test": False}}
+    uids = list(admin("res.users", "search", (dom,), ctx) or [])
+    if not uids:
+        return True
+    try:
+        admin("res.users", "unlink", (uids,))
+    except Exception:  # noqa: BLE001 - Odoo refused the delete (Odoo 20: calendar.user ACL)
+        return _archive_walk_user(target, admin, uids)
+    if admin("res.users", "search", (dom,), ctx):
+        raise RuntimeError("walk user still present after delete")
+    return True
+
+
+def _archive_walk_user(target: WalkTarget, admin: Callable[..., Any], uids: list[int]) -> bool:
+    """Fallback where Odoo refuses deletion: archive, drop all groups, scramble the password,
+    then read back archived with no groups."""
+    gkey = "groups_id" if target.major < 19 else "group_ids"
+    vals = {"active": False, gkey: [(5, 0, 0)], "password": secrets.token_urlsafe(32)}
+    admin("res.users", "write", (uids, vals))
+    rows = admin("res.users", "read", (uids, ["active", gkey]), {"context": {"active_test": False}})
+    if len(rows or []) != len(uids) or any(r["active"] or r[gkey] for r in rows):
+        raise RuntimeError("walk user not archived without access after refused delete")
+    return True
+
+
+@contextlib.contextmanager
+def walk_user(
+    target: WalkTarget, admin: Callable[..., Any], run_id: str, groups: WalkGroups
+) -> Iterator[WalkLogin]:
+    """Create the walk user, yield its login, and always delete it afterwards."""
+    login = create_walk_user(target, admin, run_id, groups)
+    try:
+        yield login
+    finally:
+        delete_walk_user(target, admin, login)
 
 
 def session_login(target: WalkTarget, session_id: str) -> WalkLogin:

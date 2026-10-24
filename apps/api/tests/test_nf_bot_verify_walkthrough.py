@@ -212,9 +212,8 @@ def test_walk_user_only_on_disposable() -> None:
     assert calls[0][2][0]["groups_id"] == [(6, 0, [1, 4])]
     with pytest.raises(TypeError):
         wk.create_walk_user(_target(), lambda *a: None, "r", [1, 2])
-    forged = wk.WalkGroups((1, 2), ("base.group_user", "base.group_system"), 2, False)
-    with pytest.raises(tg.TargetNotAllowed):
-        wk.create_walk_user(_target(), lambda *a: None, "r", forged)
+    with pytest.raises(TypeError):  # BV-HARDEN F7: forged WalkGroups cannot be built
+        wk.WalkGroups((1, 2), ("base.group_user", "base.group_system"), 2, False)
     appr = _target(db_name="aonb", walkthrough_allowed=True, approved_by="u", owner_id="u")
     with pytest.raises(tg.TargetNotAllowed):
         wk.create_walk_user(appr, lambda *a: None, "r", g)
@@ -430,8 +429,9 @@ def test_live_walk_per_family(bv: Any, v: int, family: str, tmp_path: Path) -> N
         _model_acl(port, v, good["params"]["model"])
     target = tg.resolve_target(url=port.url, db_name=port.db_name, major=v)
     assert target.db_name.startswith("ingenium_nf_bv_") and 18117 <= target.port <= 18120
-    login = wk.create_walk_user(target, port.admin, f"{family}{v}", wk.groups_for([good], port))
-    bundle = wk.run_walkthrough([good], target, login, tmp_path)
+    with wk.walk_user(target, port.admin, f"{family}{v}", wk.groups_for([good], port)) as login:
+        bundle = wk.run_walkthrough([good], target, login, tmp_path)
+    _assert_walk_user_gone(port, login)
     bad = [s for s in bundle["steps"] if not s["passed"]]
     assert not bad, (v, family, bad, bundle["runner_error"])
     assert all(
@@ -495,8 +495,9 @@ def test_live_fill_and_save(bv: Any, v: int, tmp_path: Path) -> None:
         {"type": "view.inherit.create", "params": {"model": "res.partner"}},
     ]
     target = tg.resolve_target(url=port.url, db_name=port.db_name, major=v)
-    login = wk.create_walk_user(target, port.admin, f"fill{v}", wk.groups_for(ops, port))
-    bundle = wk.run_walkthrough(ops, target, login, tmp_path)
+    with wk.walk_user(target, port.admin, f"fill{v}", wk.groups_for(ops, port)) as login:
+        bundle = wk.run_walkthrough(ops, target, login, tmp_path)
+    _assert_walk_user_gone(port, login)
     assert [s["action"] for s in bundle["steps"]][:6] == [
         "open",
         "assert",
@@ -520,3 +521,121 @@ def test_live_fill_and_save(bv: Any, v: int, tmp_path: Path) -> None:
         {"fields": ["id"]},
     )
     assert len(rows) == 1
+
+
+# --- BV-HARDEN oracle ---------------------------------------------------------
+def test_harden_walkgroups_only_from_groups_for() -> None:
+    with pytest.raises(TypeError):
+        wk.WalkGroups((1, 2), ("base.group_user", "base.group_system"), 2, True)
+    with pytest.raises(TypeError):
+        wk.WalkGroups((1,), ("base.group_user",), 2, False)
+    g = wk.groups_for([FIELD_OP], _XPort())
+    assert isinstance(g, wk.WalkGroups) and not g.system
+
+
+class _UserAdmin:
+    def __init__(self, fail_unlink: bool = False) -> None:
+        self.users: dict[int, str] = {}
+        self.fail_unlink = fail_unlink
+        self.calls: list[tuple] = []
+
+    def __call__(self, model: str, method: str, args: Any = (), kwargs: Any = None) -> Any:
+        self.calls.append((model, method))
+        assert model == "res.users"
+        if method == "create":
+            uid = 100 + len(self.users)
+            self.users[uid] = args[0]["login"]
+            return uid
+        if method == "search":
+            login = [d for d in args[0] if d[0] == "login"][0][2]
+            return [u for u, lg in self.users.items() if lg == login]
+        if method == "unlink":
+            if self.fail_unlink:
+                return True  # unlink "succeeds" but the row stays: read-back must catch it
+            for u in args[0]:
+                self.users.pop(u, None)
+            return True
+        raise AssertionError(method)
+
+
+def test_harden_walk_user_deleted_after_run_pass_or_fail() -> None:
+    adm = _UserAdmin()
+    g = wk.groups_for([FIELD_OP], _XPort())
+    with wk.walk_user(_target(), adm, "r1", g) as login:
+        assert adm.users and login.login in adm.users.values()
+    assert adm.users == {}
+    with pytest.raises(RuntimeError, match="boom"):
+        with wk.walk_user(_target(), adm, "r2", g):
+            raise RuntimeError("boom")
+    assert adm.users == {}
+
+
+def test_harden_walk_user_delete_reads_back() -> None:
+    adm = _UserAdmin(fail_unlink=True)
+    g = wk.groups_for([FIELD_OP], _XPort())
+    login = wk.create_walk_user(_target(), adm, "r3", g)
+    with pytest.raises(RuntimeError):
+        wk.delete_walk_user(_target(), adm, login)
+    adm.fail_unlink = False
+    assert wk.delete_walk_user(_target(), adm, login) is True and adm.users == {}
+    assert wk.delete_walk_user(_target(), adm, login) is True  # idempotent
+
+
+def _assert_walk_user_gone(port: Any, login: Any) -> None:
+    """AC4: deleted, or archived with no access where Odoo refuses deletion (Odoo 20)."""
+    gkey = "groups_id" if port.major < 19 else "group_ids"
+    ctx = {"context": {"active_test": False}}
+    uids = port.admin("res.users", "search", ([("login", "=", login.login)],), ctx)
+    if uids:
+        rows = port.admin("res.users", "read", (uids, ["active", gkey]), ctx)
+        assert all(not r["active"] and not r[gkey] for r in rows), rows
+
+
+class _RefusingAdmin:
+    def __init__(self) -> None:
+        self.rows = {7: {"id": 7, "active": True, "groups_id": [1, 2]}}
+        self.writes: list[Any] = []
+
+    def __call__(self, model: str, method: str, args: Any = (), kwargs: Any = None) -> Any:
+        if method == "search":
+            return list(self.rows)
+        if method == "unlink":
+            raise PermissionError("no delete access to calendar.user")
+        if method == "write":
+            uids, vals = args
+            self.writes.append(vals)
+            for u in uids:
+                self.rows[u]["active"] = vals["active"]
+                if vals["groups_id"] == [(5, 0, 0)]:
+                    self.rows[u]["groups_id"] = []
+            return True
+        if method == "read":
+            return [self.rows[u] for u in args[0]]
+        raise AssertionError(method)
+
+
+def test_harden_walk_user_archived_when_delete_refused() -> None:
+    adm = _RefusingAdmin()
+    login = wk.WalkLogin("password", "ingenium_walk_x", "p" * 32)
+    assert wk.delete_walk_user(_target(), adm, login) is True
+    assert adm.rows[7]["active"] is False and adm.rows[7]["groups_id"] == []
+    assert (
+        adm.writes
+        and adm.writes[0]["password"] != "p" * 32
+        and len(adm.writes[0]["password"]) >= 32
+    )
+
+
+def test_harden_walk_user_archive_must_read_back_clean() -> None:
+    adm = _RefusingAdmin()
+    real = adm.__call__
+
+    def sticky(model: str, method: str, args: Any = (), kwargs: Any = None) -> Any:
+        if method == "write":
+            return True  # write silently ignored: still active with groups
+        return real(model, method, args, kwargs)
+
+    with pytest.raises(RuntimeError, match="not archived"):
+        wk.delete_walk_user(
+            _target(), sticky, wk.WalkLogin("password", "ingenium_walk_y", "p" * 32)
+        )

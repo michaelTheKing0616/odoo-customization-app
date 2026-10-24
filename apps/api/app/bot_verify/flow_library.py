@@ -216,6 +216,9 @@ def _receipt_done(port: Any, c: Ctx) -> tuple[str, int]:
 
 
 # --- hr_holidays: leave request -> approve -----------------------------------
+TIME_OFF_EMPLOYEE_V20 = ("hr_holidays", "group_hr_holidays_employee")
+
+
 def _leave_request(port: Any, c: Ctx) -> tuple[str, int]:
     # Odoo 20 folds leave types into hr.work.entry.type (hr.leave.work_entry_type_id).
     v20 = int(port.major) >= 20
@@ -243,20 +246,8 @@ def _leave_request(port: Any, c: Ctx) -> tuple[str, int]:
     if v20 and uid != int(port.admin_uid):
         # Odoo 20 gates hr.work.entry.type behind "Time Off / Employee"; grant only that
         # group to the requester on the disposable clone.
-        gx = port.admin(
-            "ir.model.data",
-            "search_read",
-            (
-                [
-                    ("module", "=", "hr_holidays"),
-                    ("model", "=", "res.groups"),
-                    ("name", "=like", "%employee%"),
-                ],
-            ),
-            {"fields": ["res_id"], "limit": 1},
-        )
-        if gx:
-            port.admin("res.users", "write", ([uid], {"group_ids": [(4, int(gx[0]["res_id"]))]}))
+        gid = int(port.xmlid(*TIME_OFF_EMPLOYEE_V20))  # missing xmlid raises, never skipped
+        port.admin("res.users", "write", ([uid], {"group_ids": [(4, gid)]}))
     if uid == int(port.admin_uid):
         c["leave"] = _create(port, "hr.leave", vals)
     else:

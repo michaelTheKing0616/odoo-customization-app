@@ -21,7 +21,7 @@ from typing import Any
 
 from app.bot_verify.flow_library import APP_GROUPS, Ctx, Flow, flows_for
 from app.bot_verify.targets import TargetNotAllowed, WalkTarget, resolve_target
-from app.bot_verify.walkthrough import WalkGroups, create_walk_user, run_walkthrough
+from app.bot_verify.walkthrough import WalkGroups, groups_for, run_walkthrough, walk_user
 from app.changeset import verify as verify_mod
 
 CLONE_PREFIX = "ingenium_nf_bv_clone_"
@@ -143,16 +143,12 @@ def _short(msg: str) -> str:
 
 def flow_groups(port: Any, apps: Sequence[str]) -> WalkGroups:
     """Least groups to open the flows' records: base.group_user + each app's user group."""
-    want: list[tuple[str, str]] = [("base", "group_user")]
+    extra: list[tuple[str, str]] = []
     for app in sorted(set(apps)):
         for g in APP_GROUPS.get(app, ()):
-            if g not in want:
-                want.append(g)
-    sys_gid = int(port.xmlid("base", "group_system"))
-    ids = tuple(int(port.xmlid(m, n)) for m, n in want)
-    if sys_gid in ids:
-        raise TargetNotAllowed("flow walk user never gets group_system")
-    return WalkGroups(ids, tuple(f"{m}.{n}" for m, n in want), sys_gid, False)
+            if g not in extra:
+                extra.append(g)
+    return groups_for([], port, app_groups=extra)
 
 
 def attach_screenshots(results: list[FlowStepResult], bundle: Mapping[str, Any]) -> list[str]:
@@ -204,9 +200,9 @@ def walk_flow_steps(
         for r in results
     ]
     groups = flow_groups(port, sorted({r.app for r in results}))
-    login = create_walk_user(target, port.admin, uuid.uuid4().hex, groups)
     kw = {"runner": runner} if runner else {}
-    bundle = run_walkthrough(ops, target, login, bundle_dir, **kw)
+    with walk_user(target, port.admin, uuid.uuid4().hex, groups) as login:  # F5: always deleted
+        bundle = run_walkthrough(ops, target, login, bundle_dir, **kw)
     return attach_screenshots(results, bundle)
 
 
