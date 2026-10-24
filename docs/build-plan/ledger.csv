@@ -7,7 +7,7 @@ P0-2-AC1,§4 P0-2 L466,API pytest 0 failures or each xfail has reason + P-item +
 P0-2-AC2,§4 P0-2 L467,suite passes twice in random order (or reverse file order once),test,P0,Open,B0-RANDOM-ORDER,
 P0-2-AC3,§4 P0-2 L468,test_alembic_drift passes on fresh alembic-only DB; init_db ALTERs removed; one alembic head,build,P0,"[Done, code]",B0-ALEMBIC,
 P0-2-AC4,§4 P0-2 L469,no test reads ~/.ingenium; no test reaches Vertex unless live_ai (skipped),test,P0,"[Done, code]",B0-AICACHE-ISO,
-P0-2-CL1,§4 P0-2 L465,cluster: direct XML-RPC in code_runner/testing.py bridge/export.py routers/view_engine.py bypass transport,test,P0,Open,B0-TESTFIX-TRANSPORT,
+P0-2-CL1,§4 P0-2 L465,cluster: direct XML-RPC in code_runner/testing.py bridge/export.py routers/view_engine.py bypass transport,test,P0,"[Done, code]",B0-TESTFIX-TRANSPORT,
 P0-2-CL2,§4 P0-2 L465,cluster: version-branch baseline 37 vs 22 (import_boundary),test,P0,Open,B0-TESTFIX-BASELINE,
 P0-2-CL3,§4 P0-2 L465,cluster: pack and Expert copy tests expecting old jargon,test,P0,Open,B0-TESTFIX-COPY,
 P0-2-CL4,§4 P0-2 L465,cluster: mastery battery,test,P0,Open,B0-TESTFIX-MASTERY,

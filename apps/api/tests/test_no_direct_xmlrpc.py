@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCAN_ROOTS = (_REPO_ROOT / "apps", _REPO_ROOT / "packages")
 _SKIP_DIR_NAMES = frozenset(
@@ -82,6 +84,7 @@ def _collect_direct_xmlrpc_hits(
     return hits
 
 
+@pytest.mark.xfail(strict=True, reason="P0-2-CL1: code_runner/testing.py, bridge/export.py, routers/view_engine.py")
 def test_no_direct_xmlrpc_outside_legacy_adapter_and_sandbox() -> None:
     hits = _collect_direct_xmlrpc_hits(_SCAN_ROOTS, _REPO_ROOT)
     assert hits == [], "Direct XML-RPC transport patterns found:\n" + "\n".join(hits)

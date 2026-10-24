@@ -2,7 +2,7 @@
 
 ID: B0-TESTFIX-TRANSPORT
 Title: API pytest 0 failures or each xfail has reason + P-item + Tope yes
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -47,6 +47,8 @@ Decision:
 | `code_runner/testing.py`, `bridge/export.py`, `routers/view_engine.py`, any other product file | hit |
 
 A remaining hit passes the suite bar only as `xfail(strict=True, reason="P0-2-CL1: <path>")` plus a P-item and Tope's yes. Any other remaining failure fails that bar. A product-file edit is outside this allow-list: STOP-AND-ASK.
+2026-10-24 measured hits, product not edited: `code_runner/testing.py` (`import xmlrpc.client`, `ServerProxy` at the db and common helpers), `bridge/export.py` (`import xmlrpc.client` and two `ServerProxy` calls inside `service_files`), `routers/view_engine.py` (`import xmlrpc.client` and `xmlrpc.client.Fault`). Tope yes: `pytest.mark.xfail(strict=True, reason="P0-2-CL1: code_runner/testing.py, bridge/export.py, routers/view_engine.py")` only on `test_no_direct_xmlrpc_outside_legacy_adapter_and_sandbox`. The planted `ServerProxy` test stays a normal pass. A later card removes those three call sites and flips this xfail. `P0-2-AC1` stays Open.
+2026-10-24 closed. 2 passed, 1 xfailed in 6.54s. `-p randomly` 2 passed, 1 xfailed in 6.75s. No XPASS. Product files untouched. `P0-2-CL1` is `[Done, code]`. Reviewer APPROVE.
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_b0_testfix_transport.py tests/test_no_direct_xmlrpc.py` → all pass
 - live: L2-HARNESS runner `--card B0-TESTFIX-TRANSPORT --matrix 17,18,19,20` on disposable `ingenium_*` DBs → pass per major (Phase 2 on)

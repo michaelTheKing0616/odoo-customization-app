@@ -1,3 +1,12 @@
+# Executor ACL, Odoo 20 partner save, dump smoke (2026-10-24)
+**Decided:** NF stream, recorded so later cards do not contradict it. A custom model created without an access right is invisible to non-superusers, so an executor `model.create` change-set ships an ACL. On Odoo 20, a non-admin save of `res.partner` can open an `iap.account` Access Error dialog while the row still saves; that is a least-privilege UX backlog item, not a failed save. `test_trust7_app_db_restore::test_pg_dump_smoke_to_temp` fails when the test database is empty because the dump is under 1024 bytes; a later card seeds the database or relaxes that floor. This stream does not edit that test.
+
+# XML-RPC cluster xfail and understand cluster (2026-10-24)
+**Decided:** Tope. `B0-TESTFIX-TRANSPORT` marks only `test_no_direct_xmlrpc_outside_legacy_adapter_and_sandbox` with `pytest.mark.xfail(strict=True, reason="P0-2-CL1: code_runner/testing.py, bridge/export.py, routers/view_engine.py")`. The planted `ServerProxy` test stays a normal pass. A later card removes those three call sites and flips this xfail. `B0-TESTFIX-UNDERSTAND` does not invent five node ids and does not xfail `test_compound_vehicle_type_dropped_without_cue`. That test belongs to REG-NP-T1c. `P0-2-CL7` stays Open.
+
+# Odoo 20 executor ACL and settings (2026-10-24)
+**Decided:** NF stream, recorded so later cards do not contradict it. Odoo 20 uses `ir.access` (`for_*` instead of `perm_*`, `domain` instead of `domain_force`). Executor ops that write access rights or record rules branch on the major the way `bot_verify/readback.py` `_acl_rb` does. `ir.config_parameter.set_param` is not callable over RPC on Odoo 20; setting ops write the `ir.config_parameter` record. Test Postgres port is `INGENIUM_TEST_PG_PORT`, default `54329`. This stream leaves it unset. NF sets `54339`.
+
 # UI bar on every screen (2026-10-04)
 **Decided:** Tope. Excellent, current, and tasteful UI is part of done throughout the app, including Code Studio, Script Runner, and Power Ops when those cards run. A later restyle card is not a reason to ship a plain screen. Operate screens stay dense and calm on the existing studio tokens, Base UI, and Sonner. Motion stays interruptible, transform/opacity, under 300ms, and reduced-motion safe. Recorded in `AGENTS.md` and `cards/DEV_MODES_PRODUCTION.md`.
 
