@@ -322,7 +322,7 @@ function ChecksTable({ checks }: { checks: CheckResult[] }) {
         <tbody className="divide-y divide-border-subtle">
           {checks.map((c, i) => (
             <tr key={`${c.op_index}-${c.check}-${i}`} data-testid="check-row" data-passed={String(c.passed)} className="align-top transition-colors duration-75 hover:bg-surface-muted">
-              <td className="tabular px-4 py-2 text-muted">Change {num.format(c.op_index + 1)}</td>
+              <td className="tabular whitespace-nowrap px-4 py-2 text-muted">Change {num.format(c.op_index + 1)}</td>
               <td className="px-4 py-2 text-ink">
                 {plain(c.check)}
                 <Evidence evidence={c.evidence} className="mt-1 sm:hidden" />

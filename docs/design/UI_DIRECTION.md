@@ -156,3 +156,4 @@ The X-ray trial is the minimum. Every NF screen beats it on these rules too.
 - 2026-10-22 — Above-the-floor rules added: perceived performance, keyboard map, undo, en-NG/WAT formats, truncation, error formula, disclosure, spacing, states matrix, touch, print/export, choreography, first value; Beat-the-floor checklist for UI Worker packets.
 - 2026-10-22 — Sharpened from the full skills: exact timings, response budget, focus and overlay rules, persistent undo toasts, banned words; added Anti-patterns (banned).
 - 2026-10-24 — BV-UI evidence viewer entry: verify-run answer-first layout, amber platform notices, timeline keyboard map, evidence masking.
+- 2026-10-24 — BV-UI-WIRE: evidence viewer wired into the app at connections/[id]/operations/verify/[runId] (thin route, VerifyRunPanel loads the run; loading/error with retry/denied/empty states).

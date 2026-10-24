@@ -251,3 +251,13 @@ describe("review fixes", () => {
     }
   });
 });
+
+describe("BV-UI-WIRE: change label", () => {
+  it("keeps 'Change 1' on one line", () => {
+    stubMotion(false);
+    render(<EvidenceViewer run={run("passed")} artifactUrl={url} />);
+    const cells = screen.getAllByText(/^Change\s1$/);
+    expect(cells.length).toBeGreaterThan(0);
+    for (const c of cells) expect(c.className).toMatch(/whitespace-nowrap/);
+  });
+});
