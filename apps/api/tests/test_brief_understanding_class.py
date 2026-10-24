@@ -346,18 +346,39 @@ def test_rate_cue_keeps_rate_unit() -> None:
     assert "x_rate_unit" in names
 
 
-def test_diagnosis_name_strips_management_fluff() -> None:
-    """Diagnosis Name + Contract chrome match primary noun — no Management fluff."""
-    u = build_understanding(VEHICLE)
+def test_diagnosis_name_strips_management_fluff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Diagnosis Name + Contract chrome match primary noun — no Management fluff.
+
+    Intent LLM and any schema packet left by an earlier module are cleared
+    first, so the title comes from the deterministic residual noun.
+    """
+    from app.ai_conversation.intent_llm import (
+        reset_intent_llm_override,
+        reset_schema_packet,
+        set_intent_llm_override,
+        set_schema_packet,
+    )
+    from app.settings import settings
+
+    monkeypatch.setattr(settings, "ai_intent_llm", "off")
+    intent = set_intent_llm_override(None)
+    packet = set_schema_packet(None)
+    try:
+        u = build_understanding(VEHICLE)
+        display, slug = naming_from_residual(VEHICLE)
+        scrubbed = scrub_residual_display_name("Fleet Vehicle Request Management")
+        built = scrub_residual_display_name("Build Vehicle Request System")
+    finally:
+        reset_intent_llm_override(intent)
+        reset_schema_packet(packet)
     assert u.title == "Vehicle Request"
     assert "management" not in u.title.lower()
     assert "build" not in u.title.lower()
     assert not u.title.lower().startswith("fleet ")
-    display, slug = naming_from_residual(VEHICLE)
     assert display == "Vehicle Request"
     assert slug == "vehicle_request"
-    assert scrub_residual_display_name("Fleet Vehicle Request Management") == "Vehicle Request"
-    assert scrub_residual_display_name("Build Vehicle Request System") == "Vehicle Request"
+    assert scrubbed == "Vehicle Request"
+    assert built == "Vehicle Request"
 
 
 def test_vehicle_request_does_not_match_rental_briefing() -> None:

@@ -338,18 +338,47 @@ def test_refinement_llm_fallback_applies_allowlisted_ops() -> None:
     assert "x_category" not in names
 
 
-def test_create_session_blocks_low_ir(client: TestClient) -> None:
-    res = client.post(
-        "/api/ai/sessions",
-        json={
-            "prompt": "Use stock Odoo apps only for our small business.",
-            "connection_id": None,
-        },
+def test_create_session_blocks_low_ir(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stock-only prompt stays a low-IR clarification after other modules import.
+
+    Auth mode, intent LLM, and request context are pinned here so a previous
+    test's accounts session or schema packet cannot change this result.
+    """
+    from app.ai_conversation.intent_llm import (
+        reset_intent_llm_override,
+        reset_schema_packet,
+        set_intent_llm_override,
+        set_schema_packet,
     )
-    assert res.status_code == 200
+    from app.settings import settings
+
+    monkeypatch.setattr(settings, "auth_mode", "off")
+    monkeypatch.setattr(settings, "ai_intent_llm", "off")
+    intent = set_intent_llm_override(None)
+    packet = set_schema_packet(None)
+    try:
+        res = client.post(
+            "/api/ai/sessions",
+            json={
+                "prompt": "Use stock Odoo apps only for our small business.",
+                "connection_id": None,
+            },
+        )
+    finally:
+        reset_intent_llm_override(intent)
+        reset_schema_packet(packet)
+    assert res.status_code == 200, res.text
     body = res.json()
     assert body["status"] == "clarifying"
-    assert body.get("clarification") is not None
+    clarification = body.get("clarification")
+    assert clarification is not None
+    assert clarification.get("merge_key") == "ir_confidence"
+    assert {row.get("id") for row in clarification.get("options") or []} >= {
+        "residual_app",
+        "stock_first",
+    }
 
 
 def test_markup_session_requires_diagnosis_confirm(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

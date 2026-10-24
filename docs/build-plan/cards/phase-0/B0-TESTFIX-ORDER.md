@@ -2,7 +2,7 @@
 
 ID: B0-TESTFIX-ORDER
 Title: API pytest 0 failures or each xfail has reason + P-item + Tope yes
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -54,6 +54,9 @@ Decision:
 | still failing | STOP-AND-ASK. Do not add an xfail. There is no Tope yes |
 | file other than the five order-cluster files | do not edit and do not xfail, except the leak row above for `conftest.py`, `pytest.ini`, or `vitest.config.ts` |
 | rest of the API suite is red | record the failed count; STOP-AND-ASK; AC1's suite-wide bar stays |
+2026-10-24 the last full default suite was 68 failed. Do not rerun it on this card. Shared `P0-2-AC1` stays Open. Prove the two order-cluster commands only.
+2026-10-24 `test_compound_vehicle_type_dropped_without_cue` stays at HEAD (`x_vehicle_type` not in names). It fails on the uncommitted REG-NP-T1c keep in `ai_brief_cues.py`. It is not a named node on this card. Do not invert it.
+2026-10-24 closed. Named orders A 12 passed in 4.84s and B 12 passed in 4.52s. No xfail. `P0-2-CL5` is `[Done, code]`. `P0-2-AC1` stays Open. Reviewer APPROVE.
 | L2-HARNESS line | Phase 2. Not this card's close proof |
 
 Reading:

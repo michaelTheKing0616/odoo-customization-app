@@ -302,3 +302,4 @@ Verdict: keep pipeline default; agent no better on any quality metric, 4.8x slow
 - 2026-10-22 · B0-DBGUARD · uv run pytest -q tests/test_b0_dbguard.py · 15 passed, reverse 15 passed · [Done, code]
 - 2026-10-22 · B0-ISO · uv run pytest -q tests/test_b0_iso.py · 18 passed, reverse 18 passed · counts equal · [Done, code]
 - 2026-10-22 · V-STUDIODRAFT · pnpm exec vitest run src/lib/api/studio-draft.live.test.ts · 3 passed · [Done, live]
+- 2026-10-24 · B0-TESTFIX-ORDER · .venv/bin/python -m pytest -q named order nodes, both file orders · A 12 passed in 4.84s · B 12 passed in 4.52s · compound asserts restored to HEAD · no xfail · [Done, code]
