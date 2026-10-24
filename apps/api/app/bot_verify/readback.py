@@ -35,6 +35,11 @@ PII_EXACT: frozenset[str] = frozenset(
     }
 )
 MASK = "***"
+# AC5 (BV-LIVE): free-text fields are masked whatever their content.
+FREE_TEXT_KEYS: frozenset[str] = frozenset(
+    {"function", "comment", "description", "note", "notes", "body", "body_html", "message"}
+)
+FREE_TEXT_TYPES: frozenset[str] = frozenset({"text", "html"})
 
 
 class PortUnavailable(Exception):
@@ -75,23 +80,40 @@ def _is_m2o(value: Any) -> bool:
     )
 
 
-def mask(value: Any) -> Any:
-    """DEC-023 masking: PII keys by pattern, m2o labels, then bridge.ops regex on scalars."""
+def mask(value: Any, free_text: frozenset[str] | set[str] = frozenset()) -> Any:
+    """DEC-023 masking: PII keys, free-text keys/fields, m2o labels, then bridge.ops regex."""
     if isinstance(value, Mapping):
         out: dict[Any, Any] = {}
         for k, v in value.items():
             if _is_m2o(v):
                 out[k] = [v[0], MASK]
-            elif is_pii_key(k) and v not in (None, False, ""):
+            elif (is_pii_key(k) or k in FREE_TEXT_KEYS or k in free_text) and v not in (
+                None,
+                False,
+                "",
+            ):
                 out[k] = MASK
             else:
-                out[k] = mask(v)
+                out[k] = mask(v, free_text)
         return out
     if _is_m2o(value):
         return [value[0], MASK]
     if isinstance(value, (list, tuple)):
-        return [mask(x) for x in value]
+        return [mask(x, free_text) for x in value]
     return mask_pii(value)
+
+
+def free_text_fields(port: Any, model: str) -> set[str]:
+    """Text/Html field names of ``model`` (fields_get); empty when unreadable."""
+    try:
+        meta = rpc(port, model, "fields_get", (), {"attributes": ["type"]}) or {}
+    except PortUnavailable:
+        raise
+    except Exception:  # noqa: BLE001 - masking falls back to key patterns
+        return set()
+    return {
+        k for k, v in meta.items() if isinstance(v, Mapping) and v.get("type") in FREE_TEXT_TYPES
+    }
 
 
 def target_model(changeset: Any) -> str | None:
@@ -122,28 +144,6 @@ def sample_fields(op: Mapping[str, Any]) -> list[str]:
 
 Readback = Callable[[Any, Mapping[str, Any]], dict[str, Any]]
 
-_RECORD_MODEL: dict[str, str] = {
-    "view": "ir.ui.view",
-    "action.window": "ir.actions.act_window",
-    "menu": "ir.ui.menu",
-    "filter": "ir.filters",
-    "report": "ir.actions.report",
-    "report.action": "ir.actions.report",
-    "server_action": "ir.actions.server",
-    "automation": "base.automation",
-    "cron": "ir.cron",
-    "sequence": "ir.sequence",
-    "mail_template": "mail.template",
-    "activity_type": "mail.activity.type",
-    "config_record": "ir.model.data",
-    "group": "res.groups",
-    "access": "ir.model.access",
-    "rule": "ir.rule",
-    "user": "res.users",
-    "company": "res.company",
-    "translation": "ir.model.fields",
-}
-
 
 def _params(op: Mapping[str, Any]) -> Mapping[str, Any]:
     p = op.get("params")
@@ -172,7 +172,11 @@ def _find(port: Any, model: str, p: Mapping[str, Any]) -> dict | None:
         if not domain:
             return None
         rows = rpc(
-            port, model, "search_read", (domain,), {"limit": 1, "context": {"active_test": False}}
+            port,
+            model,
+            "search_read",
+            (domain,),
+            {"limit": 1, "context": {"active_test": False, "ir.ui.menu.full_list": True}},
         )
     return dict(rows[0]) if rows else None
 
@@ -245,6 +249,65 @@ def _record_rb(model: str) -> Readback:
     return run
 
 
+def _stage_rb(port: Any, op: Mapping[str, Any]) -> dict[str, Any]:
+    """Stage model comes from the op params; none named = skipped, never crm.stage."""
+    model = _params(op).get("model")
+    if not isinstance(model, str) or not model:
+        out = _slot(op, False, {"reason": "no_stage_model"})
+        out["evidence"]["skipped"] = True
+        return out
+    return _record_rb(model)(port, op)
+
+
+def _company_id(port: Any, p: Mapping[str, Any]) -> int | None:
+    if isinstance(p.get("company_id"), int):
+        return p["company_id"]
+    rows = rpc(
+        port, "res.company", "search_read", ([],), {"fields": ["id"], "limit": 1, "order": "id"}
+    )
+    return rows[0]["id"] if rows else None
+
+
+def _xmlid_res(port: Any, module: str | None, name: str) -> list[int]:
+    domain: list = [("model", "=", "res.groups"), ("name", "=", name)]
+    if module:
+        domain.append(("module", "=", module))
+    rows = rpc(port, "ir.model.data", "search_read", (domain,), {"fields": ["res_id"], "limit": 2})
+    return [int(r["res_id"]) for r in rows]
+
+
+def _setting_rb(op: Mapping[str, Any], port: Any) -> dict[str, Any]:
+    """AC4: company-related settings read res.company; group_* settings read res.groups."""
+    p = _params(op)
+    key = str(p.get("key") or "")
+    meta = (
+        rpc(port, "res.config.settings", "fields_get", (), {"attributes": ["type", "related"]})
+        or {}
+    ).get(key)
+    related = str((meta or {}).get("related") or "")
+    if related.startswith("company_id.") and related.count(".") == 1:
+        fname = related.split(".", 1)[1]
+        cid = _company_id(port, p)
+        rows = rpc(port, "res.company", "read", ([cid], [fname])) if cid else []
+        got = rows[0].get(fname) if rows else None
+        return _slot(op, got == p.get("value"), {"source": "res.company", "field": fname})
+    if meta is not None and key.startswith("group_"):
+        implied = str(p.get("implied_group") or "")
+        module, _, name = implied.rpartition(".") if implied else ("", "", key)
+        gids = _xmlid_res(port, module or None, name)
+        base = _xmlid_res(port, "base", "group_user")
+        if len(gids) != 1 or not base:
+            out = _slot(op, False, {"source": "res.groups", "reason": "group_unknown"})
+            out["evidence"]["skipped"] = True
+            return out
+        rows = rpc(port, "res.groups", "read", (base, ["implied_ids"]))
+        on = bool(rows) and gids[0] in (rows[0].get("implied_ids") or [])
+        return _slot(op, on is bool(p.get("value")), {"source": "res.groups", "group": gids[0]})
+    out = _param_rb(op, port)
+    out["evidence"]["source"] = "ir.config_parameter"
+    return out
+
+
 def _param_rb(op: Mapping[str, Any], port: Any) -> dict[str, Any]:
     p = _params(op)
     row = _find(port, "ir.config_parameter", {"key": p.get("key") or p.get("name")})
@@ -306,40 +369,92 @@ def data_sample(port: Any, op: Mapping[str, Any]) -> tuple[str, int, int, list]:
     rows = rpc(
         port, model, "search_read", (domain,), {"limit": SAMPLE_LIMIT, "fields": sample_fields(op)}
     )
-    return model, expected_count(op, port), actual, mask(list(rows)[:SAMPLE_LIMIT])
+    hidden = free_text_fields(port, model) if model else set()
+    return model, expected_count(op, port), actual, mask(list(rows)[:SAMPLE_LIMIT], hidden)
 
 
 def _bind(fn: Callable[[Mapping[str, Any], Any], dict[str, Any]]) -> Readback:
     return lambda port, op: fn(op, port)
 
 
-def _build() -> dict[str, Readback]:
-    table: dict[str, Readback] = {}
-    for kind in OP_CATALOG:
-        prefix = kind.rsplit(".", 1)[0]
-        if kind.startswith(("model.",)):
-            table[kind] = _bind(_model_rb)
-        elif kind.startswith("field.") and kind != "field.groups.set" or kind == "selection.update":
-            table[kind] = _bind(_field_rb)
-        elif kind == "field.groups.set":
-            table[kind] = _record_rb("ir.model.fields")
-        elif kind == "constraint.sql":
-            table[kind] = _bind(_constraint_rb)
-        elif kind in ("setting.set", "config_param.set"):
-            table[kind] = _bind(_param_rb)
-        elif kind.startswith("module."):
-            table[kind] = _bind(_module_rb)
-        elif kind.startswith("data."):
-            table[kind] = _bind(_data_rb)
-        elif kind.startswith("stage."):
-            table[kind] = _record_rb("crm.stage")
-        elif kind.startswith("view."):
-            table[kind] = _record_rb("ir.ui.view")
-        else:
-            table[kind] = _record_rb(
-                _RECORD_MODEL.get(prefix, _RECORD_MODEL.get(kind.split(".")[0], "ir.model.data"))
-            )
-    return table
+# Odoo 20 merged ir.model.access + ir.rule into ir.access (for_* booleans, domain).
+_ACL20_KEYS: dict[str, str] = {
+    "perm_read": "for_read",
+    "perm_write": "for_write",
+    "perm_create": "for_create",
+    "perm_unlink": "for_unlink",
+    "domain_force": "domain",
+}
 
 
-READBACKS: dict[str, Readback] = _build()
+def _has_ir_access(port: Any) -> bool:
+    return bool(rpc(port, "ir.model", "search_count", ([("model", "=", "ir.access")],)))
+
+
+def _acl_rb(legacy: str) -> Readback:
+    def run(port: Any, op: Mapping[str, Any]) -> dict[str, Any]:
+        if not _has_ir_access(port):
+            return _record_rb(legacy)(port, op)
+        p = dict(_params(op))
+        if isinstance(p.get("values"), Mapping):
+            p["values"] = {_ACL20_KEYS.get(k, k): v for k, v in p["values"].items()}
+        out = _record_rb("ir.access")(port, {**op, "params": p})
+        out["evidence"]["source"] = "ir.access"
+        return out
+
+    return run
+
+
+def family_of(kind: str) -> str:
+    """Op family key in ``FAMILY_READBACK`` (two-level for action.window / report.action)."""
+    for two in ("action.window", "report.action"):
+        if kind.startswith(two + "."):
+            return two
+    if kind in ("field.groups.set", "selection.update", "constraint.sql", "config_param.set"):
+        return kind
+    return kind.split(".", 1)[0]
+
+
+def _field_family(kind: str) -> Readback:
+    return _bind(_field_rb)
+
+
+# Explicit read-back per op family (BV-LIVE pin). Unknown family = KeyError at import.
+FAMILY_READBACK: dict[str, Callable[[str], Readback]] = {
+    "model": lambda k: _bind(_model_rb),
+    "field": _field_family,
+    "selection.update": _field_family,
+    "field.groups.set": lambda k: _record_rb("ir.model.fields"),
+    "constraint.sql": lambda k: _bind(_constraint_rb),
+    "setting": lambda k: _bind(_setting_rb),
+    "config_param.set": lambda k: _bind(_param_rb),
+    "module": lambda k: _bind(_module_rb),
+    "data": lambda k: _bind(_data_rb),
+    "stage": lambda k: _stage_rb,
+    "view": lambda k: _record_rb("ir.ui.view"),
+    "action.window": lambda k: _record_rb("ir.actions.act_window"),
+    "report.action": lambda k: _record_rb("ir.actions.report"),
+    "report": lambda k: _record_rb("ir.actions.report"),
+    "menu": lambda k: _record_rb("ir.ui.menu"),
+    "filter": lambda k: _record_rb("ir.filters"),
+    "server_action": lambda k: _record_rb("ir.actions.server"),
+    "automation": lambda k: _record_rb("base.automation"),
+    "cron": lambda k: _record_rb("ir.cron"),
+    "sequence": lambda k: _record_rb("ir.sequence"),
+    "mail_template": lambda k: _record_rb("mail.template"),
+    "activity_type": lambda k: _record_rb("mail.activity.type"),
+    "config_record": lambda k: _record_rb("ir.model.data"),
+    "group": lambda k: _record_rb("res.groups"),
+    "access": lambda k: _acl_rb("ir.model.access"),
+    "rule": lambda k: _acl_rb("ir.rule"),
+    "user": lambda k: _record_rb("res.users"),
+    "company": lambda k: _record_rb("res.company"),
+    "translation": lambda k: _record_rb("ir.model.fields"),
+}
+
+
+def build_table(kinds: Any) -> dict[str, Readback]:
+    return {kind: FAMILY_READBACK[family_of(kind)](kind) for kind in kinds}
+
+
+READBACKS: dict[str, Readback] = build_table(OP_CATALOG)
