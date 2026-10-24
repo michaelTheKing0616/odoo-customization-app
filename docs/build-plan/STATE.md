@@ -37,6 +37,7 @@ Root `STATE.md` keeps session retros. This file is the live board for the build.
 | L-REG-NP-BL | REG-NP-BL | hold | apps/api/tests/test_reg_np_bl.py | 2026-10-22 |
 | L-REG-NP-T1 | REG-NP-T1 | hold | apps/api/tests/test_reg_np_t1.py | 2026-10-22 |
 | L-REG-NP-UI | REG-NP-UI | hold | apps/api/tests/test_reg_np_ui.py | 2026-10-22 |
+| L-NF-BV-UI | BV-UI | Oracle | apps/web/src/components/bots/EvidenceViewer.tsx, apps/web/src/components/bots/EvidenceViewer.test.tsx, docs/design/UI_DIRECTION.md (BV-UI entry) | 2026-10-24 |
 
 Rule: a card is dispatched only if none of its allow-list paths matches an open lock (prefix match on directories). Release on CLOSE or on stop.
 
