@@ -7,7 +7,7 @@ Phase: 7
 Priority: P2
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: S (caps in budget.json). Stop at 80%.
-Ledger IDs: ELR-FID
+Ledger IDs: ELR-FID;P0-2-XFAIL-RESOLVE
 Depends on: EL-X-BAR
 Routing: Worker: L2 (grok-4.7-xhigh) · Tester: L2 separate session · Reviewer: L2 separate session · Score: 4 (C1 U1 F1 K1 V0 I0)
 Context pack:

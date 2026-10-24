@@ -8,7 +8,7 @@ Phase: 4
 Priority: P2
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: L (caps in budget.json). Stop at 80%.
-Ledger IDs: H-1.4-PLANS;PREM-9.2-AC
+Ledger IDs: H-1.4-PLANS;PREM-9.2-AC;P0-2-XFAIL-PLAN
 Depends on: none (phase order applies)
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L3 separate session · Score: 7 (C2 U1 F1 K2 V1 I0)
 Context pack:

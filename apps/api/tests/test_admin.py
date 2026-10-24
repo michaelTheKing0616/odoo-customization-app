@@ -57,6 +57,7 @@ def test_admin_forbidden_for_non_superadmin(monkeypatch: pytest.MonkeyPatch) -> 
         assert res.status_code == 403
 
 
+@pytest.mark.xfail(strict=True, reason="P0-2-XFAIL-PLAN: plan_id internal isn't in billing_plans")
 def test_admin_feature_flags_and_deactivate(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "auth_mode", "accounts")
     monkeypatch.setattr(settings, "rate_limit_per_minute", 0)

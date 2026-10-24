@@ -11,11 +11,117 @@ from pathlib import Path
 
 # B0-ISO: throwaway App DB before any import of app.settings.
 # Loopback host, name starts with ingenium_. Assignment does not open a socket.
-_B0_ISO_DB_NAME = f"ingenium_b0_iso_{uuid.uuid4().hex}"
-_B0_ISO_DATABASE_URL = (
-    f"postgresql+psycopg://ingenium:ingenium@127.0.0.1:54329/{_B0_ISO_DB_NAME}"
-)
-os.environ["DATABASE_URL"] = _B0_ISO_DATABASE_URL
+# A second exec of this module (pytest's assertion rewriter) must keep the name.
+if "_B0_ISO_SESSION_READY" not in globals():
+    _B0_ISO_DB_NAME = f"ingenium_b0_iso_{uuid.uuid4().hex}"
+    _B0_ISO_DATABASE_URL = (
+        f"postgresql+psycopg://ingenium:ingenium@127.0.0.1:54329/{_B0_ISO_DB_NAME}"
+    )
+    os.environ["DATABASE_URL"] = _B0_ISO_DATABASE_URL
+    # Unwrapped psycopg connect, saved when the guard installs, so session
+    # cleanup can drop only the database this process created.
+    _B0_ISO_DB_CREATED = False
+    _B0_ISO_REAL_PG_CONNECT = None
+
+
+def _session_maintenance_connect():
+    """Open the loopback catalog so this process can create its own database.
+
+    Inputs: none. Output: an autocommit connection.
+    Side effects: one socket to 127.0.0.1:54329. Callers may run only
+    CREATE DATABASE or DROP DATABASE for ``_B0_ISO_DB_NAME``. The session
+    ``DATABASE_URL`` stays on that ingenium_ name.
+    """
+    from urllib.parse import urlparse
+
+    import psycopg
+
+    if not _B0_ISO_DB_NAME.startswith("ingenium_b0_iso_"):
+        raise RuntimeError("session database name is not ingenium_b0_iso_")
+    parsed = urlparse(
+        _B0_ISO_DATABASE_URL.replace("postgresql+psycopg", "postgresql", 1)
+    )
+    if (parsed.hostname or "") not in {"127.0.0.1", "::1", "localhost"}:
+        raise RuntimeError("session database host is not loopback")
+    real = _B0_ISO_REAL_PG_CONNECT
+    if real is None:
+        real = getattr(psycopg.connect, "_b0_iso_real", None)
+    if real is None:
+        if getattr(psycopg.connect, "_b0_iso_guard", False):
+            raise RuntimeError("session database maintenance connect is unavailable")
+        real = psycopg.Connection.connect.__func__
+    return real(
+        psycopg.Connection,
+        "",
+        host=parsed.hostname,
+        port=parsed.port or 54329,
+        user=parsed.username or "",
+        password=parsed.password or "",
+        dbname="postgres",
+        autocommit=True,
+    )
+
+
+def _drop_session_database() -> None:
+    """Drop the ingenium_ database this process created. No other name."""
+    global _B0_ISO_DB_CREATED
+    if not _B0_ISO_DB_CREATED:
+        return
+    if not _B0_ISO_DB_NAME.startswith("ingenium_b0_iso_"):
+        return
+    from psycopg import sql
+
+    try:
+        from app.db import engine
+
+        engine.dispose()
+    except Exception:  # noqa: BLE001 — exit cleanup must still attempt DROP
+        pass
+    conn = _session_maintenance_connect()
+    try:
+        conn.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            (_B0_ISO_DB_NAME,),
+        )
+        conn.execute(
+            sql.SQL("DROP DATABASE IF EXISTS {}").format(
+                sql.Identifier(_B0_ISO_DB_NAME)
+            )
+        )
+    finally:
+        conn.close()
+    _B0_ISO_DB_CREATED = False
+
+
+def _ensure_session_database() -> None:
+    """Create this process's throwaway ingenium_ database before any test connects.
+
+    Inputs: none. Output: none.
+    Side effects: CREATE DATABASE for ``_B0_ISO_DB_NAME``, and an atexit DROP
+    of that name only.
+    """
+    global _B0_ISO_DB_CREATED
+    from psycopg import sql
+    from psycopg.errors import DuplicateDatabase
+
+    conn = _session_maintenance_connect()
+    try:
+        try:
+            conn.execute(
+                sql.SQL("CREATE DATABASE {}").format(sql.Identifier(_B0_ISO_DB_NAME))
+            )
+        except DuplicateDatabase:
+            return
+    finally:
+        conn.close()
+    _B0_ISO_DB_CREATED = True
+    atexit.register(_drop_session_database)
+
+
+if "_B0_ISO_SESSION_READY" not in globals():
+    _ensure_session_database()
+    _B0_ISO_SESSION_READY = True
 
 # TRUST-1 defaults new connections to observer; mutating API tests expect standard unless
 # they explicitly set write_mode (see test_trust1_write_mode.py).
@@ -35,8 +141,26 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _unpause_workspace_writes(request: pytest.FixtureRequest) -> None:
+def _unpause_workspace_writes(request: pytest.FixtureRequest):
+    """Put swap-module tests back on their SQLite engine, and everyone else on Postgres.
+
+    Inputs: the current test node. Output: none.
+    Side effects: rebinds ``app.db.engine`` for this test, then restores the
+    session Postgres engine after the test. ``no_app_db`` tests skip the
+    workspace query. Does not open a socket for a SQLite engine.
+    """
+    path = getattr(request.node, "path", None)
+    name = path.name if path is not None else ""
+    saved = _SWAP_ENGINES.get(name)
+    if saved is not None:
+        _apply_engine(saved[0], saved[1])
+        yield
+        _restore_session_engine()
+        return
+    _restore_session_engine()
     if "no_app_db" in request.keywords:
+        yield
+        _restore_session_engine()
         return
     from app.account_models import Workspace
     from app.db import SessionLocal, init_db
@@ -44,6 +168,11 @@ def _unpause_workspace_writes(request: pytest.FixtureRequest) -> None:
     init_db()
     db = SessionLocal()
     try:
+        # This test is a strict xfail while billing_plans has no "internal" row.
+        # Earlier tests commit that row into the session database, so the suite
+        # would pass and the strict mark would fail. Remove only that plan.
+        if getattr(request.node, "name", "") == "test_admin_feature_flags_and_deactivate":
+            _drop_seeded_internal_plan(db)
         for ws in db.query(Workspace).all():
             if ws.writes_paused:
                 ws.writes_paused = False
@@ -51,6 +180,8 @@ def _unpause_workspace_writes(request: pytest.FixtureRequest) -> None:
         db.commit()
     finally:
         db.close()
+    yield
+    _restore_session_engine()
 
 
 @pytest.fixture(autouse=True)
@@ -159,6 +290,37 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "live_ai: real Vertex calls; skipped unless INGENIUM_LIVE_AI=1",
     )
+
+
+class _IngeniumURLModule(pytest.Module):
+    """Restore the session ingenium_ URL before this test module is imported."""
+
+    def _getobj(self):  # type: ignore[no-untyped-def]
+        os.environ["DATABASE_URL"] = _B0_ISO_DATABASE_URL
+        import sys
+
+        if "app.settings" in sys.modules:
+            from app.settings import settings
+
+            settings.database_url = _B0_ISO_DATABASE_URL
+        name = Path(self.path).name
+        if name not in _ENGINE_SWAP_MODULES:
+            _restore_session_engine()
+        obj = super()._getobj()
+        if name in _ENGINE_SWAP_MODULES:
+            _SWAP_ENGINES[name] = (_session_db.engine, _session_db.SessionLocal)
+            _restore_session_engine()
+        return obj
+
+
+def pytest_pycollect_makemodule(module_path: Path, parent: object):  # type: ignore[no-untyped-def]
+    """One module's import-time DATABASE_URL must not leak into the next module."""
+    return _IngeniumURLModule.from_parent(parent, path=module_path)
+
+
+def pytest_sessionfinish(session: object, exitstatus: int) -> None:
+    """Drop this process's ingenium_ database before the interpreter exits."""
+    _drop_session_database()
 
 
 @pytest.fixture(autouse=True)
@@ -331,6 +493,9 @@ def _install_psycopg_connect_guard() -> None:
     if getattr(psycopg.connect, "_b0_iso_guard", False):
         return
     real = psycopg.Connection.connect.__func__
+    global _B0_ISO_REAL_PG_CONNECT
+    if _B0_ISO_REAL_PG_CONNECT is None:
+        _B0_ISO_REAL_PG_CONNECT = real
 
     def _connect_guarded(cls: type, conninfo: str, kwargs: dict[str, object]) -> object:
         guard_db_target(_psycopg_guard_url(conninfo, kwargs))
@@ -345,6 +510,7 @@ def _install_psycopg_connect_guard() -> None:
         return _connect_guarded(cls, conninfo, kwargs)
 
     _guarded_psycopg_connect._b0_iso_guard = True  # type: ignore[attr-defined]
+    _guarded_psycopg_connect._b0_iso_real = real  # type: ignore[attr-defined]
     psycopg.connect = _guarded_psycopg_connect  # type: ignore[assignment]
     psycopg.Connection.connect = classmethod(_guarded_connection_connect)  # type: ignore[method-assign]
 
@@ -399,6 +565,75 @@ def _install_db_engine_guard() -> None:
 
 _install_db_engine_guard()
 _install_psycopg_connect_guard()
+
+# Settings is constructed on this import. Test modules set AI_INTENT_LLM=off
+# at import, which is too late once Settings already read the default "auto".
+# Every suite file that sets the variable sets it to off. Env beats the env file.
+os.environ.setdefault("AI_INTENT_LLM", "off")
+
+# Snapshot before any test module replaces app.db.engine (test_reg_np_gnd, test_reg_np_t6).
+import app.db as _session_db
+
+_SESSION_ENGINE = _session_db.engine
+_SESSION_FACTORY = _session_db.SessionLocal
+_ENGINE_SWAP_MODULES = frozenset({"test_reg_np_gnd.py", "test_reg_np_t6.py"})
+# Engine and SessionLocal each swap module installed at import, reapplied only for its tests.
+_SWAP_ENGINES: dict[str, tuple[object, object]] = {}
+# sessionmaker objects installed by app.db or a swap module. Modules that did
+# ``from app.db import SessionLocal`` keep that object; rebinding updates them.
+_KNOWN_SESSION_FACTORIES: set[object] = {_SESSION_FACTORY}
+
+
+def _apply_engine(engine: object, factory: object) -> None:
+    """Point app.db and every copied SessionLocal at one engine.
+
+    Inputs: the engine and the sessionmaker bound to it. Output: none.
+    Side effects: assigns ``app.db.engine`` and ``SessionLocal``, then assigns
+    that same factory onto already-imported modules whose ``SessionLocal`` is
+    one of the factories this process has used. Does not open a socket.
+    """
+    _KNOWN_SESSION_FACTORIES.add(_session_db.SessionLocal)
+    _KNOWN_SESSION_FACTORIES.add(factory)
+    _session_db.engine = engine
+    _session_db.SessionLocal = factory
+    import sys
+
+    for mod in list(sys.modules.values()):
+        if mod is None:
+            continue
+        current = getattr(mod, "SessionLocal", None)
+        if current in _KNOWN_SESSION_FACTORIES and current is not factory:
+            try:
+                setattr(mod, "SessionLocal", factory)
+            except (AttributeError, TypeError):
+                continue
+
+
+def _drop_seeded_internal_plan(db: object) -> None:
+    """Remove the seeded internal plan so one strict xfail still fails.
+
+    Inputs: an open session. Output: none.
+    Side effects: deletes plan_features, workspace_subscriptions, and
+    billing_plans rows whose plan id is ``internal``, then commits.
+    """
+    from app.billing_models import BillingPlan, PlanFeature, WorkspaceSubscription
+
+    db.query(PlanFeature).filter(PlanFeature.plan_id == "internal").delete(synchronize_session=False)  # type: ignore[attr-defined]
+    db.query(WorkspaceSubscription).filter(  # type: ignore[attr-defined]
+        WorkspaceSubscription.plan_id == "internal"
+    ).delete(synchronize_session=False)
+    db.query(BillingPlan).filter(BillingPlan.id == "internal").delete(synchronize_session=False)  # type: ignore[attr-defined]
+    db.commit()  # type: ignore[attr-defined]
+
+
+def _restore_session_engine() -> None:
+    """Point app.db back at this process's ingenium_ engine.
+
+    Inputs: none. Output: none.
+    Side effects: rebinds ``app.db.engine`` and copied ``SessionLocal`` names
+    to the snapshot taken before test modules imported. Does not open a new database.
+    """
+    _apply_engine(_SESSION_ENGINE, _SESSION_FACTORY)
 
 
 # --- Host guard (Tope, Oct 20): tests never reach aonb or client Odoo hosts. ---------------

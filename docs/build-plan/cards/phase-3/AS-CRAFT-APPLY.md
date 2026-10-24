@@ -7,7 +7,7 @@ Phase: 3
 Priority: P1
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: L (caps in budget.json). Stop at 80%.
-Ledger IDs: AS-CRAFT
+Ledger IDs: AS-CRAFT;P0-2-XFAIL-LINE
 Depends on: AS-CRAFT-CATALOG, AS-COMPILE
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: L2 separate session · Reviewer: L3 separate session · Score: 8 (C2 U1 F2 K2 V1 I0)
 Context pack:
