@@ -303,3 +303,4 @@ Verdict: keep pipeline default; agent no better on any quality metric, 4.8x slow
 - 2026-10-22 · B0-ISO · uv run pytest -q tests/test_b0_iso.py · 18 passed, reverse 18 passed · counts equal · [Done, code]
 - 2026-10-22 · V-STUDIODRAFT · pnpm exec vitest run src/lib/api/studio-draft.live.test.ts · 3 passed · [Done, live]
 - 2026-10-24 · B0-TESTFIX-ORDER · .venv/bin/python -m pytest -q named order nodes, both file orders · A 12 passed in 4.84s · B 12 passed in 4.52s · compound asserts restored to HEAD · no xfail · [Done, code]
+- 2026-10-24 · BV-LIVE · uv run pytest -q -p no:randomly -m odoo_live tests/test_nf_bot_verify_live.py (+ focused set; combined sec_gate_scope, reg_np_dev, nf_scans, nf_*_contract both orders x2) · live 33/33 on each of Odoo 17-20 (disposable ingenium_nf_bv_{17..20}, dropped; stacks removed); all 29 op families incl. Odoo 20 ir.access; Reviewer APPROVE · merged 6ee8fc79 · [Done, live]
