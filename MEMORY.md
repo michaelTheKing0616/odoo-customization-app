@@ -1,3 +1,6 @@
+# Version-branch baseline xfail (2026-10-24)
+**Decided:** Tope. `B0-TESTFIX-BASELINE` marks only `test_real_app_tree_odoo_version_branch_count_matches_measured_baseline` with `pytest.mark.xfail(strict=True, reason="P0-2-CL2: the app tree has 38 version branches and the constant stays 22")`. `_VERSION_BRANCH_BASELINE` stays 22. The planted compat test stays a normal pass.
+
 # Executor ACL, Odoo 20 partner save, dump smoke (2026-10-24)
 **Decided:** NF stream, recorded so later cards do not contradict it. A custom model created without an access right is invisible to non-superusers, so an executor `model.create` change-set ships an ACL. On Odoo 20, a non-admin save of `res.partner` can open an `iap.account` Access Error dialog while the row still saves; that is a least-privilege UX backlog item, not a failed save. `test_trust7_app_db_restore::test_pg_dump_smoke_to_temp` fails when the test database is empty because the dump is under 1024 bytes; a later card seeds the database or relaxes that floor. This stream does not edit that test.
 

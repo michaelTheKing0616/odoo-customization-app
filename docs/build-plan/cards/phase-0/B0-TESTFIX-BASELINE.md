@@ -2,7 +2,7 @@
 
 ID: B0-TESTFIX-BASELINE
 Title: API pytest 0 failures or each xfail has reason + P-item + Tope yes
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -39,6 +39,8 @@ Symbols (ledger row on this card: P0-2-CL2. AC1 and AC2 text above is unchanged)
 - `odoo_version_branches(root) -> list[str]` and `_VERSION_BRANCH_BASELINE = 22` in `apps/api/tests/test_import_boundary.py` (L27, L205, L294 `test_real_app_tree_odoo_version_branch_count_matches_measured_baseline`).
 - `test_planted_odoo_version_branch_outside_compat_is_rejected`: `if major >= 19` in `route.py` is the hit `route.py:2: major >= 19`. The same source under `compat/route.py` is not a hit. Files under a `compat/` directory are skipped.
 Worked example: `len(odoo_version_branches(apps/api/app))` equals `_VERSION_BRANCH_BASELINE`. The handover's "37 vs 22" is that length disagreeing with the constant. Leave product code unchanged. Leave the constant where it is when a new hit appears; a new hit fails the test. Leave `conftest.py`, `pytest.ini`, and `vitest.config.ts` unchanged (shared with the other B0 cards).
+2026-10-24 measured `odoo_version_branches(apps/api/app)` at 38. Constant stays 22. Tope yes: `pytest.mark.xfail(strict=True, reason="P0-2-CL2: the app tree has 38 version branches and the constant stays 22")` only on `test_real_app_tree_odoo_version_branch_count_matches_measured_baseline`. The planted compat test stays a normal pass. Do not change `_VERSION_BRANCH_BASELINE`. `P0-2-AC1` stays Open.
+2026-10-24 closed. 10 passed, 1 xfailed in 2.76s. `-p randomly` 10 passed, 1 xfailed in 2.70s. No XPASS. `P0-2-CL2` is `[Done, code]`. Reviewer APPROVE.
 Decision (each failure in this cluster, AC1):
 
 | pytest result | AC1 |
