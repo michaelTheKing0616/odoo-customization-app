@@ -1570,3 +1570,4 @@ P0-2-H070,B0-RANDOM-ORDER 2026-10-23,pre-existing on HEAD conftest with shuffle 
 P0-2-H071,B0-RANDOM-ORDER 2026-10-23,pre-existing on HEAD conftest with shuffle off: test_domain_density_bootstraps_empty_music_draft_from_prompt,test,P2,Open,B0-RANDOM-ORDER,
 P0-2-H072,B0-RANDOM-ORDER 2026-10-23,pre-existing on HEAD conftest with shuffle off: test_domain_density_fills_music_vertical_without_generic_loop,test,P2,Open,B0-RANDOM-ORDER,
 P0-2-TSC-UIB,B0-RANDOM-ORDER 2026-10-23,tsc --noEmit fails on uncommitted Tooltip.tsx ref type,test,P2,Open,REG-NP-UIb,
+SHELL-DRAWER,NF 24 Oct,below sm the app shell sidebar is an off-canvas drawer and a 390px page does not scroll horizontally,ui-build,P0,"[Done, code]",UI-SHELL-DRAWER,

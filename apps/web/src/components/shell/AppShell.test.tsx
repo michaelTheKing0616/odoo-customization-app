@@ -57,5 +57,9 @@ describe("AppShell connection loading", () => {
     expect(container.querySelectorAll(".shimmer-15").length).toBeGreaterThan(8);
     expect(screen.queryByText(/Loading connection…/)).toBeNull();
     expect(screen.queryByText("page body")).toBeNull();
+    const rail = container.querySelector('[data-testid="app-shell-loading"] > div');
+    expect(rail?.className).toContain("hidden");
+    expect(rail?.className).toContain("sm:flex");
+    expect(rail?.className).not.toContain("md:flex");
   });
 });

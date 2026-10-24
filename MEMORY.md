@@ -1,3 +1,6 @@
+# Phone shell sidebar (2026-10-24)
+**Decided:** Tope, from an NF report. Closed 2026-10-24. Below the `sm` breakpoint (640px) the app shell sidebar is the existing left drawer, closed on load. From `sm` up it stays the docked column. Playwright at 390 in light and dark, plus 1440, was 2 passed. `SHELL-DRAWER` is [Done, code]. `F1-RESPONSIVE` still owns the every-route 390 crawl.
+
 # Version-branch baseline xfail (2026-10-24)
 **Decided:** Tope. `B0-TESTFIX-BASELINE` marks only `test_real_app_tree_odoo_version_branch_count_matches_measured_baseline` with `pytest.mark.xfail(strict=True, reason="P0-2-CL2: the app tree has 38 version branches and the constant stays 22")`. `_VERSION_BRANCH_BASELINE` stays 22. The planted compat test stays a normal pass.
 

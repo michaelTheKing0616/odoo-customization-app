@@ -5,7 +5,7 @@ import Link from "next/link";
 import { InstanceIdentity } from "@/components/shell/InstanceIdentity";
 import { Button } from "@/components/ui/Button";
 import { Breadcrumbs } from "@/components/ui/layout-primitives";
-import { Command, IconExpert, Moon, Sun } from "@/components/ui/icons";
+import { Command, IconExpert, Menu, Moon, Sun } from "@/components/ui/icons";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { useShell } from "@/context/ShellContext";
 import { breadcrumbForPath } from "@/lib/nav";
@@ -20,9 +20,13 @@ type Props = {
   /** Unused since the switcher moved to the sidebar; kept so callers need no change. */
   connections?: Connection[];
   pathname: string;
+  /** Opens the off-canvas sidebar below the sm breakpoint. */
+  onOpenSidebar?: () => void;
+  /** Example harness: do not mount widgets that call the API. */
+  example?: boolean;
 };
 
-export function TopBar({ connection, pathname }: Props) {
+export function TopBar({ connection, pathname, onOpenSidebar, example = false }: Props) {
   const { toggle, resolved } = useTheme();
   const { setCommandOpen, setExpertOpen } = useShell();
   const crumbs = breadcrumbForPath(connection.id, pathname);
@@ -30,16 +34,29 @@ export function TopBar({ connection, pathname }: Props) {
   return (
     <header className="border-b border-border-subtle bg-surface-raised" data-testid="app-topbar">
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        {onOpenSidebar ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="shrink-0 sm:hidden"
+            onClick={onOpenSidebar}
+            data-testid="open-sidebar"
+          >
+            <Menu className="h-4 w-4" aria-hidden />
+            Open sidebar
+          </Button>
+        ) : null}
         <div className="min-w-0 flex-1">
           {/* Switching connections lives in the sidebar header (ConnectionSwitcher) and Cmd-K. */}
           <InstanceIdentity connection={connection} className="mt-2" />
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <WriteModeBadge mode={connection.write_mode ?? "standard"} />
-            <WorkspacePlanBadge />
+            {example ? null : <WorkspacePlanBadge />}
           </div>
           <AnomalyBanner connection={connection} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <BackgroundWorkPill />
           <Button
             variant="ghost"

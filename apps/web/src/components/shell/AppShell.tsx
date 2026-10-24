@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { PageMove } from "@/components/shell/PageMove";
 import { FaviconBridge, OfflineBand, ShortcutSheet, isTestCopy } from "@/components/ui/craft";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/Button";
 import { ExpertPanel } from "@/components/expert/ExpertPanel";
@@ -18,18 +18,34 @@ import { Skeleton } from "@/components/ui/layout-primitives";
 import { CommandPalette, type CommandItem } from "@/components/ui/CommandPalette";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { TopBar } from "@/components/shell/TopBar";
+import { Drawer } from "@/components/ui/motion";
 import { ExpertDiagnoseListener } from "@/lib/expert-diagnostics";
 import { useShell } from "@/context/ShellContext";
-import { api } from "@/lib/api";
+import { api, type Connection } from "@/lib/api";
 import { changeApi, suiteApi } from "@/lib/api/suite";
 import { NAV_ITEMS } from "@/lib/nav";
+
+/** Tailwind `sm` is 640px. Viewports below that get the off-canvas drawer. */
+const BELOW_SM_QUERY = "(max-width: 639px)";
+
+function subscribeBelowSm(onStoreChange: () => void) {
+  const media = window.matchMedia(BELOW_SM_QUERY);
+  media.addEventListener("change", onStoreChange);
+  return () => media.removeEventListener("change", onStoreChange);
+}
+
+function useBelowSm() {
+  return useSyncExternalStore(subscribeBelowSm, () => window.matchMedia(BELOW_SM_QUERY).matches, () => false);
+}
 
 type Props = {
   connectionId: string;
   children: React.ReactNode;
+  /** Skip the connection fetch and render this record. Production leaves it unset. */
+  example?: Connection;
 };
 
-export function AppShell({ connectionId, children }: Props) {
+export function AppShell({ connectionId, children, example }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -43,6 +59,8 @@ export function AppShell({ connectionId, children }: Props) {
   } = useShell();
 
   const [commandSearch, setCommandSearch] = useState("");
+  const belowSm = useBelowSm();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // 142: the device cache is read only after mount, so the first client render matches the server (no hydration mismatch).
   const hydrated = useHydrated();
@@ -50,7 +68,7 @@ export function AppShell({ connectionId, children }: Props) {
     queryKey: ["connection", connectionId],
     queryFn: async () => { const c = await api.getConnection(connectionId); writeShell(`connection:${connectionId}`, c); return c; },
     placeholderData: () => (hydrated ? readShell(`connection:${connectionId}`) : undefined),
-    enabled: Boolean(connectionId),
+    enabled: Boolean(connectionId) && !example,
     retry: false,
     refetchOnWindowFocus: false,
   });
@@ -59,9 +77,14 @@ export function AppShell({ connectionId, children }: Props) {
     queryKey: ["connections"],
     queryFn: async () => { const l = await api.listConnections(); writeShell("connections", l); return l; },
     placeholderData: () => (hydrated ? readShell("connections") : undefined),
+    enabled: !example,
     retry: false,
     refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (!belowSm) setMobileNavOpen(false);
+  }, [belowSm]);
 
   // Touch 128: one quiet introduction per power feature, once the person is ready.
   useEffect(() => {
@@ -374,8 +397,8 @@ export function AppShell({ connectionId, children }: Props) {
     }));
   }, [nlSearchQuery.data, openExpert, router]);
 
-  const connection = connectionQuery.data;
-  const connections = connectionsQuery.data ?? [];
+  const connection = example ?? connectionQuery.data;
+  const connections = example ? [example] : (connectionsQuery.data ?? []);
 
   if (!connectionId) {
     return (
@@ -387,12 +410,12 @@ export function AppShell({ connectionId, children }: Props) {
     );
   }
 
-  if (connectionQuery.isPending) {
+  if (!example && connectionQuery.isPending) {
     return (
       <div className="flex min-h-screen bg-background" role="status" data-testid="app-shell-loading">
         <span className="sr-only">Loading this connection.</span>
         <div
-          className="hidden w-60 shrink-0 flex-col gap-2 border-r border-border-subtle bg-surface-raised p-3 md:flex"
+          className="hidden w-60 shrink-0 flex-col gap-2 border-r border-border-subtle bg-surface-raised p-3 sm:flex"
           aria-hidden
         >
           <Skeleton className="mb-3 h-8 w-40" />
@@ -424,7 +447,7 @@ export function AppShell({ connectionId, children }: Props) {
     );
   }
 
-  if (connectionQuery.isError || !connection) {
+  if (!connection || (!example && connectionQuery.isError)) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <Callout variant="danger" title="Could not load connection">
@@ -448,13 +471,31 @@ export function AppShell({ connectionId, children }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen bg-background" data-testid="app-shell">
-      <FaviconBridge />
+    <div className="flex min-h-screen min-w-0 bg-background" data-testid="app-shell">
+      {example ? null : <FaviconBridge />}
       <ShortcutSheet />
-      {connection && isTestCopy(connection) ? <div className="hazard-band" aria-hidden="true" data-testid="test-copy-band" /> : null}
-      <Sidebar connection={connection} connections={connections} />
+      {isTestCopy(connection) ? <div className="hazard-band" aria-hidden="true" data-testid="test-copy-band" /> : null}
+      {belowSm ? (
+        <Drawer
+          side="left"
+          open={mobileNavOpen}
+          onOpenChange={setMobileNavOpen}
+          title="Sidebar"
+          className="max-w-60! overflow-hidden"
+        >
+          <Sidebar connection={connection} connections={connections} />
+        </Drawer>
+      ) : (
+        <Sidebar connection={connection} connections={connections} />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar connection={connection} connections={connections} pathname={pathname} />
+        <TopBar
+          connection={connection}
+          connections={connections}
+          pathname={pathname}
+          example={Boolean(example)}
+          onOpenSidebar={() => setMobileNavOpen(true)}
+        />
         {offline ? (
           <div className="border-b border-warning/30 bg-warning-subtle px-4 py-2 text-sm text-warning">
             You appear to be offline. Changes that need Odoo will fail until connectivity returns.
@@ -462,8 +503,8 @@ export function AppShell({ connectionId, children }: Props) {
         ) : null}
         <main className="flex-1 overflow-auto bg-background p-4 md:p-6"><PageMove>{children}</PageMove></main>
       </div>
-      <ExpertPanel />
-      <ExpertBubble />
+      {example ? null : <ExpertPanel />}
+      {example ? null : <ExpertBubble />}
       <ExpertDiagnoseListener />
       <CommandPalette
         open={commandOpen}

@@ -60,7 +60,7 @@ export function Sidebar({ connection, connections = [] }: Props) {
       <aside
         data-testid="app-sidebar"
         className={cn(
-          "flex h-full shrink-0 flex-col border-r border-border-subtle bg-surface-raised",
+          "flex h-full min-h-0 shrink-0 flex-col border-r border-border-subtle bg-surface-raised",
           sidebarCollapsed ? "w-14" : "w-60",
         )}
       >
@@ -84,7 +84,7 @@ export function Sidebar({ connection, connections = [] }: Props) {
             <Menu className="h-4 w-4" />
           </Button>
         </div>
-        <nav className="flex-1 overflow-y-auto p-2">
+        <nav aria-label="Main" className="min-h-0 flex-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
             const items = NAV_ITEMS.filter(
               (item) =>
