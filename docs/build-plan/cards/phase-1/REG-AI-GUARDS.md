@@ -3,7 +3,7 @@
 
 ID: REG-AI-GUARDS
 Title: regression: caching a b c e g h + guards 1-5 + red-team CI step
-Status: todo
+Status: done
 Phase: 1
 Priority: P1
 Type: regression
@@ -42,3 +42,4 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+2026-10-25 closed. 50 passed in 1.66s. -p randomly 50 passed in 0.60s. Reviewer re-ran the file and APPROVE. Ledger rows were already Done-code. CACHE-H-EMAIL stays Open.
