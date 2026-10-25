@@ -5,3 +5,4 @@
 - BV-AUDIT (2026-10-25): merged on premium-local-tip + nf-backend (commit subject BV-AUDIT); L-NF-BV-AUDIT released. Live 17-20 walkthrough 120 + flows 12. Independent Reviewer APPROVE. Fail-closed: all walks refused until BV-AUDIT-WIRE. Done.
 - BV-AUDIT-WIRE (2026-10-25): merged on premium-local-tip + nf-backend (commit subject BV-AUDIT-WIRE). Audit store wired lazily, owner-only approval endpoint. Independent Reviewer APPROVE. Done.
 - BOT-RISK-CLASSIFIER (2026-10-25): merged on premium-local-tip + nf-backend (commit subject BOT-RISK-CLASSIFIER). Risk floors from catalogue + fields_inventory, default-deny, fail-closed sensitive models. Independent Reviewer APPROVE (round 7). Done.
+- BOT-KILL-AUDIT (2026-10-25): merged on premium-local-tip + nf-backend (commit subject BOT-KILL-AUDIT). Fail-closed audit, kill switch, plan-bound single-use grants, pacing 50/500 with approved-N ceiling. Independent Reviewer APPROVE (round 2). Done.

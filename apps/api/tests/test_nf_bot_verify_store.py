@@ -32,12 +32,26 @@ ADMIN = f"postgresql://ingenium:ingenium@{HOST}/ingenium_wt_admin"
 DB = f"ingenium_wt_bvstore_{uuid.uuid4().hex[:12]}"
 URL = f"postgresql+psycopg://ingenium:ingenium@{HOST}/{DB}"
 REV, DOWN = "4b7e9c1d2a3f", "b0a1c2d3e4f5"
-HEAD = "c7d8e9f0a1b2"  # BV-AUDIT revision now sits on top of REV
 WS_A, WS_B = "ws-a", "ws-b"
 CONN_A, CONN_B, CONN_C = "conn-a", "conn-b", "conn-c"  # C: same workspace as A
 OWNER = {CONN_A: WS_A, CONN_B: WS_B, CONN_C: WS_A}
 PNG = b"\x89PNG\r\n\x1a\nstore"
 SECRET, EMAIL = "sk-live-SEEDEDSECRET123", "jane.doe@example.com"
+
+
+def _single_head_with(rev: str) -> str:
+    """The one alembic head; ``rev`` must be it or one of its ancestors (future-proof)."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    sd = ScriptDirectory.from_config(Config(str(API / "alembic.ini")))
+    heads = sd.get_heads()
+    assert len(heads) == 1, heads
+    assert rev in {s.revision for s in sd.walk_revisions("base", heads[0])}
+    return heads[0]
+
+
+HEAD = _single_head_with("c7d8e9f0a1b2")  # BV-AUDIT is in the chain
 
 
 def _alembic(*args: str) -> str:
@@ -465,6 +479,15 @@ def test_drift_fresh_db_at_head_matches_orm():
             diff = compare_metadata(ctx, Base.metadata)
         eng.dispose()
         ops = [d for d in diff if not (isinstance(d, tuple) and d[0].endswith("_comment"))]
+
+        # bot_* tables/indexes (BOT-KILL-AUDIT) are raw-SQL, owned by migrations, not the ORM
+        def _bot(d: object) -> bool:
+            if not isinstance(d, tuple) or d[0] not in ("remove_table", "remove_index"):
+                return False
+            tbl = d[1] if d[0] == "remove_table" else d[1].table
+            return tbl.name.startswith("bot_")
+
+        ops = [d for d in ops if not _bot(d)]
         assert not ops, ops
         assert {"verify_runs", "verify_artifacts"} <= set(Base.metadata.tables)
     finally:

@@ -34,6 +34,18 @@ CONN_A, CONN_B = "conn-audit-a", "conn-audit-b"
 DISPOSABLE = dict(url="http://127.0.0.1:18117", db_name="ingenium_nf_bv_17", major=17)
 
 
+def _single_head_with(rev: str) -> str:
+    """The one alembic head; ``rev`` must be it or one of its ancestors (future-proof)."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    sd = ScriptDirectory.from_config(Config(str(API / "alembic.ini")))
+    heads = sd.get_heads()
+    assert len(heads) == 1, heads
+    assert rev in {s.revision for s in sd.walk_revisions("base", heads[0])}
+    return heads[0]
+
+
 def _alembic(*args: str) -> str:
     assert DB.startswith("ingenium_wt_") and PORT != "54329"
     out = subprocess.run(
@@ -193,14 +205,15 @@ def test_ac3_no_secrets_or_pii_in_rows(store, engine) -> None:
 
 
 def test_ac3_migration_round_trip(engine) -> None:
-    assert re.search(rf"\b{REV}\b \(head\)", _alembic("heads"))
+    head = _single_head_with(REV)
+    assert re.search(rf"\b{head}\b \(head\)", _alembic("heads"))
     _alembic("downgrade", DOWN)
     names = set(inspect(engine).get_table_names())
     assert {"verify_audit", "verify_walk_approvals"}.isdisjoint(names) and "verify_runs" in names
     _alembic("upgrade", "head")
     names = set(inspect(engine).get_table_names())
     assert {"verify_audit", "verify_walk_approvals"} <= names
-    assert REV in _alembic("current")
+    assert head in _alembic("current")
 
 
 # ------------------------------------------------------------------ AC4
