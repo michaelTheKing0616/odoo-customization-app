@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -105,7 +106,13 @@ class AuditStore:
         return WalkApproval(row.walkthrough_allowed is True, row.approved_by, row.owner_id)
 
     def set_approval(
-        self, connection_id: str, *, allowed: bool, approved_by: str | None, owner_id: str | None
+        self,
+        connection_id: str,
+        *,
+        allowed: bool,
+        approved_by: str | None,
+        owner_id: str | None,
+        audit: tuple[str, str, str] | None = None,
     ) -> None:
         a = verify_walk_approvals
         vals = {
@@ -120,6 +127,17 @@ class AuditStore:
             ).rowcount
             if not hit:
                 c.execute(a.insert().values(connection_id=connection_id, **vals))
+            if audit is not None:  # same transaction: no unaudited grant/revoke
+                db_name, decision, reason = audit
+                c.execute(
+                    verify_audit.insert().values(
+                        connection_id=connection_id,
+                        db_name=str(db_name or "")[:80],
+                        decision=decision,
+                        reason=str(reason)[:200],
+                        at=datetime.now(UTC),
+                    )
+                )
 
     def log(self, connection_id: str | None = None) -> list[dict[str, Any]]:
         t = verify_audit
@@ -140,22 +158,46 @@ class AuditStore:
         ]
 
 
-_STORE: Any = None
+_UNSET: Any = object()
+_STORE: Any = _UNSET
+_STORE_LOCK = threading.Lock()
 
 
 def configure_audit_store(store: Any) -> None:
-    """Wire the audit/approval store (production: AuditStore(engine); tests: a double)."""
+    """Wire the audit/approval store explicitly (tests: a double; None = no store)."""
     global _STORE
-    _STORE = store
+    with _STORE_LOCK:
+        _STORE = store
+
+
+def ensure_audit_store() -> Any:
+    """Lazily wire AuditStore(app.db.engine) once (idempotent, thread-safe).
+
+    No main.py hook: the walk path calls this. No DB probe here; if the DB is down the
+    audit write fails and the walk is refused (fail-closed). An explicit
+    configure_audit_store() call (even None) wins and is never overridden.
+    """
+    global _STORE
+    if _STORE is _UNSET:
+        with _STORE_LOCK:
+            if _STORE is _UNSET:
+                try:
+                    from app.db import engine as app_engine
+
+                    _STORE = AuditStore(app_engine)
+                except Exception as exc:  # noqa: BLE001 - unconfigured stays fail-closed
+                    _log.error("verify audit store wiring failed: %s", type(exc).__name__)
+                    return None
+    return _STORE
 
 
 def audit_store() -> Any:
-    return _STORE
+    return None if _STORE is _UNSET else _STORE
 
 
 def audit_log(connection_id: str | None = None) -> list[dict[str, Any]]:
     """Read-through view of persisted decisions (replaces the old in-memory AUDIT_LOG)."""
-    if _STORE is None:
+    if ensure_audit_store() is None:
         raise TargetNotAllowed("audit store not configured")
     return _STORE.log(connection_id)
 
@@ -165,13 +207,25 @@ def is_disposable(db_name: str) -> bool:
 
 
 def _audit(connection_id: str | None, db_name: str, decision: str, reason: str) -> None:
-    if _STORE is None:
+    if ensure_audit_store() is None:
         raise TargetNotAllowed("audit store not configured")
     try:
         _STORE.record(connection_id, db_name, decision, reason)
     except Exception as exc:  # noqa: BLE001 - an unaudited walk must not run
         _log.error("verify audit write failed: %s", type(exc).__name__)
         raise TargetNotAllowed("audit write failed") from exc
+
+
+def _approval_granted(connection_id: str | None, refuse: Any) -> bool:
+    """Stored approval only; a failed read is an audited refusal, not a raw exception."""
+    store = ensure_audit_store()
+    if store is None:
+        return False
+    try:
+        return store.approval(connection_id).granted is True
+    except Exception as exc:  # noqa: BLE001 - never walk on an unreadable approval
+        _log.error("verify approval read failed: %s", type(exc).__name__)
+        raise refuse("approval read failed") from exc
 
 
 def resolve_target(
@@ -205,7 +259,7 @@ def resolve_target(
         raise refuse(f"unsupported Odoo {major}")
     if is_disposable(db_name):
         kind: Kind = "disposable_clone"
-    elif _STORE is not None and _STORE.approval(connection_id).granted:
+    elif _approval_granted(connection_id, refuse):
         kind = "approved_connection"
     else:
         raise refuse("not a disposable ingenium_ DB and no stored owner walkthrough approval")

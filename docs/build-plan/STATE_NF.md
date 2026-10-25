@@ -3,3 +3,4 @@
 - BV-HARDEN (2026-10-24): merged e95528a7 (premium-local-tip + nf-backend); L-NF-BV-HARDEN released. Independent Reviewer APPROVE. Done.
 - BV-UI-WIRE (2026-10-24): merged d8731286 (premium-local-tip + nf-backend); L-NF-BV-UI-WIRE released. Independent Reviewer APPROVE. Done.
 - BV-AUDIT (2026-10-25): merged on premium-local-tip + nf-backend (commit subject BV-AUDIT); L-NF-BV-AUDIT released. Live 17-20 walkthrough 120 + flows 12. Independent Reviewer APPROVE. Fail-closed: all walks refused until BV-AUDIT-WIRE. Done.
+- BV-AUDIT-WIRE (2026-10-25): merged on premium-local-tip + nf-backend (commit subject BV-AUDIT-WIRE). Audit store wired lazily, owner-only approval endpoint. Independent Reviewer APPROVE. Done.

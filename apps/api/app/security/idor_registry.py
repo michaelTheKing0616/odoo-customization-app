@@ -101,6 +101,7 @@ NF_BV_ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", "/api/connections/{connection_id}/verify-runs"),
     ("GET", "/api/connections/{connection_id}/verify-runs/{run_id}"),
     ("GET", "/api/connections/{connection_id}/verify-runs/{run_id}/artifacts/{artifact_id}"),
+    ("PUT", "/api/connections/{connection_id}/verify-runs/walk-approval"),
 )
 
 

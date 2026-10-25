@@ -332,7 +332,7 @@ def test_ac3_every_bv_route_in_idor_registry():
         if p.startswith("/api/connections/{connection_id}/verify-runs")
         for m in ops
     }
-    assert live == set(reg.NF_BV_ROUTES) and len(live) == 3
+    assert live == set(reg.NF_BV_ROUTES) and len(live) == 4
     assert not reg.missing_registered_routes(paths, reg.NF_BV_ROUTES)
     assert all(p in reg.connection_scoped_paths(paths) for _, p in reg.NF_BV_ROUTES)
 
