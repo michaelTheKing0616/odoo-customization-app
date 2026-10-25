@@ -1,3 +1,6 @@
+# Split rows and the screenshot harness (2026-10-25)
+**Decided:** Tope. `/` and `/connections/[id]` each keep two score rows. Area 01 is the shell frame. Area 04 is the page content. The index calls this a split. Closed 2026-10-25. `UIX-00` stays Poor. `UIX-TOUCHES` stays Partial. `F1-VISUAL-HARNESS` is the build card for the missing Playwright screenshot harness. Status blocked. Not started. `UI-5.14-AC` stays Open on the pin. `REG-AI-GUARDS` closed after the reviewer re-ran the file: 50 passed twice. `CACHE-H-EMAIL` stays Open.
+
 # Phone shell sidebar (2026-10-24)
 **Decided:** Tope, from an NF report. Closed 2026-10-24. Below the `sm` breakpoint (640px) the app shell sidebar is the existing left drawer, closed on load. From `sm` up it stays the docked column. Playwright at 390 in light and dark, plus 1440, was 2 passed. `SHELL-DRAWER` is [Done, code]. `F1-RESPONSIVE` still owns the every-route 390 crawl.
 
