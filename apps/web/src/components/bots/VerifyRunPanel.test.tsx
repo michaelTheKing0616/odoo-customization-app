@@ -79,6 +79,7 @@ describe("VerifyRunPanel", () => {
     const viewer = screen.getByTestId("evidence-viewer");
     expect(viewer.textContent || "").not.toMatch(BANNED);
     expect(viewer.textContent || "").toMatch(/not changed|unchanged/i);
+    expect(viewer.textContent || "").toContain("We couldn't load this check just now. Your Odoo data is unchanged.");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /try again|retry/i }));
     });

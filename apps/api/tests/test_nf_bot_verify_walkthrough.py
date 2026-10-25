@@ -31,6 +31,45 @@ NODE = shutil.which("node")
 DISPOSABLE = dict(url="http://127.0.0.1:18117", db_name="ingenium_nf_bv_17", major=17)
 
 
+class MemAuditStore:
+    """BV-AUDIT stand-in for the persisted audit/approval store (no DB)."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+        self.approvals: dict[str, Any] = {}
+
+    def record(self, connection_id: Any, db_name: str, decision: str, reason: str) -> None:
+        self.rows.append(
+            {
+                "connection_id": connection_id,
+                "db_name": str(db_name)[:80],
+                "decision": decision,
+                "reason": reason,
+            }
+        )
+
+    def approval(self, connection_id: Any) -> Any:
+        return self.approvals.get(connection_id) or tg.WalkApproval(False, None, None)
+
+    def set_approval(
+        self, connection_id: str, *, allowed: bool, approved_by: Any, owner_id: Any
+    ) -> None:
+        self.approvals[connection_id] = tg.WalkApproval(allowed is True, approved_by, owner_id)
+
+    def log(self, connection_id: Any = None) -> list[dict[str, Any]]:
+        return [
+            r for r in self.rows if connection_id is None or r["connection_id"] == connection_id
+        ]
+
+
+@pytest.fixture(autouse=True)
+def _audit_store() -> Any:
+    prev, s = tg.audit_store(), MemAuditStore()
+    tg.configure_audit_store(s)
+    yield s
+    tg.configure_audit_store(prev)
+
+
 def _target(**kw: Any) -> tg.WalkTarget:
     return tg.resolve_target(**{**DISPOSABLE, **kw})
 
@@ -45,21 +84,28 @@ def test_non_disposable_refused(db: str) -> None:
     with pytest.raises(tg.TargetNotAllowed) as ei:
         _target(db_name=db)
     assert ei.value.code == "TARGET_NOT_ALLOWED"
-    assert tg.AUDIT_LOG[-1]["decision"] == "refused"
+    assert tg.audit_log()[-1]["decision"] == "refused"
 
 
-def test_flag_needs_owner_approval() -> None:
-    for kw in (
-        {"walkthrough_allowed": True},
-        {"walkthrough_allowed": True, "approved_by": "u2", "owner_id": "u1"},
-        {"walkthrough_allowed": False, "approved_by": "u1", "owner_id": "u1"},
-        {"walkthrough_allowed": "yes", "approved_by": "u1", "owner_id": "u1"},
-    ):
+def test_flag_needs_owner_approval(_audit_store: Any) -> None:
+    """BV-AUDIT AC2: approval comes from stored state keyed by connection; caller flags ignored."""
+    for appr in (None, (True, "u2", "u1"), (False, "u1", "u1"), ("yes", "u1", "u1")):
+        if appr:
+            _audit_store.set_approval("c1", allowed=appr[0], approved_by=appr[1], owner_id=appr[2])
         with pytest.raises(tg.TargetNotAllowed):
-            _target(db_name="aonb", **kw)
-    t = _target(db_name="aonb", walkthrough_allowed=True, approved_by="u1", owner_id="u1")
+            _target(
+                db_name="aonb",
+                connection_id="c1",
+                walkthrough_allowed=True,
+                approved_by="u1",
+                owner_id="u1",
+            )
+    _audit_store.set_approval("c1", allowed=True, approved_by="u1", owner_id="u1")
+    with pytest.raises(tg.TargetNotAllowed):
+        _target(db_name="aonb", connection_id="c2")
+    t = _target(db_name="aonb", connection_id="c1", walkthrough_allowed=False)
     assert t.kind == "approved_connection"
-    assert tg.AUDIT_LOG[-1] == {**tg.AUDIT_LOG[-1], "decision": "allowed", "db_name": "aonb"}
+    assert tg.audit_log()[-1] == {**tg.audit_log()[-1], "decision": "allowed", "db_name": "aonb"}
 
 
 @pytest.mark.parametrize("db", ["ingenium_nf_bv_17", "ingenium_wt_x", "ingenium_demo"])
@@ -214,7 +260,8 @@ def test_walk_user_only_on_disposable() -> None:
         wk.create_walk_user(_target(), lambda *a: None, "r", [1, 2])
     with pytest.raises(TypeError):  # BV-HARDEN F7: forged WalkGroups cannot be built
         wk.WalkGroups((1, 2), ("base.group_user", "base.group_system"), 2, False)
-    appr = _target(db_name="aonb", walkthrough_allowed=True, approved_by="u", owner_id="u")
+    tg.audit_store().set_approval("c-appr", allowed=True, approved_by="u", owner_id="u")
+    appr = _target(db_name="aonb", connection_id="c-appr")
     with pytest.raises(tg.TargetNotAllowed):
         wk.create_walk_user(appr, lambda *a: None, "r", g)
     sess = "s" * 32

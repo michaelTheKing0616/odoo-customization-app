@@ -37,8 +37,6 @@ Root `STATE.md` keeps session retros. This file is the live board for the build.
 | L-REG-NP-BL | REG-NP-BL | hold | apps/api/tests/test_reg_np_bl.py | 2026-10-22 |
 | L-REG-NP-T1 | REG-NP-T1 | hold | apps/api/tests/test_reg_np_t1.py | 2026-10-22 |
 | L-REG-NP-UI | REG-NP-UI | hold | apps/api/tests/test_reg_np_ui.py | 2026-10-22 |
-| L-NF-BV-HARDEN | BV-HARDEN | Oracle | apps/api/app/bot_verify/walkthrough.py, flow_library.py, flows.py; apps/api/tests/test_nf_bot_verify_flows.py, test_nf_bot_verify_walkthrough*.py | 2026-10-24 |
-| L-NF-BV-UI-WIRE | BV-UI-WIRE | Oracle | apps/web/src/components/bots/VerifyRunPanel{,.test}.tsx, EvidenceViewer{,.test}.tsx (chip fix), apps/web/src/app/connections/[id]/operations/verify/[runId]/page.tsx, docs/design/UI_DIRECTION.md (BV-UI-WIRE line) | 2026-10-24 |
 
 Rule: a card is dispatched only if none of its allow-list paths matches an open lock (prefix match on directories). Release on CLOSE or on stop.
 

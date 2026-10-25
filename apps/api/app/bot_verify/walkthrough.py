@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import re
 import secrets
@@ -28,6 +29,7 @@ from app.bot_verify.targets import RESERVED_PORTS, TargetNotAllowed, WalkTarget,
 STEP_TIMEOUT_S = 20
 RUN_TIMEOUT_S = 600
 RETRIES = 1
+_log = logging.getLogger("ingenium.bot_verify.walkthrough")
 RUN_MJS = Path(__file__).resolve().parents[3] / "web" / "src" / "testing" / "odooWalk" / "run.mjs"
 FILL_VALUE = "NF walk value"
 
@@ -329,6 +331,26 @@ def create_walk_user(
     return WalkLogin("password", login, pw)
 
 
+_ACCESS_CLASSES = frozenset({"AccessError", "AccessDenied"})
+_ODOO_ACCESS_FAULT = re.compile(r"\bodoo\.exceptions\.(AccessError|AccessDenied)\b")
+
+
+def _access_refused(exc: BaseException) -> bool:
+    """True only when Odoo refused the delete for access reasons (BV-AUDIT AC4).
+
+    Exception class first, then the Odoo fault code / exception class named in the fault;
+    no free-text phrase matching."""
+    if isinstance(exc, PermissionError) or type(exc).__name__ in _ACCESS_CLASSES:
+        return True
+    code = getattr(exc, "faultCode", None)
+    if isinstance(code, str) and code.rsplit(".", 1)[-1] in _ACCESS_CLASSES:
+        return True
+    data = getattr(exc, "data", None)
+    if isinstance(data, dict) and str(data.get("name", "")).rsplit(".", 1)[-1] in _ACCESS_CLASSES:
+        return True
+    return bool(_ODOO_ACCESS_FAULT.search(str(getattr(exc, "faultString", "") or exc)))
+
+
 def delete_walk_user(target: WalkTarget, admin: Callable[..., Any], login: WalkLogin) -> bool:
     """F5: unlink the throwaway walk user and read back that it is gone. Idempotent."""
     if target.kind != "disposable_clone" or not is_disposable(target.db_name):
@@ -340,8 +362,10 @@ def delete_walk_user(target: WalkTarget, admin: Callable[..., Any], login: WalkL
         return True
     try:
         admin("res.users", "unlink", (uids,))
-    except Exception:  # noqa: BLE001 - Odoo refused the delete (Odoo 20: calendar.user ACL)
-        return _archive_walk_user(target, admin, uids)
+    except Exception as exc:  # noqa: BLE001 - narrowed below
+        if not _access_refused(exc):
+            raise
+        return _archive_walk_user(target, admin, uids)  # Odoo 20: calendar.user ACL
     if admin("res.users", "search", (dom,), ctx):
         raise RuntimeError("walk user still present after delete")
     return True
@@ -367,8 +391,16 @@ def walk_user(
     login = create_walk_user(target, admin, run_id, groups)
     try:
         yield login
-    finally:
-        delete_walk_user(target, admin, login)
+    except BaseException as exc:
+        try:
+            delete_walk_user(target, admin, login)
+        except Exception as cleanup:  # noqa: BLE001 - keep the walkthrough error (AC5)
+            _log.error(
+                "walk user cleanup failed after a walkthrough error: %s", type(cleanup).__name__
+            )
+            exc.add_note(f"walk user cleanup also failed: {type(cleanup).__name__}")
+        raise
+    delete_walk_user(target, admin, login)
 
 
 def session_login(target: WalkTarget, session_id: str) -> WalkLogin:

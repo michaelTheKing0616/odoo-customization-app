@@ -64,18 +64,39 @@ def require_clone(port: Any, source_db: str | None = None) -> None:
         raise TargetNotAllowed("business flows run only on an ingenium_nf_bv_clone_* clone")
 
 
+def _model_of(op: Mapping[str, Any]) -> str:
+    p = op.get("params") or {}
+    return str(p.get("model") or p.get("model_id") or "").strip().lower()
+
+
+_PERMS = ("perm_read", "perm_write", "perm_create", "perm_unlink")
+
+
+def _grants_access(op: Mapping[str, Any]) -> bool:
+    """An access op covers a model only if it names a group and grants something."""
+    p = op.get("params") or {}
+    if not p.get("group") and not p.get("group_id"):
+        return False
+    if op.get("type") == "access.update":
+        return any(p.get(k) for k in _PERMS)
+    if any(k in p for k in _PERMS) and not any(p.get(k) for k in _PERMS):
+        return False
+    return True  # access.create without perm_* keys: dispatch sets perm_read (Odoo 20: read)
+
+
 def acl_gaps(changeset: Sequence[Mapping[str, Any]]) -> list[str]:
-    created = [
-        str((op.get("params") or {}).get("model") or "")
-        for op in changeset
-        if op.get("type") in ("model.create", "model.scaffold")
-    ]
+    """Models the change creates that no group-scoped, permission-granting access op covers."""
+    created: list[str] = []
+    for op in changeset:
+        m = _model_of(op)
+        if op.get("type") in ("model.create", "model.scaffold") and m and m not in created:
+            created.append(m)
     covered = {
-        str((op.get("params") or {}).get("model") or "")
+        _model_of(op)
         for op in changeset
-        if op.get("type") in ("access.create", "access.update")
+        if op.get("type") in ("access.create", "access.update") and _grants_access(op)
     }
-    return [m for m in created if m and m not in covered]
+    return [m for m in created if m not in covered]
 
 
 def _read(port: Any, model: str, rid: int, fname: str) -> Any:

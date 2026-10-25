@@ -22,6 +22,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent / "live"))
 
 from app.bot_verify import flows as fl  # noqa: E402
+from app.bot_verify import targets as tg  # noqa: E402
 from app.bot_verify.flow_library import (  # noqa: E402
     FLOWS,
     REQUIRED_APPS,
@@ -34,6 +35,46 @@ from app.bot_verify.targets import TargetNotAllowed  # noqa: E402
 from app.changeset import verify as verify_mod  # noqa: E402
 
 pytestmark = [pytest.mark.no_app_db]
+
+
+class MemAuditStore:
+    """BV-AUDIT stand-in for the persisted audit/approval store (no DB)."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+        self.approvals: dict[str, Any] = {}
+
+    def record(self, connection_id: Any, db_name: str, decision: str, reason: str) -> None:
+        self.rows.append(
+            {
+                "connection_id": connection_id,
+                "db_name": str(db_name)[:80],
+                "decision": decision,
+                "reason": reason,
+            }
+        )
+
+    def approval(self, connection_id: Any) -> Any:
+        return self.approvals.get(connection_id) or tg.WalkApproval(False, None, None)
+
+    def set_approval(
+        self, connection_id: str, *, allowed: bool, approved_by: Any, owner_id: Any
+    ) -> None:
+        self.approvals[connection_id] = tg.WalkApproval(allowed is True, approved_by, owner_id)
+
+    def log(self, connection_id: Any = None) -> list[dict[str, Any]]:
+        return [
+            r for r in self.rows if connection_id is None or r["connection_id"] == connection_id
+        ]
+
+
+@pytest.fixture(autouse=True)
+def _audit_store() -> Any:
+    prev, s = tg.audit_store(), MemAuditStore()
+    tg.configure_audit_store(s)
+    yield s
+    tg.configure_audit_store(prev)
+
 
 LIVE = os.environ.get("ODOO_LIVE") == "1" and os.environ.get("INGENIUM_LIVE_INFRA") == "1"
 VERSIONS = tuple(

@@ -32,6 +32,7 @@ ADMIN = f"postgresql://ingenium:ingenium@{HOST}/ingenium_wt_admin"
 DB = f"ingenium_wt_bvstore_{uuid.uuid4().hex[:12]}"
 URL = f"postgresql+psycopg://ingenium:ingenium@{HOST}/{DB}"
 REV, DOWN = "4b7e9c1d2a3f", "b0a1c2d3e4f5"
+HEAD = "c7d8e9f0a1b2"  # BV-AUDIT revision now sits on top of REV
 WS_A, WS_B = "ws-a", "ws-b"
 CONN_A, CONN_B, CONN_C = "conn-a", "conn-b", "conn-c"  # C: same workspace as A
 OWNER = {CONN_A: WS_A, CONN_B: WS_B, CONN_C: WS_A}
@@ -163,7 +164,7 @@ def _same(a, b):
 # AC1 ------------------------------------------------------------------------
 def test_ac1_single_head_and_down_revision():
     out = _alembic("heads")
-    assert [ln for ln in out.splitlines() if ln.strip()] == [f"{REV} (head)"]
+    assert [ln for ln in out.splitlines() if ln.strip()] == [f"{HEAD} (head)"]
     src = next((API / "alembic" / "versions").glob(f"{REV}_nf_verify_runs.py")).read_text()
     assert re.search(rf"^down_revision: .* = \"{DOWN}\"$", src, re.M)
 
@@ -460,7 +461,7 @@ def test_drift_fresh_db_at_head_matches_orm():
         eng = create_engine(url, poolclass=NullPool)
         with eng.connect() as conn:
             ctx = MigrationContext.configure(conn, opts={"compare_type": True})
-            assert ctx.get_current_revision() == REV
+            assert ctx.get_current_revision() == HEAD
             diff = compare_metadata(ctx, Base.metadata)
         eng.dispose()
         ops = [d for d in diff if not (isinstance(d, tuple) and d[0].endswith("_comment"))]

@@ -14,7 +14,7 @@ type Load =
   | { kind: "denied"; group: string }
   | { kind: "error"; copy: string };
 
-const COPY_FAILED = "We couldn't load this check just now.";
+const COPY_FAILED = "We couldn't load this check just now. Your Odoo data is unchanged.";
 const COPY_ACCESS = "You don't have access to this check. Ask a workspace admin for access.";
 
 function toLoad(err: unknown): Load {
