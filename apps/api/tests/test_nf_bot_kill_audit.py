@@ -617,7 +617,8 @@ def rpc_write_calls(src: str) -> list[int]:
 
 def test_no_raw_rpc_writes_in_bots() -> None:
     bots = API / "app" / "bots"
-    exempt = {bots / "guard.py", RPC_COPY, BEFORE_IMAGE}  # each pinned separately
+    # each pinned separately (sinkhole.py: tests/test_nf_bot_sinkhole.py AST pin)
+    exempt = {bots / "guard.py", RPC_COPY, BEFORE_IMAGE, bots / "sinkhole.py"}
     hits = [p for p in bots.rglob("*.py") if p not in exempt and rpc_write_calls(p.read_text())]
     assert hits == []
 
