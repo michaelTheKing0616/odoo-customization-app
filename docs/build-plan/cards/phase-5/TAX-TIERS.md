@@ -35,6 +35,9 @@ Read-only; no RPC writes.
 > only when its app and model are confirmed for your Odoo version, and uninstalling an app
 > always needs your approval and a backup. Module code (T3) is coming but not yet available:
 > bots say so and tell you what you can do instead. When a task cannot be checked, nothing runs.
+> Report and scheduled-action tasks are not graded yet and never run until they are.
+
+Report (`r:`) and scheduled-action (`cron:`) tasks always grade `unknown` today.
 
 Claim text still to align (not edited by this card): `MEMORY.md:207` ("owns ANY Odoo
 customization"), `docs/build-plan/cards/phase-5/BOT-GENERIC-WALKER.md:3` ("any Odoo task").

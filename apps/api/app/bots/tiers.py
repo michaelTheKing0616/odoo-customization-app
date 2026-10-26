@@ -39,11 +39,13 @@ _CAPABILITIES = MappingProxyType(
         "module-test-gate": False,
     }
 )
-REQUIRED: dict[int, tuple[str, ...]] = {
-    T1: ("data-settings",),
-    T2: ("metadata-automation",),
-    T3: ("module-authoring", "module-test-gate"),
-}
+REQUIRED = MappingProxyType(
+    {
+        T1: ("data-settings",),
+        T2: ("metadata-automation",),
+        T3: ("module-authoring", "module-test-gate"),
+    }
+)
 
 _T1_KINDS = frozenset({"m", "s", "seq", "param", "g", "b", "wiz", "sa", "cron", "t", "r"})
 _T2_KINDS = frozenset({"c", "v"})
@@ -75,7 +77,8 @@ CLAIM = (
     "runs only when its app and model are confirmed for your Odoo version, and uninstalling "
     "an app always needs your approval and a backup. Module code (T3) is coming but not yet "
     "available: bots say so and tell you what you can do instead. When a task cannot be "
-    "checked, nothing runs."
+    "checked, nothing runs. Report and scheduled-action tasks are not graded yet and "
+    "never run until they are."
 )
 
 

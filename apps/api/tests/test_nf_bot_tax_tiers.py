@@ -196,3 +196,16 @@ def test_module_is_read_only():
     src = inspect.getsource(tt)
     for w in ("execute_kw", ".write(", ".create(", ".unlink(", "call_kw"):
         assert w not in src
+
+
+def test_str_installed_never_reaches_availability(monkeypatch):
+    calls = []
+    monkeypatch.setattr(tt.caps, "availability", lambda *a, **k: calls.append(a))
+    a = tt.assess("m:res.partner:create", version=17, installed_modules="res.partner")
+    assert a.grade == tt.UNKNOWN and calls == []
+
+
+def test_required_read_only_and_claim_mentions_ungraded():
+    with pytest.raises(TypeError):
+        tt.REQUIRED[3] = ()  # type: ignore[index]
+    assert "not graded yet" in tt.CLAIM
