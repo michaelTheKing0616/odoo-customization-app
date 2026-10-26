@@ -1060,3 +1060,53 @@ def _ok(check: Callable[[str], bool], c: str) -> bool:
         return check(c) is True
     except Exception:  # noqa: BLE001 - unverifiable proof = not proven
         return False
+
+
+# --------------------------------------------------------------------------- BOT-DIFF-BLAST
+# Tier the owner approves at, chosen from the class AND the counted blast. Caps are pacing:
+# > batch_cap splits into batches; > run_cap per run needs L3. Each tier names its controls.
+TIER_CONTROLS: dict[int, tuple[str, ...]] = {
+    1: ("quick-tap",),
+    2: ("diff-preview", "blast-count"),
+    3: ("diff-preview", "blast-count", "clone-rehearsal", "snapshot", "typed-blast-count"),
+}
+
+
+@dataclass(frozen=True)
+class TierPlan:
+    tier: int
+    batches: int
+    batch_size: int
+    blast_count: int
+    controls: tuple[str, ...]
+    reasons: tuple[str, ...]
+
+
+def plan_tier(
+    cls: str,
+    subkind: str | None,
+    route: Route,
+    policy: Policy,
+    blast_count: int,
+    low_count: Iterable[str] = (),
+) -> TierPlan | Refusal:
+    """Fail closed: unknown class or a non-positive/non-int count refuses."""
+    if cls not in CLASSES:
+        return Refusal("RF-ANY", "risk-class", f"unknown class {cls!r}")
+    if not isinstance(blast_count, int) or isinstance(blast_count, bool) or blast_count < 1:
+        return Refusal("RF-ANY", "blast-count", "blast count missing or not positive")
+    tier = required_tier(cls, subkind, route, policy)
+    reasons = [f"class {cls}: L{tier} by catalogue tier and hard floor"]
+    if blast_count > policy.run_cap:
+        tier = 3
+        reasons.append(f"blast {blast_count} > run cap {policy.run_cap}: L3")
+    low = [r for r in low_count if r]
+    if low:
+        tier = 3
+        reasons += [f"count may be low: {r}: L3" for r in low]
+    batches = -(-blast_count // policy.batch_cap)
+    if batches > 1:
+        reasons.append(f"blast {blast_count} > batch cap {policy.batch_cap}: {batches} batches")
+    return TierPlan(
+        tier, batches, policy.batch_cap, blast_count, TIER_CONTROLS[tier], tuple(reasons)
+    )
