@@ -42,6 +42,18 @@ _DANGER_PY = re.compile(r"__import__|\beval\s*\(|\bexec\s*\(|\bos\.|\bsubprocess
 _BAD_MODULES = frozenset(
     {"subprocess", "ctypes", "pickle", "marshal", "pty", "shelve", "socket", "dill", "runpy"}
 )
+_NET_MODULES = (
+    "requests",
+    "httpx",
+    "aiohttp",
+    "urllib3",
+    "urllib.request",
+    "http.client",
+    "ftplib",
+    "smtplib",
+    "telnetlib",
+    "xmlrpc.client",
+)
 _QWEB_ORM = re.compile(
     r"\.sudo\s*\(|\.(?:write|create|unlink|search|search_read|search_count|browse|read_group"
     r"|with_user|execute)\s*\(|\b(?:password|password_crypt|api_key|totp_secret|signup_token)\b"
@@ -273,7 +285,9 @@ class _Ctx:
 
 def _is_dynamic_str(n: ast.AST) -> bool:
     return isinstance(n, (ast.JoinedStr, ast.BinOp)) or (
-        isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "format"
+        isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr in ("format", "join")
     )
 
 
@@ -423,7 +437,7 @@ def _sql_has_variable(n: ast.AST, safe: frozenset[str] = frozenset()) -> bool:
             if _sql_has_variable(p, safe):
                 return True
             continue
-        if isinstance(p, ast.Tuple) and all(
+        if isinstance(p, (ast.Tuple, ast.List, ast.Set)) and all(
             isinstance(e, ast.Constant)
             or (isinstance(e, ast.Name) and e.id in safe)
             or (isinstance(e, ast.Attribute) and e.attr == "_table")
@@ -472,12 +486,30 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
         safe = frozenset(
             k for k, v in plain.items() if len(v) == 1 and _literal(v[0]) and k not in aug
         )
+        # names whose every (re)assignment is built only from literals, safe names or itself
+        # (q = 'a'; q = q + 'b'), found as a fixpoint; anything else stays dynamic
+        chain = set(safe)
+        changed = True
+        while changed:
+            changed = False
+            for k in set(plain) | set(aug):
+                if k in chain:
+                    continue
+                vals = plain.get(k, []) + aug.get(k, [])
+                if all(
+                    _literal(v)
+                    or (_is_dynamic_str(v) and not _sql_has_variable(v, frozenset(chain | {k})))
+                    for v in vals
+                ):
+                    chain.add(k)
+                    changed = True
+        safe = frozenset(chain)
         for n in ast.walk(scope):
             if (
                 isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Attribute)
                 and n.func.attr == "execute"
-            ):
+            ) or (isinstance(n, ast.Call) and _dotted(n.func).split(".")[-1] == "SQL"):
                 safe_of[id(n)] = safe
             if (
                 isinstance(n, ast.Call)
@@ -487,7 +519,11 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
                 and isinstance(n.args[0], ast.Name)
             ):
                 nm = n.args[0].id
-                dyn = [a for a in aug.get(nm, []) if _sql_has_variable(a, safe)]
+                dyn = [
+                    a
+                    for a in aug.get(nm, []) + plain.get(nm, [])
+                    if _is_dynamic_str(a) and _sql_has_variable(a, safe)
+                ]
                 if dyn:
                     out[id(n)] = dyn[0]
                 elif len(plain.get(nm, [])) == 1:
@@ -638,6 +674,20 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 "sudo() bypasses access rights and record rules.",
                 "Limit to the smallest read needed and check the caller's rights first.",
             )
+        elif (
+            name == "SQL"
+            and n.args
+            and _is_dynamic_str(n.args[0])
+            and _sql_has_variable(n.args[0], sql_safe.get(id(n), frozenset()))
+        ):
+            c.add(
+                HIGH,
+                "sql-injection",
+                path,
+                ln,
+                "SQL() built from a formatted string (the template must be a literal).",
+                "Use SQL('... %s', value) or SQL.identifier() for names.",
+            )
         elif name == "execute" and isinstance(fn, ast.Attribute) and n.args:
             q = local_sql.get(id(n), n.args[0])
             if _is_dynamic_str(q) and _sql_has_variable(q, sql_safe.get(id(n), frozenset())):
@@ -688,6 +738,34 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
             mods = [a.name.split(".")[0] for a in n.names]
         elif isinstance(n, ast.ImportFrom) and n.module:
             mods = [n.module.split(".")[0]]
+        if isinstance(n, ast.ImportFrom) and n.module and any(a.name == "*" for a in n.names):
+            root = n.module.split(".")[0]
+            if root in _ALIAS_ROOTS or root in _BAD_MODULES:
+                c.add(
+                    HIGH,
+                    "dangerous-import",
+                    path,
+                    n.lineno,
+                    f"Star import from {n.module} hides dangerous calls from review.",
+                    "Import the exact names needed (never * from os/subprocess/builtins etc.).",
+                )
+        full = []
+        if isinstance(n, ast.Import):
+            full = [a.name for a in n.names]
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            full = [n.module, *(f"{n.module}.{a.name}" for a in n.names)]
+        net = sorted({m for m in full if m.startswith(_NET_MODULES)})
+        if net:
+            hook = path.rsplit("/", 1)[-1] in ("__init__.py", "hooks.py")
+            c.add(
+                MEDIUM if hook else LOW,
+                "outbound-network",
+                path,
+                n.lineno,
+                f"Outbound network client imported ({net[0]})"
+                + (" in module load/hook code." if hook else "."),
+                "Network calls need a reviewed integration; never at install/load time.",
+            )
         for mname in mods:
             if mname in _BAD_MODULES:
                 c.add(

@@ -355,3 +355,63 @@ def test_r3_check_note_rejects_control_in_lists(k):
 
 def test_r3_check_note_sample_may_be_multiline():
     assert dn.check_note(_note(sample="Traceback\n  line\n" + _ERR))["sample"]
+
+
+# ---- round 4: multi-line values, *pass* keys, PEM bodies, Google keys, format chars
+R4_SHAPES = [
+    "password=\n" + SECRET,
+    "'password':\n    '" + SECRET + "'",
+    '"db_password":\n  "' + SECRET + '"',
+    "smtp_pass=" + SECRET,
+    "mail_pass: " + SECRET,
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIE" + SECRET + "\nabc\n-----END RSA PRIVATE KEY-----",
+    "-----BEGIN PRIVATE KEY-----\n" + SECRET + "\n",  # END missing
+    "-----BEGIN OPENSSH PRIVATE KEY-----\nb3Bl" + SECRET + "\n-----END OPENSSH PRIVATE KEY-----",
+]
+GKEY = "AIza" + "Sy" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q"
+
+
+@pytest.mark.parametrize("shape", R4_SHAPES)
+def test_r4_redact_shapes(shape):
+    assert SECRET not in dn.redact(shape)
+
+
+def test_r4_google_key_redacted():
+    assert (
+        len(GKEY) == 39
+        and GKEY not in dn.redact("key=" + GKEY)
+        and GKEY not in dn.redact("maps " + GKEY + " failed")
+    )
+
+
+@pytest.mark.parametrize("shape", R4_SHAPES + ["maps " + GKEY])
+@pytest.mark.parametrize("where", ["before", "after", "between"])
+def test_r4_fuzz_multiline_secret_never_in_match_output(shape, where):
+    secret = GKEY if GKEY in shape else SECRET
+    text = {
+        "before": f"{shape}\n{_ERR}\n",
+        "after": f"{_ERR}\n{shape}\n",
+        "between": f"{_ERR}\n{shape}\n{_ERR}\n",
+    }[where]
+    res = dn.match(text)
+    assert res.matches, text
+    assert secret not in repr(res)
+
+
+@pytest.mark.parametrize("bad", ["\u202e", "\u200b", "\u2066", "\ufeff", "\u00ad"])
+def test_r4_check_note_rejects_format_chars(tmp_path, bad):
+    note = {
+        "id": "dn-r4-bidi",
+        "title": "t" + bad,
+        "sample": "s",
+        "cause": "c",
+        "source": "x",
+    }
+    with pytest.raises(ValueError):
+        dn.check_note(note)
+    note["title"], note["diagnosis"] = "t", ["ok" + bad]
+    with pytest.raises(ValueError):
+        dn.check_note(note)
+    note["diagnosis"], note["sample"] = [], "line1\n" + bad
+    with pytest.raises(ValueError):
+        dn.check_note(note)

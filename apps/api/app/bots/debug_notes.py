@@ -35,7 +35,7 @@ NOTE_FIELDS = frozenset(
 NOTES_PATH = Path(__file__).resolve().parents[2] / "evals" / "bots" / "debug_notes_candidates.jsonl"
 
 _KEYWORD = (
-    r"[A-Za-z0-9_-]*?(?:password|passwd|pwd|passphrase|secret|api[_-]?key|apikey|token"
+    r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]*?(?:pass[A-Za-z0-9]*|pwd|secret|api[_-]?key|apikey|token"
     r"|session[_-]?id|sid|csrf[_-]?token|private[_-]?key|credential)[A-Za-z0-9_-]{0,20}"
 )
 _EXTRA_SECRETS = (
@@ -53,11 +53,23 @@ _EXTRA_SECRETS = (
         r"""(?:"[^"\r\n]{0,1000}"|'[^'\r\n]{0,1000}'|[^\s,;&}\])"'<>]{1,1000})"""
     ),
     re.compile(r"(?i)\b(bearer|basic)\s{1,3}[A-Za-z0-9._~+/=-]{6,2000}"),
-    re.compile(r"\b(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AKIA)[-_]?[A-Za-z0-9_-]{8,200}"),
+    re.compile(
+        r"\b(?:(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AKIA)[-_]?[A-Za-z0-9_-]{8,200}"
+        r"|AIza[0-9A-Za-z_-]{35})"
+    ),
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}"),
     re.compile(
         r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,24}"
     ),
+)
+# PEM private keys: BEGIN line through END line (or to the end when END is missing)
+_PEM = re.compile(
+    r"-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----|\Z)"
+)
+# a secret keyword ending its line ("password=" / "'password':") redacts the next line's value
+_KV_NEXT_LINE = re.compile(
+    r"""(?i)(["']?)(""" + _KEYWORD + r""")\1(\s{0,3}(?:[=:]|=>)[ \t]{0,3}["']?[ \t]{0,3}\r?\n)"""
+    r"""([ \t]{0,40})[^\r\n]{1,1000}"""
 )
 _LINE_CTRL = re.compile(r"[\x00-\x1f\x7f\u2028\u2029\x85]")
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
@@ -67,6 +79,11 @@ def redact(text: str) -> str:
     """Remove credentials, session material and email addresses. Apply to whole text before
     any slicing so a cut can never separate a secret from the keyword that identifies it."""
     hdr, uri, kv, bearer, tok, jwt, email = _EXTRA_SECRETS
+    # keep the line count so redacted lines still line up with the original ones
+    text = _PEM.sub(lambda m: "[REDACTED PRIVATE KEY]" + "\n" * m.group(0).count("\n"), text)
+    text = _KV_NEXT_LINE.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}{m.group(4)}[REDACTED]", text
+    )
     text = hdr.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
     text = uri.sub(lambda m: f"{m.group(1)}[REDACTED]@", text)
     text = kv.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[REDACTED]", text)
@@ -617,7 +634,11 @@ class Result:
         return asdict(self)
 
 
-def _prepare(text: Any) -> tuple[list[str], bool]:
+def _prepare(text: Any) -> tuple[list[str], list[str] | None, bool]:
+    """(lines to match, the same lines redacted as one text, truncated). Redaction runs over the
+    whole text before any split, so a value on the line after its keyword or a multi-line PEM
+    body is gone before any line is quoted. None when the redacted lines no longer line up
+    (then nothing is quoted)."""
     if isinstance(text, (bytes, bytearray)):
         if len(text) > MAX_INPUT:
             raise ValueError("input too large")
@@ -628,7 +649,11 @@ def _prepare(text: Any) -> tuple[list[str], bool]:
         raise ValueError("input too large")
     truncated = len(text) > MAX_SCAN
     text = _CTRL.sub(" ", text[-MAX_SCAN:])
-    return [ln[:MAX_LINE] for ln in text.split("\n")], truncated
+    lines = [ln[:MAX_LINE] for ln in text.split("\n")]
+    red = redact("\n".join(lines)).split("\n")
+    if truncated:  # the cut first line may have lost its keyword: never match or quote it
+        lines, red = lines[1:], red[1:]
+    return lines, (red if len(red) == len(lines) else None), truncated
 
 
 def match(text: Any, *, version: Any = None) -> Result:
@@ -636,7 +661,7 @@ def match(text: Any, *, version: Any = None) -> Result:
     if version is not None and (type(version) is not int or version not in VERSIONS):
         return Result("invalid", None, error=f"version must be one of {VERSIONS} or None")
     try:
-        lines, truncated = _prepare(text)
+        lines, red_lines, truncated = _prepare(text)
     except ValueError as e:
         return Result("invalid", version, error=str(e))
     found: list[Match] = []
@@ -647,7 +672,8 @@ def match(text: Any, *, version: Any = None) -> Result:
         ev = []
         for i, ln in enumerate(lines, 1):
             if rx.search(ln):
-                red = redact(ln)  # redact the whole line first, then cut the span
+                # quote only from the whole-text redaction, then cut the span
+                red = red_lines[i - 1] if red_lines is not None else "[REDACTED]"
                 m = rx.search(red)
                 lo, hi = (max(0, m.start() - 40), m.end() + 40) if m else (0, MAX_SPAN)
                 ev.append({"line": i, "span": red[lo:hi][:MAX_SPAN]})
@@ -692,11 +718,24 @@ def _str(v: Any, n: int) -> bool:
     return isinstance(v, str) and 0 < len(v) <= n
 
 
+def _format_chars(v: Any) -> bool:
+    """True when text carries invisible format/bidi controls (Unicode Cf, e.g. U+202E)."""
+    import unicodedata
+
+    vals = v if isinstance(v, list) else [v]
+    return any(
+        isinstance(x, str) and any(unicodedata.category(ch) == "Cf" for ch in x) for x in vals
+    )
+
+
 def check_note(note: Any) -> dict[str, Any]:
     if not isinstance(note, dict) or set(note) - NOTE_FIELDS:
         raise ValueError(f"note fields must be a subset of {sorted(NOTE_FIELDS)}")
     if not isinstance(note.get("id"), str) or not NOTE_ID_RE.fullmatch(note["id"]):
         raise ValueError("note id must match dn-<lowercase-slug>")
+    for k, v in note.items():
+        if _format_chars(v):
+            raise ValueError(f"{k} must not contain invisible format or bidi control characters")
     for k, n in (("title", 120), ("sample", 4000), ("cause", 1000), ("source", 200)):
         if not _str(note.get(k), n):
             raise ValueError(f"{k} must be text, 1-{n} characters")

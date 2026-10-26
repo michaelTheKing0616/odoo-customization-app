@@ -625,3 +625,59 @@ def test_r3_owl_templates_scanned():
     r = ca.audit(zbytes(_tree(**{"static/src/a.xml": xml})), version=17)
     codes_ = {f.code for f in r.findings if f.file == "static/src/a.xml"}
     assert {"qweb-t-raw", "unsafe-markup"} <= codes_
+
+
+# ---- round 4: SQL reassignment / join / SQL(), star imports, outbound network
+MAN = b"{'name': 'x', 'depends': ['base'], 'license': 'LGPL-3'}"
+
+
+def _sev(code_text, path="models/m.py"):
+    fs = {"__manifest__.py": MAN, "__init__.py": b"", path: code_text.encode()}
+    r = ca.audit(zbytes(fs, root="x_m"), version=17, owned_names={"x_m"})
+    return {(f.severity, f.code) for f in r.findings if f.file.endswith(path.rsplit("/", 1)[-1])}
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "def f(cr, name):\n    q = 'SELECT 1 WHERE a='\n    q = q + name\n    cr.execute(q)\n",
+        "def f(cr, n):\n    q = 'S'\n    q = q + 'x'\n    q = q + n\n    cr.execute(q)\n",
+        "def f(cr, name):\n    cr.execute(' '.join(['SELECT', name]))\n",
+        "def f(cr, name):\n    cr.execute(', '.join(name))\n",
+        "from odoo.tools import SQL\ndef f(cr, name):\n    cr.execute(SQL('SELECT ' + name))\n",
+        "from odoo.tools import SQL\ndef f(cr, n):\n    cr.execute(SQL(f'SELECT {n}'))\n",
+    ],
+)
+def test_r4_dynamic_sql_flagged(src):
+    assert ("high", "sql-injection") in _sev(src)
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "def f(cr):\n    q = 'SELECT 1 '\n    q = q + 'FROM t'\n    cr.execute(q)\n",
+        "def f(cr):\n    cr.execute(' '.join(['SELECT', '1']))\n",
+        "from odoo.tools import SQL\ndef f(cr, name):\n    cr.execute(SQL('SELECT %s', name))\n",
+    ],
+)
+def test_r4_literal_sql_not_injection(src):
+    assert ("high", "sql-injection") not in _sev(src)
+
+
+@pytest.mark.parametrize("mod", ["os", "subprocess", "builtins", "shutil", "socket", "ctypes"])
+def test_r4_star_import_from_risky_module_high(mod):
+    assert ("high", "dangerous-import") in _sev(f"from {mod} import *\ndef f(x):\n    system(x)\n")
+
+
+@pytest.mark.parametrize(
+    "src,path,sev",
+    [
+        ("import requests\n", "models/m.py", "low"),
+        ("import requests\n", "__init__.py", "medium"),
+        ("from urllib import request\n", "__init__.py", "medium"),
+        ("import http.client\n", "hooks.py", "medium"),
+        ("import urllib.request\n", "models/m.py", "low"),
+    ],
+)
+def test_r4_outbound_network_flagged(src, path, sev):
+    assert (sev, "outbound-network") in _sev(src, path)

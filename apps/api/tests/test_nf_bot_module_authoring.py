@@ -51,7 +51,7 @@ def test_happy_path_promotable(tmp_path):
     r = run(tmp_path)
     assert r.ok and r.stage == "done" and r.promotable and r.stop_reason == "passed", r.to_dict()
     assert r.module_hash == g.module_hash(r.files)
-    assert g.gate_passed(r.gate_report, r.module_hash)
+    assert g.gate_passed(r.gate_report, r.module_hash, version=17, module=MOD)
     assert r.audit_counts["high"] == r.audit_counts["medium"] == 0
     assert r.trace and all(isinstance(v, list) for v in r.trace.values())
     assert r.change_sets == [] and r.attempts == [] and r.applied is False
@@ -70,15 +70,19 @@ def test_promotable_is_gate_passed_only(tmp_path, monkeypatch):
     assert not run(tmp_path, runner=None).promotable  # sandbox unavailable -> unverified
     monkeypatch.delenv(g.KEY_ENV)
     r = run(tmp_path)
-    assert not r.promotable and not g.gate_passed(r.gate_report, r.module_hash)
+    assert not r.promotable and not g.gate_passed(
+        r.gate_report, r.module_hash, version=17, module=MOD
+    )
 
 
 def test_tampered_result_not_promotable(tmp_path):
     r = run(tmp_path)
     rep = copy.deepcopy(r.gate_report)
     rep["checks"]["tests"]["status"] = "fail"
-    assert not g.gate_passed(rep, r.module_hash)
-    assert not g.gate_passed(r.gate_report, "0" * 64)
+    assert not g.gate_passed(rep, r.module_hash, version=17, module=MOD)
+    assert not g.gate_passed(r.gate_report, "0" * 64, version=17, module=MOD)
+    assert not g.gate_passed(r.gate_report, r.module_hash, version=19, module=MOD)
+    assert not g.gate_passed(r.gate_report, r.module_hash)
 
 
 # AC repair loop

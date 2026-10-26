@@ -233,7 +233,7 @@ def author(
         return res
     best, seen = _score(rep, aud), {_key(rep, aud)}
     for n in range(1, max_attempts + 1):
-        if gate.gate_passed(rep, gate.module_hash(files)):
+        if gate.gate_passed(rep, gate.module_hash(files), version=version, module=name):
             break
         att = Attempt(n)
         res.attempts.append(att)
@@ -269,7 +269,7 @@ def author(
         aud2 = ca.audit(oc._zip(name, new_files), version=version, owned_names={name})
         rep2 = _run_gate(new_files, name, version, runner, tmp_root)
         att.score, att.failing = _score(rep2, aud2), _failing(rep2)
-        passed = gate.gate_passed(rep2, gate.module_hash(new_files))
+        passed = gate.gate_passed(rep2, gate.module_hash(new_files), version=version, module=name)
         if not passed and _key(rep2, aud2) in seen:
             att.outcome = "repeated-failure"
             break
@@ -285,7 +285,7 @@ def author(
     res.gate_report = rep.to_dict()
     res.audit_counts = dict(aud.counts)
     res.notes = sorted({x for c in rep.checks.values() if c.status != "pass" for x in c.notes})
-    res.promotable = gate.gate_passed(rep, res.module_hash)
+    res.promotable = gate.gate_passed(rep, res.module_hash, version=version, module=name)
     if res.promotable:
         res.stop_reason = "passed"
     elif res.attempts and res.attempts[-1].outcome != "adopted":
@@ -384,7 +384,9 @@ def authoring_ready(version: int = 17) -> dict[str, Any]:
             return False
         except gate.GateError:
             pass
-        return rep.checks["audit"].status == "pass" and not gate.gate_passed(rep, rep.module_hash)
+        return rep.checks["audit"].status == "pass" and not gate.gate_passed(
+            rep, rep.module_hash, version=version, module="x_authoring_selfcheck"
+        )
 
     state["module_test_gate"] = bool(files) and _check(_gate)
     state["debug_notes"] = _check(
