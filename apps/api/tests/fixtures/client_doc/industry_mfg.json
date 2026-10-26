@@ -1,0 +1,6 @@
+{"spec": {"spec_version": 1, "status": "designed", "odoo_major": 17, "items": [
+  {"kind": "record", "model": "mrp.bom", "key": {"product_tmpl_id": "Flour 50kg"}, "expected": {"type": "normal"}, "module": "mrp", "verdict": "stock-install", "reason": "needs mrp", "ref": "mrp.bom:product_tmpl_id=Flour 50kg"}]},
+ "review": [], "fit": {"steps": [{"step_id": "mill", "text": "mill wheat into flour and bran", "match_confidence": "weak"}]},
+ "run": {"plan_id": "m1", "status": "attention", "counts": {"blocked": 1}, "steps": [
+  {"slot": "1:mrp.bom:product_tmpl_id=Flour 50kg", "ref": "mrp.bom:product_tmpl_id=Flour 50kg", "status": "blocked", "reason": "needs module install"}]},
+ "verify": {"status": "attention", "items": []}, "caps": {"edition": "community", "installed": ["base", "web", "product", "stock"]}}

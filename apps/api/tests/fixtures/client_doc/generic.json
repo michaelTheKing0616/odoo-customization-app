@@ -1,0 +1,9 @@
+{"spec": {"spec_version": 1, "status": "designed", "odoo_major": 17, "items": [
+  {"kind": "record", "model": "res.partner.category", "key": {"name": "Tier A"}, "expected": {"name": "Tier A", "color": null}, "verdict": "stock", "reason": "", "ref": "res.partner.category:name=Tier A"},
+  {"kind": "record", "model": "product.category", "key": {"name": "Goods"}, "expected": {"name": "Goods"}, "verdict": "needs review", "reason": "parent category unclear", "ref": "product.category:name=Goods"}]},
+ "review": ["conflict on product.category:name=Goods: value parent_id = 1 vs 2"],
+ "fit": {"steps": [{"step_id": "s1", "text": "tag key customers", "match_confidence": "strong pattern"}, {"step_id": "s2", "text": "group goods", "match_confidence": "needs human"}]},
+ "run": {"plan_id": "p1", "status": "attention", "counts": {"executed": 1, "blocked": 1}, "steps": [
+  {"slot": "1:res.partner.category:name=Tier A", "ref": "res.partner.category:name=Tier A", "title": "Create tag", "status": "executed", "undo": "delete the created record (before-image: none)", "verified": "matches"},
+  {"slot": "2:product.category:name=Goods", "ref": "product.category:name=Goods", "title": "Create category", "status": "blocked", "reason": "needs review"}]},
+ "verify": {"status": "attention", "truncated": false, "company_view": "full", "items": [{"ref": "res.partner.category:name=Tier A", "status": "matches"}]}}
