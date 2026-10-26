@@ -20,10 +20,10 @@ from xml.sax.saxutils import escape
 
 import pytest
 
-from app.bots.process import fitgap as fg
-from app.bots.process import ingest as ig
-from app.bots.process import plan as pl
-from app.bots.process import report as rp
+from app.bots.fitgap import fitgap as fg
+from app.bots.fitgap import ingest as ig
+from app.bots.fitgap import plan as pl
+from app.bots.fitgap import report as rp
 from app.catalogue import loader
 
 pytestmark = pytest.mark.no_app_db
@@ -535,7 +535,8 @@ def test_read_env_is_one_read_and_fails_closed():
 
 
 def test_fitgap_table_drift_against_catalogue():
-    t = fg.load_table()
+    t = fg.load_table(packs=("agri_food_processing",))  # BOT-FITGAP: example gaps live in a pack
+    ent = set(fg.load_raw()["enterprise_modules"])
     cat = loader.load()
     cat_modules = {
         p for task in cat.tasks for p in task.prerequisites.replace(";", " ").split()
@@ -553,9 +554,10 @@ def test_fitgap_table_drift_against_catalogue():
             assert set(range(c.min_major, 21)) <= set(task.versions), s
     for g in t.gaps:
         assert g.spec["model"].startswith("ingenium.") and all(
-            d in cat_modules for d in g.spec["depends"]
+            d in cat_modules | ent | {"contacts"} for d in g.spec["depends"]
         )
-    assert {g.id for g in t.gaps} == GAPS
+    assert {g.id for g in t.gaps if g.concept is None and g.area != "other"} >= GAPS
+    assert {g["id"] for g in fg.load_packs()["agri_food_processing"]["gaps"]} == GAPS
 
 
 # ---------------------------------------------------------------- review round 1

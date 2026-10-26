@@ -1,0 +1,1029 @@
+{
+ "version": 1,
+ "reviewed": "BOT-FITGAP: optional industry packs, selected by document content; data only",
+ "packs": [
+  {
+   "id": "agri_food_processing",
+   "label": "Agri-food processing (example pack)",
+   "signals": [
+    "padd",
+    "rice",
+    "grain",
+    "wheat",
+    "maize",
+    "flour",
+    "husk",
+    "bran",
+    "mill(s|ing)?\\b",
+    "milled",
+    "parboil",
+    "harvest",
+    "farmers?"
+   ],
+   "context": [
+    "padd",
+    "rice",
+    "grain",
+    "wheat",
+    "maize",
+    "corn",
+    "flour",
+    "husk",
+    "bran",
+    "truck",
+    "sacks?",
+    "bags?\\b",
+    "kg\\b",
+    "tonn?e?s?\\b",
+    "silos?\\b",
+    "mills?\\b",
+    "hopper",
+    "dryer",
+    "scales?\\b"
+   ],
+   "patterns": {
+    "return": [
+     {
+      "p": "return to (supplier|vendor|farmer)",
+      "w": "strong"
+     }
+    ],
+    "quality_point": [
+     {
+      "p": "moisture",
+      "w": "strong"
+     },
+     {
+      "p": "impurit",
+      "w": "strong"
+     }
+    ],
+    "quality_passfail": [
+     {
+      "p": "metal detect",
+      "w": "strong"
+     },
+     {
+      "p": "x-?ray",
+      "w": "strong"
+     },
+     {
+      "p": "foreign (body|matter)",
+      "w": "strong"
+     }
+    ],
+    "manufacturing": [
+     {
+      "p": "destone",
+      "w": "strong"
+     },
+     {
+      "p": "de-stone",
+      "w": "strong"
+     },
+     {
+      "p": "hull",
+      "w": "strong"
+     },
+     {
+      "p": "husk",
+      "w": "strong"
+     },
+     {
+      "p": "dehusk",
+      "w": "strong"
+     },
+     {
+      "p": "mill",
+      "w": "strong"
+     },
+     {
+      "p": "whiten",
+      "w": "strong"
+     },
+     {
+      "p": "polish",
+      "w": "strong"
+     },
+     {
+      "p": "parboil",
+      "w": "strong"
+     },
+     {
+      "p": "clean",
+      "w": "weak"
+     },
+     {
+      "p": "grad",
+      "w": "weak"
+     },
+     {
+      "p": "sort",
+      "w": "weak"
+     },
+     {
+      "p": "separat",
+      "w": "weak"
+     },
+     {
+      "p": "dry",
+      "w": "weak"
+     },
+     {
+      "p": "dried",
+      "w": "weak"
+     },
+     {
+      "p": "blend",
+      "w": "weak"
+     },
+     {
+      "p": "grind",
+      "w": "weak"
+     },
+     {
+      "p": "sorter",
+      "w": "strong"
+     },
+     {
+      "p": "grader",
+      "w": "strong"
+     },
+     {
+      "p": "separator",
+      "w": "strong"
+     },
+     {
+      "p": "destoner",
+      "w": "strong"
+     },
+     {
+      "p": "husker",
+      "w": "strong"
+     },
+     {
+      "p": "polisher",
+      "w": "strong"
+     },
+     {
+      "p": "huller",
+      "w": "strong"
+     },
+     {
+      "p": "pre-?cleaner",
+      "w": "strong"
+     },
+     {
+      "p": "grading\\b",
+      "w": "strong"
+     }
+    ],
+    "by_product": [
+     {
+      "p": "stones?\\b",
+      "w": "strong"
+     },
+     {
+      "p": "husk",
+      "w": "strong"
+     },
+     {
+      "p": "bran\\b",
+      "w": "strong"
+     },
+     {
+      "p": "chaff",
+      "w": "strong"
+     },
+     {
+      "p": "dust",
+      "w": "weak"
+     }
+    ],
+    "warehouse": [
+     {
+      "p": "silo",
+      "w": "strong"
+     },
+     {
+      "p": "godown",
+      "w": "strong"
+     }
+    ],
+    "subcontracting": [
+     {
+      "p": "toll mill",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "weighbridge",
+     "label": "Weighbridge gross/tare capture",
+     "patterns": [
+      "weigh ?bridge",
+      "gross",
+      "tare"
+     ],
+     "reason": "Stock Odoo has no truck gross/tare/net weighing ticket on receipts.",
+     "model": "ingenium.weighbridge.ticket",
+     "depends": [
+      "stock"
+     ],
+     "fields": [
+      {
+       "name": "picking_id",
+       "ttype": "many2one",
+       "relation": "stock.picking",
+       "string": "Receipt",
+       "required": true
+      },
+      {
+       "name": "vehicle",
+       "ttype": "char",
+       "string": "Vehicle"
+      },
+      {
+       "name": "gross_kg",
+       "ttype": "float",
+       "string": "Gross (kg)",
+       "required": true
+      },
+      {
+       "name": "tare_kg",
+       "ttype": "float",
+       "string": "Tare (kg)",
+       "required": true
+      },
+      {
+       "name": "net_kg",
+       "ttype": "float",
+       "string": "Net (kg)",
+       "readonly": true
+      }
+     ],
+     "area": "inventory"
+    },
+    {
+     "id": "moisture_pricing",
+     "label": "Moisture-adjusted weight and price",
+     "patterns": [
+      "moisture.{0,40}(adjust|deduct|pric|net|payable)",
+      "(adjust|deduct|net|pric).{0,40}moisture",
+      "shrink"
+     ],
+     "reason": "Stock Odoo cannot reduce received quantity or price from a moisture reading.",
+     "model": "ingenium.moisture.adjustment",
+     "depends": [
+      "purchase_stock"
+     ],
+     "fields": [
+      {
+       "name": "picking_id",
+       "ttype": "many2one",
+       "relation": "stock.picking",
+       "string": "Receipt",
+       "required": true
+      },
+      {
+       "name": "moisture_pct",
+       "ttype": "float",
+       "string": "Moisture %",
+       "required": true
+      },
+      {
+       "name": "standard_pct",
+       "ttype": "float",
+       "string": "Standard moisture %",
+       "required": true
+      },
+      {
+       "name": "adjusted_qty",
+       "ttype": "float",
+       "string": "Adjusted quantity",
+       "readonly": true
+      },
+      {
+       "name": "price_adjustment",
+       "ttype": "float",
+       "string": "Price adjustment",
+       "readonly": true
+      }
+     ],
+     "area": "purchase"
+    },
+    {
+     "id": "tempering_gate",
+     "label": "Silo tempering dwell-time gate",
+     "patterns": [
+      "temper",
+      "dwell",
+      "condition(ing)? time",
+      "rest(ing)? time"
+     ],
+     "reason": "Stock Odoo cannot block the next stage until a lot has rested a minimum time.",
+     "model": "ingenium.tempering.batch",
+     "depends": [
+      "mrp"
+     ],
+     "fields": [
+      {
+       "name": "lot_id",
+       "ttype": "many2one",
+       "relation": "stock.lot",
+       "string": "Lot",
+       "required": true
+      },
+      {
+       "name": "started_at",
+       "ttype": "datetime",
+       "string": "Tempering started",
+       "required": true
+      },
+      {
+       "name": "min_hours",
+       "ttype": "float",
+       "string": "Minimum hours",
+       "required": true
+      },
+      {
+       "name": "released",
+       "ttype": "boolean",
+       "string": "Released",
+       "readonly": true
+      }
+     ],
+     "area": "manufacturing"
+    },
+    {
+     "id": "yield_dashboard",
+     "label": "Milling yield / loss dashboard",
+     "patterns": [
+      "yield",
+      "out-?turn",
+      "recovery (rate|%)",
+      "loss (report|analysis|dashboard)",
+      "head rice"
+     ],
+     "reason": "Stock reports do not compute milling out-turn and loss per lot and stage.",
+     "model": "ingenium.milling.yield",
+     "depends": [
+      "mrp"
+     ],
+     "fields": [
+      {
+       "name": "production_id",
+       "ttype": "many2one",
+       "relation": "mrp.production",
+       "string": "Manufacturing order",
+       "required": true
+      },
+      {
+       "name": "input_kg",
+       "ttype": "float",
+       "string": "Input (kg)",
+       "readonly": true
+      },
+      {
+       "name": "output_kg",
+       "ttype": "float",
+       "string": "Main output (kg)",
+       "readonly": true
+      },
+      {
+       "name": "byproduct_kg",
+       "ttype": "float",
+       "string": "By-products (kg)",
+       "readonly": true
+      },
+      {
+       "name": "yield_pct",
+       "ttype": "float",
+       "string": "Yield %",
+       "readonly": true
+      }
+     ],
+     "area": "manufacturing"
+    }
+   ],
+   "questions": [
+    {
+     "text": "Is milling run in separate batches or as one continuous line?",
+     "concepts": [
+      "manufacturing"
+     ],
+     "unless": "\\bbatch(es)?\\b|continuous"
+    },
+    {
+     "text": "Are scales and detectors connected to a computer, or are readings typed in by hand?",
+     "if": "weigh|scale|metal detect|sensor|plc",
+     "unless": "\\biot\\b|manual(ly)? (entry|record)|connected"
+    }
+   ]
+  },
+  {
+   "id": "retail_pos",
+   "label": "Retail and shops",
+   "signals": [
+    "retail",
+    "shops?\\b",
+    "stores?\\b",
+    "cashiers?",
+    "shoppers?",
+    "loyalty"
+   ],
+   "context": [
+    "shelf|shelves",
+    "aisles?",
+    "receipts? printer",
+    "barcodes?",
+    "skus?\\b"
+   ],
+   "patterns": {
+    "pos": [
+     {
+      "p": "ring up",
+      "w": "strong"
+     },
+     {
+      "p": "self-?checkout",
+      "w": "strong"
+     }
+    ],
+    "pricelist": [
+     {
+      "p": "promotions?",
+      "w": "strong"
+     },
+     {
+      "p": "loyalty (cards?|points?|programs?)",
+      "w": "strong"
+     }
+    ],
+    "resupply": [
+     {
+      "p": "store replenishment",
+      "w": "strong"
+     },
+     {
+      "p": "replenish (the )?stores?",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "consignment_settlement",
+     "label": "Consignment settlement with brands",
+     "area": "point of sale",
+     "reason": "Stock Odoo has no per-brand consignment sell-through settlement statement.",
+     "patterns": [
+      "consignment (settlement|statements?)",
+      "sell-?through settlement"
+     ],
+     "model": "ingenium.consignment.statement",
+     "depends": [
+      "point_of_sale"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Consignment settlement with brands",
+       "required": true
+      }
+     ]
+    }
+   ],
+   "questions": []
+  },
+  {
+   "id": "professional_services",
+   "label": "Professional services and agencies",
+   "signals": [
+    "consultants?",
+    "clients?\\b",
+    "agency",
+    "engagements?",
+    "retainers?",
+    "billable"
+   ],
+   "context": [
+    "hours",
+    "deliverables?",
+    "statements? of work"
+   ],
+   "patterns": {
+    "timesheet": [
+     {
+      "p": "time tracking",
+      "w": "strong"
+     },
+     {
+      "p": "track (time|hours)",
+      "w": "strong"
+     }
+    ],
+    "project": [
+     {
+      "p": "engagements?",
+      "w": "strong"
+     },
+     {
+      "p": "deliverables?",
+      "w": "strong"
+     }
+    ],
+    "customer_invoice": [
+     {
+      "p": "invoice (the )?(time|hours)",
+      "w": "strong"
+     },
+     {
+      "p": "bill (the )?client",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "utilisation_forecast",
+     "label": "Consultant utilisation forecast",
+     "area": "projects",
+     "reason": "Planning shows booked shifts; a forward utilisation and bench forecast by skill needs a custom report.",
+     "patterns": [
+      "utili[sz]ation forecast",
+      "bench (forecast|report)"
+     ],
+     "model": "ingenium.utilisation.forecast",
+     "depends": [
+      "project"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Consultant utilisation forecast",
+       "required": true
+      }
+     ]
+    }
+   ],
+   "questions": [
+    {
+     "text": "Do you bill clients by fixed price, by hours worked, or both?",
+     "concepts": [
+      "customer_invoice",
+      "timesheet"
+     ],
+     "unless": "fixed price|time and materials|hourly"
+    }
+   ]
+  },
+  {
+   "id": "healthcare_clinic",
+   "label": "Healthcare clinic",
+   "signals": [
+    "patients?",
+    "clinics?",
+    "doctors?",
+    "nurses?",
+    "medical",
+    "consultations?"
+   ],
+   "context": [
+    "patients?",
+    "consultations?",
+    "treatments?"
+   ],
+   "patterns": {
+    "appointment": [
+     {
+      "p": "patient appointments?",
+      "w": "strong"
+     },
+     {
+      "p": "consultation booking",
+      "w": "strong"
+     },
+     {
+      "p": "book (a )?consultation",
+      "w": "strong"
+     }
+    ],
+    "customer_invoice": [
+     {
+      "p": "invoice the patient",
+      "w": "strong"
+     },
+     {
+      "p": "patient invoices?",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "patient_record",
+     "label": "Patient medical record",
+     "area": "healthcare",
+     "reason": "Stock Odoo has no clinical record (history, diagnosis, prescriptions); a custom module (and a privacy review) is needed.",
+     "patterns": [
+      "medical records?",
+      "patient (history|charts?|records?)",
+      "prescriptions?",
+      "diagnos"
+     ],
+     "model": "ingenium.patient.record",
+     "depends": [
+      "contacts"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Patient medical record",
+       "required": true
+      },
+      {
+       "name": "partner_id",
+       "ttype": "many2one",
+       "relation": "res.partner",
+       "string": "Patient"
+      }
+     ]
+    },
+    {
+     "id": "insurance_claim",
+     "label": "Insurance claims",
+     "area": "accounting",
+     "reason": "Stock Odoo has no payer/insurer claim submission and remittance workflow.",
+     "patterns": [
+      "insurance claims?",
+      "insurer",
+      "claims? (submission|to the insurer)"
+     ],
+     "model": "ingenium.insurance.claim",
+     "depends": [
+      "account"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Insurance claims",
+       "required": true
+      }
+     ]
+    }
+   ],
+   "questions": [
+    {
+     "text": "Do you need to keep clinical notes in the system, or only bookings and billing?",
+     "concepts": [
+      "appointment"
+     ],
+     "unless": "clinical notes|medical records?"
+    }
+   ]
+  },
+  {
+   "id": "construction_field_service",
+   "label": "Construction and field service",
+   "signals": [
+    "construction",
+    "contractors?",
+    "sites?\\b",
+    "jobsites?",
+    "foreman",
+    "installers?"
+   ],
+   "context": [
+    "sites?\\b",
+    "materials?\\b",
+    "crews?"
+   ],
+   "patterns": {
+    "field_service": [
+     {
+      "p": "site visits?",
+      "w": "strong"
+     },
+     {
+      "p": "send (a )?crew",
+      "w": "strong"
+     },
+     {
+      "p": "installation jobs?",
+      "w": "strong"
+     }
+    ],
+    "project": [
+     {
+      "p": "site (diary|progress)",
+      "w": "strong"
+     },
+     {
+      "p": "job costing",
+      "w": "strong"
+     }
+    ],
+    "rental": [
+     {
+      "p": "plant hire",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "progress_billing",
+     "label": "Progress billing with retention",
+     "area": "accounting",
+     "reason": "Stock invoicing has down payments, not certified progress claims with retention and a bill of quantities.",
+     "patterns": [
+      "progress (billing|claims?|payments?)",
+      "retention",
+      "bill of quantities",
+      "\\bboq\\b",
+      "payment certificates?"
+     ],
+     "model": "ingenium.progress.claim",
+     "depends": [
+      "sale_project"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Progress billing with retention",
+       "required": true
+      },
+      {
+       "name": "retention_pct",
+       "ttype": "float",
+       "string": "Retention %"
+      }
+     ]
+    }
+   ],
+   "questions": []
+  },
+  {
+   "id": "hospitality",
+   "label": "Hotels and restaurants",
+   "signals": [
+    "hotels?",
+    "guests?",
+    "rooms?\\b",
+    "restaurants?",
+    "waiters?",
+    "chefs?",
+    "menus?"
+   ],
+   "context": [
+    "guests?",
+    "rooms?\\b",
+    "dishes",
+    "covers"
+   ],
+   "patterns": {
+    "pos_restaurant": [
+     {
+      "p": "take (the )?orders? at (the )?table",
+      "w": "strong"
+     },
+     {
+      "p": "send (the )?orders? to (the )?kitchen",
+      "w": "strong"
+     },
+     {
+      "p": "table reservations?",
+      "w": "strong"
+     },
+     {
+      "p": "reserves? a table",
+      "w": "strong"
+     },
+     {
+      "p": "book (a )?table",
+      "w": "strong"
+     }
+    ],
+    "pos": [
+     {
+      "p": "bar tab",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "hotel_pms",
+     "label": "Hotel room reservations (PMS)",
+     "area": "hospitality",
+     "reason": "Stock Odoo has no room inventory, rate plans, check-in/check-out and housekeeping status.",
+     "patterns": [
+      "room (bookings?|reservations?|rates?)",
+      "hotel reservations?",
+      "check-?in (the )?guests?",
+      "check-?out (the )?guests?",
+      "housekeeping",
+      "(book|reserve)\\w* (the |a )?(hotel )?rooms?"
+     ],
+     "model": "ingenium.room.booking",
+     "depends": [
+      "sale_management"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Hotel room reservations (PMS)",
+       "required": true
+      },
+      {
+       "name": "check_in",
+       "ttype": "date",
+       "string": "Check-in"
+      },
+      {
+       "name": "check_out",
+       "ttype": "date",
+       "string": "Check-out"
+      }
+     ]
+    }
+   ],
+   "questions": []
+  },
+  {
+   "id": "education",
+   "label": "Schools and training providers",
+   "signals": [
+    "students?",
+    "schools?",
+    "teachers?",
+    "pupils?",
+    "courses?",
+    "classes"
+   ],
+   "context": [
+    "courses?",
+    "classes",
+    "lessons?"
+   ],
+   "patterns": {
+    "elearning": [
+     {
+      "p": "course (content|materials?)",
+      "w": "strong"
+     },
+     {
+      "p": "online lessons?",
+      "w": "strong"
+     }
+    ],
+    "event": [
+     {
+      "p": "course sessions?",
+      "w": "strong"
+     },
+     {
+      "p": "class registrations?",
+      "w": "strong"
+     }
+    ],
+    "customer_invoice": [
+     {
+      "p": "tuition (fees?|invoices?)",
+      "w": "strong"
+     },
+     {
+      "p": "collect (the )?fees",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "student_information",
+     "label": "Student information (enrolment, grades, timetable)",
+     "area": "education",
+     "reason": "Stock Odoo has no student enrolment, gradebook, report cards or class timetable.",
+     "patterns": [
+      "admissions?",
+      "report cards?",
+      "gradebook",
+      "timetabl",
+      "class schedul",
+      "enrol(l)?ment (records?|management|forms?)",
+      "class attendance",
+      "student attendance"
+     ],
+     "model": "ingenium.student.enrolment",
+     "depends": [
+      "contacts"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "Student information (enrolment, grades, timetable)",
+       "required": true
+      },
+      {
+       "name": "student_id",
+       "ttype": "many2one",
+       "relation": "res.partner",
+       "string": "Student"
+      }
+     ]
+    }
+   ],
+   "questions": []
+  },
+  {
+   "id": "logistics",
+   "label": "Logistics and distribution",
+   "signals": [
+    "logistics",
+    "3pl",
+    "freight",
+    "carriers?",
+    "shipments?",
+    "containers?",
+    "cross-?dock",
+    "delivery routes?",
+    "last[- ]mile"
+   ],
+   "context": [
+    "parcels?",
+    "shipments?",
+    "containers?",
+    "pallets?",
+    "cartons?"
+   ],
+   "patterns": {
+    "resupply": [
+     {
+      "p": "cross-?dock",
+      "w": "strong"
+     }
+    ],
+    "receipt": [
+     {
+      "p": "container (arrival|receipt)s?",
+      "w": "strong"
+     }
+    ],
+    "lot": [
+     {
+      "p": "track(ing)? numbers?",
+      "w": "strong"
+     }
+    ]
+   },
+   "gaps": [
+    {
+     "id": "storage_billing",
+     "label": "3PL storage billing per pallet/day",
+     "area": "inventory",
+     "reason": "Stock Odoo does not bill customers for storage by pallet-day or handling events.",
+     "patterns": [
+      "storage (billing|fees?|charges?)",
+      "pallet[- ]days?",
+      "handling (fees?|charges?)"
+     ],
+     "model": "ingenium.storage.charge",
+     "depends": [
+      "stock"
+     ],
+     "fields": [
+      {
+       "name": "name",
+       "ttype": "char",
+       "string": "3PL storage billing per pallet/day",
+       "required": true
+      },
+      {
+       "name": "pallet_days",
+       "ttype": "float",
+       "string": "Pallet days"
+      }
+     ]
+    }
+   ],
+   "questions": [
+    {
+     "text": "Do you ship with your own trucks or through carriers?",
+     "concepts": [
+      "resupply"
+     ],
+     "unless": "own (trucks|fleet)|carriers?"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,2840 @@
+{
+ "version": 2,
+ "reviewed": "BOT-FITGAP: generic concepts across Odoo areas; modules checked against inventory.gen.json; Enterprise modules reviewed overlay",
+ "concepts": [
+  {
+   "id": "receipt",
+   "label": "Receipt (incoming transfer)",
+   "module": "stock",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "arriv",
+     "w": "strong"
+    },
+    {
+     "p": "intake",
+     "w": "strong"
+    },
+    {
+     "p": "unload",
+     "w": "strong"
+    },
+    {
+     "p": "gate entry",
+     "w": "strong"
+    },
+    {
+     "p": "inward",
+     "w": "strong"
+    },
+    {
+     "p": "goods receipt",
+     "w": "strong"
+    },
+    {
+     "p": "receiv",
+     "w": "weak"
+    },
+    {
+     "p": "receipt",
+     "w": "weak"
+    },
+    {
+     "p": "goods in\\b",
+     "w": "weak"
+    }
+   ],
+   "setup": [],
+   "area": "inventory"
+  },
+  {
+   "id": "return",
+   "label": "Return to supplier",
+   "module": "stock",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "return",
+     "w": "weak"
+    },
+    {
+     "p": "reject",
+     "w": "weak"
+    },
+    {
+     "p": "send back",
+     "w": "weak"
+    },
+    {
+     "p": "return to (supplier|vendor)",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "area": "inventory",
+   "negative": [
+    "(vat|tax|gst|income|sales tax) returns?"
+   ]
+  },
+  {
+   "id": "purchase",
+   "label": "Purchase order",
+   "module": "purchase",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "purchase order",
+     "w": "strong"
+    },
+    {
+     "p": "purchas",
+     "w": "weak"
+    },
+    {
+     "p": "supplier",
+     "w": "weak"
+    },
+    {
+     "p": "vendor",
+     "w": "weak"
+    },
+    {
+     "p": "procure",
+     "w": "weak"
+    },
+    {
+     "p": "buy",
+     "w": "weak"
+    }
+   ],
+   "setup": [],
+   "area": "purchase",
+   "known_limits": [
+    {
+     "id": "approval_levels",
+     "patterns": [
+      "(three|four|five|[3-9])[- ]levels? (of )?(purchase )?approvals?"
+     ],
+     "reason": "purchase approval is at most two levels (double validation)"
+    }
+   ]
+  },
+  {
+   "id": "quality_point",
+   "label": "Quality point / check",
+   "module": "quality_control",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "quality",
+     "w": "strong"
+    },
+    {
+     "p": "\\bqc\\b",
+     "w": "strong"
+    },
+    {
+     "p": "inspect",
+     "w": "weak"
+    },
+    {
+     "p": "test",
+     "w": "weak"
+    },
+    {
+     "p": "check",
+     "w": "weak"
+    },
+    {
+     "p": "sampl",
+     "w": "weak"
+    },
+    {
+     "p": "lab\\b",
+     "w": "weak"
+    }
+   ],
+   "setup": [
+    {
+     "action": "create quality point per test",
+     "model": "quality.point",
+     "task": null
+    }
+   ],
+   "area": "quality"
+  },
+  {
+   "id": "quality_measure",
+   "label": "Quality check: measure",
+   "module": "quality_control",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "weighing scale",
+     "w": "strong"
+    },
+    {
+     "p": "scale",
+     "w": "weak"
+    },
+    {
+     "p": "weigh",
+     "w": "weak"
+    },
+    {
+     "p": "reading",
+     "w": "weak"
+    },
+    {
+     "p": "measur",
+     "w": "weak"
+    }
+   ],
+   "setup": [
+    {
+     "action": "create measure-type quality point with tolerances",
+     "model": "quality.point",
+     "task": null
+    }
+   ],
+   "area": "quality"
+  },
+  {
+   "id": "quality_passfail",
+   "label": "Quality check: pass/fail",
+   "module": "quality_control",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "pass/fail",
+     "w": "strong"
+    },
+    {
+     "p": "pass or fail",
+     "w": "strong"
+    },
+    {
+     "p": "metal detect",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "action": "create pass/fail quality point",
+     "model": "quality.point",
+     "task": null
+    }
+   ],
+   "area": "quality"
+  },
+  {
+   "id": "manufacturing",
+   "label": "Manufacturing order + bill of materials",
+   "module": "mrp",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "manufactur",
+     "w": "strong"
+    },
+    {
+     "p": "pack",
+     "w": "weak"
+    },
+    {
+     "p": "produc",
+     "w": "weak"
+    }
+   ],
+   "setup": [
+    {
+     "action": "enable Work Orders setting",
+     "model": "res.config.settings",
+     "task": null
+    },
+    {
+     "action": "create work center per machine",
+     "model": "mrp.workcenter",
+     "task": "m:mrp.workcenter:create"
+    },
+    {
+     "action": "create bill of materials per stage",
+     "model": "mrp.bom",
+     "task": "m:mrp.bom:create"
+    },
+    {
+     "action": "create operation per stage on its work center",
+     "model": "mrp.routing.workcenter",
+     "task": "m:mrp.routing.workcenter:create"
+    }
+   ],
+   "area": "manufacturing",
+   "known_limits": [
+    {
+     "id": "finite_scheduling",
+     "patterns": [
+      "finite (capacity )?scheduling",
+      "advanced planning and scheduling",
+      "\\baps\\b"
+     ],
+     "reason": "no finite-capacity / APS scheduling"
+    }
+   ]
+  },
+  {
+   "id": "by_product",
+   "label": "By-product on the bill of materials",
+   "module": "mrp",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "by-?product",
+     "w": "strong"
+    },
+    {
+     "p": "waste",
+     "w": "weak"
+    }
+   ],
+   "setup": [
+    {
+     "action": "enable By-Products setting",
+     "model": "res.config.settings",
+     "task": null
+    },
+    {
+     "action": "add by-product lines",
+     "model": "mrp.bom.byproduct",
+     "task": "m:mrp.bom.byproduct:create"
+    }
+   ],
+   "area": "manufacturing"
+  },
+  {
+   "id": "variant",
+   "label": "Product variants (pack sizes)",
+   "module": "product",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "\\d+\\s*kg\\b",
+     "w": "strong"
+    },
+    {
+     "p": "pack size",
+     "w": "strong"
+    },
+    {
+     "p": "variant",
+     "w": "strong"
+    },
+    {
+     "p": "bags?\\b",
+     "w": "weak"
+    },
+    {
+     "p": "sacks?\\b",
+     "w": "weak"
+    },
+    {
+     "p": "pouch",
+     "w": "weak"
+    },
+    {
+     "p": "packing",
+     "w": "weak"
+    },
+    {
+     "p": "packag",
+     "w": "weak"
+    }
+   ],
+   "setup": [
+    {
+     "action": "enable Variants setting",
+     "model": "res.config.settings",
+     "task": null
+    },
+    {
+     "action": "create pack-size attribute",
+     "model": "product.attribute",
+     "task": "m:product.attribute:create"
+    }
+   ],
+   "area": "sales"
+  },
+  {
+   "id": "lot",
+   "label": "Lots for traceability",
+   "module": "stock",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "lots?\\b",
+     "w": "weak"
+    },
+    {
+     "p": "batch cod",
+     "w": "strong"
+    },
+    {
+     "p": "traceab",
+     "w": "strong"
+    },
+    {
+     "p": "trace",
+     "w": "weak"
+    },
+    {
+     "p": "coding",
+     "w": "weak"
+    },
+    {
+     "p": "label",
+     "w": "weak"
+    },
+    {
+     "p": "lot cod",
+     "w": "strong"
+    },
+    {
+     "p": "lot (number|tracking|trac)",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "action": "enable Lots & Serial Numbers setting",
+     "model": "res.config.settings",
+     "task": null
+    },
+    {
+     "action": "create lots",
+     "model": "stock.lot",
+     "task": "m:stock.lot:create"
+    }
+   ],
+   "area": "inventory",
+   "known_limits": [
+    {
+     "id": "serial_in_pos",
+     "patterns": [
+      "serial numbers? (at|in) (the )?(pos|till|point of sale)"
+     ],
+     "reason": "to be confirmed per version: serial capture at the till"
+    }
+   ]
+  },
+  {
+   "id": "warehouse",
+   "label": "Warehouse / locations",
+   "module": "stock",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "warehouse",
+     "w": "strong"
+    },
+    {
+     "p": "finished goods",
+     "w": "strong"
+    },
+    {
+     "p": "stor(e|age)\\b",
+     "w": "weak"
+    },
+    {
+     "p": "depot",
+     "w": "weak"
+    },
+    {
+     "p": "bin\\b",
+     "w": "weak"
+    },
+    {
+     "p": "delivery orders?",
+     "w": "strong"
+    },
+    {
+     "p": "pick,? pack,? (and )?ship",
+     "w": "strong"
+    },
+    {
+     "p": "picking operations?",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "action": "enable Storage Locations setting",
+     "model": "res.config.settings",
+     "task": null
+    },
+    {
+     "action": "create warehouse",
+     "model": "stock.warehouse",
+     "task": "m:stock.warehouse:create"
+    },
+    {
+     "action": "create storage location",
+     "model": "stock.location",
+     "task": "m:stock.location:create"
+    }
+   ],
+   "area": "inventory",
+   "known_limits": [
+    {
+     "id": "automation",
+     "patterns": [
+      "pick[- ]to[- ]light",
+      "voice picking",
+      "automated storage",
+      "as/rs"
+     ],
+     "reason": "no warehouse automation control"
+    }
+   ]
+  },
+  {
+   "id": "resupply",
+   "label": "Routes / resupply between warehouses",
+   "module": "stock",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "resuppl",
+     "w": "strong"
+    },
+    {
+     "p": "distribut",
+     "w": "weak"
+    },
+    {
+     "p": "deliver",
+     "w": "weak"
+    },
+    {
+     "p": "transfer",
+     "w": "weak"
+    },
+    {
+     "p": "ship",
+     "w": "weak"
+    },
+    {
+     "p": "depot",
+     "w": "weak"
+    },
+    {
+     "p": "distribution to (depots?|warehouses?|branch(es)?|stores)",
+     "w": "strong"
+    },
+    {
+     "p": "inter-?warehouse",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "action": "enable Multi-Step Routes setting",
+     "model": "res.config.settings",
+     "task": null
+    },
+    {
+     "action": "create resupply route",
+     "model": "stock.route",
+     "task": "m:stock.route:create"
+    }
+   ],
+   "area": "inventory"
+  },
+  {
+   "id": "dropship",
+   "label": "Dropship",
+   "module": "stock_dropshipping",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "drop-?ship",
+     "w": "strong"
+    },
+    {
+     "p": "direct from supplier to customer",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "area": "inventory"
+  },
+  {
+   "id": "subcontracting",
+   "label": "Subcontracting",
+   "module": "mrp_subcontracting",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "subcontract",
+     "w": "strong"
+    },
+    {
+     "p": "outsourc",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "area": "manufacturing"
+  },
+  {
+   "id": "repair",
+   "label": "Repair order",
+   "module": "repair",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "repair",
+     "w": "strong"
+    },
+    {
+     "p": "rework",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "area": "repair",
+   "known_limits": [
+    {
+     "id": "oem_warranty",
+     "patterns": [
+      "warranty claims? (to|against) (the )?(manufacturer|oem)"
+     ],
+     "reason": "no claims back to the manufacturer"
+    }
+   ]
+  },
+  {
+   "id": "maintenance",
+   "label": "Equipment maintenance",
+   "module": "maintenance",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "maintenance",
+     "w": "strong"
+    },
+    {
+     "p": "breakdown",
+     "w": "strong"
+    },
+    {
+     "p": "preventive",
+     "w": "weak"
+    },
+    {
+     "p": "servic(e|ing) (the )?(machine|equipment)",
+     "w": "strong"
+    },
+    {
+     "p": "track (the |our )?equipment",
+     "w": "strong"
+    },
+    {
+     "p": "equipment (register|list|tracking)",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "action": "register equipment",
+     "model": "maintenance.equipment",
+     "task": "m:maintenance.equipment:create"
+    }
+   ],
+   "area": "maintenance",
+   "known_limits": [
+    {
+     "id": "condition_monitoring",
+     "patterns": [
+      "condition[- ]based maintenance",
+      "condition monitoring"
+     ],
+     "reason": "no sensor-driven condition monitoring"
+    }
+   ]
+  },
+  {
+   "id": "plm",
+   "label": "Engineering change orders (PLM)",
+   "module": "mrp_plm",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "engineering change",
+     "w": "strong"
+    },
+    {
+     "p": "\\beco\\b",
+     "w": "strong"
+    },
+    {
+     "p": "\\bplm\\b",
+     "w": "strong"
+    },
+    {
+     "p": "bom revision",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "area": "plm"
+  },
+  {
+   "id": "quotation",
+   "label": "Quotations and sales orders",
+   "area": "sales",
+   "module": "sale_management",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "quotations?",
+     "w": "strong"
+    },
+    {
+     "p": "sales? quotes?",
+     "w": "strong"
+    },
+    {
+     "p": "price quotes?",
+     "w": "strong"
+    },
+    {
+     "p": "sales orders?",
+     "w": "strong"
+    },
+    {
+     "p": "send (a|the) quote",
+     "w": "strong"
+    },
+    {
+     "p": "sell\\w* (\\w+ ){0,3}to (the |our )?(customers?|distributors?|dealers?|retailers?|wholesalers?|buyers?)",
+     "w": "strong"
+    },
+    {
+     "p": "sales orders?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "cpq_rules",
+     "patterns": [
+      "\\bcpq\\b",
+      "configure[- ]price[- ]quote"
+     ],
+     "reason": "product configurator has no CPQ rules engine"
+    }
+   ]
+  },
+  {
+   "id": "pricelist",
+   "label": "Pricelists and customer prices",
+   "area": "sales",
+   "module": "product",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "price ?lists?",
+     "w": "strong"
+    },
+    {
+     "p": "customer[- ]specific prices?",
+     "w": "strong"
+    },
+    {
+     "p": "volume discounts?",
+     "w": "strong"
+    },
+    {
+     "p": "tiered pric",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "model": "res.config.settings",
+     "action": "enable Pricelists setting",
+     "task": null
+    }
+   ],
+   "known_limits": [
+    {
+     "id": "rebates",
+     "patterns": [
+      "rebates?\\b",
+      "retro(active|spective)? discounts?"
+     ],
+     "reason": "no retrospective rebate settlement"
+    }
+   ]
+  },
+  {
+   "id": "crm_pipeline",
+   "label": "CRM leads and pipeline",
+   "area": "crm",
+   "module": "crm",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "sales leads?",
+     "w": "strong"
+    },
+    {
+     "p": "new leads?",
+     "w": "strong"
+    },
+    {
+     "p": "opportunit(y|ies)",
+     "w": "strong"
+    },
+    {
+     "p": "sales pipeline",
+     "w": "strong"
+    },
+    {
+     "p": "pipeline stages?",
+     "w": "strong"
+    },
+    {
+     "p": "crm\\b",
+     "w": "strong"
+    },
+    {
+     "p": "prospects?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "subscription",
+   "label": "Subscriptions and recurring billing",
+   "area": "subscriptions",
+   "module": "sale_subscription",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "subscriptions?",
+     "w": "strong"
+    },
+    {
+     "p": "recurring (billing|invoic|orders?|revenue|plans?)",
+     "w": "strong"
+    },
+    {
+     "p": "renewals?",
+     "w": "strong"
+    },
+    {
+     "p": "membership fees?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "purchase_agreement",
+   "label": "Purchase agreements and tenders",
+   "area": "purchase",
+   "module": "purchase_requisition",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "blanket orders?",
+     "w": "strong"
+    },
+    {
+     "p": "calls? for tenders?",
+     "w": "strong"
+    },
+    {
+     "p": "purchase agreements?",
+     "w": "strong"
+    },
+    {
+     "p": "framework agreements?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "barcode",
+   "label": "Barcode scanning in the warehouse",
+   "area": "inventory",
+   "module": "stock_barcode",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "barcode scann",
+     "w": "strong"
+    },
+    {
+     "p": "scan (the )?barcodes?",
+     "w": "strong"
+    },
+    {
+     "p": "handheld scanners?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "putaway",
+   "label": "Putaway rules",
+   "area": "inventory",
+   "module": "stock",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "put-?away",
+     "w": "strong"
+    },
+    {
+     "p": "storage categor",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "landed_cost",
+   "label": "Landed costs",
+   "area": "inventory",
+   "module": "stock_landed_costs",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "landed costs?",
+     "w": "strong"
+    },
+    {
+     "p": "freight and dut(y|ies)",
+     "w": "strong"
+    },
+    {
+     "p": "import dut(y|ies)",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "estimated_landed",
+     "patterns": [
+      "estimated landed costs?",
+      "landed costs? before (receipt|arrival)"
+     ],
+     "reason": "landed costs are applied after receipt, not estimated"
+    }
+   ]
+  },
+  {
+   "id": "workorder",
+   "label": "Shop-floor work orders",
+   "area": "manufacturing",
+   "module": "mrp_workorder",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "shop ?floor",
+     "w": "strong"
+    },
+    {
+     "p": "work ?order tablets?",
+     "w": "strong"
+    },
+    {
+     "p": "operator instructions?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "vendor_bill",
+   "label": "Vendor bills",
+   "area": "accounting",
+   "module": "account",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "vendor bills?",
+     "w": "strong"
+    },
+    {
+     "p": "supplier bills?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "bill_ocr",
+     "patterns": [
+      "\\bocr\\b",
+      "scan (supplier|vendor) bills?"
+     ],
+     "reason": "bill digitisation is an Enterprise/IAP service"
+    }
+   ]
+  },
+  {
+   "id": "customer_invoice",
+   "label": "Customer invoices",
+   "area": "accounting",
+   "module": "account",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "customer invoices?",
+     "w": "strong"
+    },
+    {
+     "p": "invoice the customer",
+     "w": "strong"
+    },
+    {
+     "p": "invoicing (policy|schedule)",
+     "w": "strong"
+    },
+    {
+     "p": "invoice the (client|customer)s?",
+     "w": "strong"
+    },
+    {
+     "p": "time and materials?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "reconciliation",
+   "label": "Bank reconciliation",
+   "area": "accounting",
+   "module": "account_accountant",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "bank reconciliation",
+     "w": "strong"
+    },
+    {
+     "p": "reconcile (the )?(bank|payments?)",
+     "w": "strong"
+    },
+    {
+     "p": "payment matching",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "payment_online",
+   "label": "Online payments",
+   "area": "accounting",
+   "module": "payment",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "online payments?",
+     "w": "strong"
+    },
+    {
+     "p": "payment (providers?|gateways?|links?)",
+     "w": "strong"
+    },
+    {
+     "p": "pay online",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "tax_localisation",
+   "label": "Taxes and fiscal localisation",
+   "area": "accounting",
+   "module": "account",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "fiscal positions?",
+     "w": "strong"
+    },
+    {
+     "p": "withholding tax",
+     "w": "strong"
+    },
+    {
+     "p": "locali[sz]ation",
+     "w": "strong"
+    },
+    {
+     "p": "chart of accounts",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "financial_reports",
+   "label": "Financial reports",
+   "area": "accounting",
+   "module": "account_reports",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "balance sheets?",
+     "w": "strong"
+    },
+    {
+     "p": "profit and loss",
+     "w": "strong"
+    },
+    {
+     "p": "p&l\\b",
+     "w": "strong"
+    },
+    {
+     "p": "trial balance",
+     "w": "strong"
+    },
+    {
+     "p": "general ledger",
+     "w": "strong"
+    },
+    {
+     "p": "aged (receivable|payable)",
+     "w": "strong"
+    },
+    {
+     "p": "vat (returns?|reports?)",
+     "w": "strong"
+    },
+    {
+     "p": "tax (returns?|reports?)",
+     "w": "strong"
+    },
+    {
+     "p": "(file|submit|prepare) (the )?(monthly |quarterly )?(vat|tax|gst) (returns?|filings?)",
+     "w": "strong"
+    },
+    {
+     "p": "(vat|gst) filing",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "multi_currency",
+   "label": "Multi-currency",
+   "area": "accounting",
+   "module": "account",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "multi-?currenc",
+     "w": "strong"
+    },
+    {
+     "p": "foreign currenc",
+     "w": "strong"
+    },
+    {
+     "p": "exchange rates?",
+     "w": "strong"
+    }
+   ],
+   "setup": [
+    {
+     "model": "res.config.settings",
+     "action": "enable Multi-Currencies setting",
+     "task": null
+    }
+   ],
+   "known_limits": [
+    {
+     "id": "revaluation",
+     "patterns": [
+      "currency revaluation",
+      "unreali[sz]ed (exchange )?(gains?|loss)"
+     ],
+     "reason": "exchange revaluation needs Enterprise accounting"
+    }
+   ]
+  },
+  {
+   "id": "multi_company",
+   "label": "Multi-company",
+   "area": "multi-company",
+   "module": "base",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "multi-?compan",
+     "w": "strong"
+    },
+    {
+     "p": "inter-?company",
+     "w": "strong"
+    },
+    {
+     "p": "several (legal entities|companies)",
+     "w": "strong"
+    },
+    {
+     "p": "subsidiar",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "expenses",
+   "label": "Employee expenses",
+   "area": "expenses",
+   "module": "hr_expense",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "expense (claims?|reports?|reimburs)",
+     "w": "strong"
+    },
+    {
+     "p": "employee expenses?",
+     "w": "strong"
+    },
+    {
+     "p": "reimburs",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "per_diem",
+     "patterns": [
+      "per[- ]diems?"
+     ],
+     "reason": "no per-diem allowance rates"
+    }
+   ]
+  },
+  {
+   "id": "employees",
+   "label": "Employee records",
+   "area": "hr",
+   "module": "hr",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "employee (records?|files?|directory|profiles?)",
+     "w": "strong"
+    },
+    {
+     "p": "org(ani[sz]ation(al)?)? chart",
+     "w": "strong"
+    },
+    {
+     "p": "departments?\\b",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "succession",
+     "patterns": [
+      "succession planning"
+     ],
+     "reason": "no succession planning"
+    }
+   ]
+  },
+  {
+   "id": "payroll",
+   "label": "Payroll and payslips",
+   "area": "payroll",
+   "module": "hr_payroll",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "payslips?",
+     "w": "strong"
+    },
+    {
+     "p": "salary (rules?|structures?|slips?)",
+     "w": "strong"
+    },
+    {
+     "p": "payroll (runs?|batch|processing)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "recruitment",
+   "label": "Recruitment",
+   "area": "recruitment",
+   "module": "hr_recruitment",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "job (positions?|openings?|postings?|applications?)",
+     "w": "strong"
+    },
+    {
+     "p": "applicants?",
+     "w": "strong"
+    },
+    {
+     "p": "candidates?",
+     "w": "strong"
+    },
+    {
+     "p": "recruit",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "background_checks",
+     "patterns": [
+      "background checks?"
+     ],
+     "reason": "no background-check integration"
+    }
+   ]
+  },
+  {
+   "id": "time_off",
+   "label": "Time off",
+   "area": "time off",
+   "module": "hr_holidays",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "time ?off",
+     "w": "strong"
+    },
+    {
+     "p": "leave (requests?|allocations?|balances?)",
+     "w": "strong"
+    },
+    {
+     "p": "annual leave",
+     "w": "strong"
+    },
+    {
+     "p": "sick leave",
+     "w": "strong"
+    },
+    {
+     "p": "holiday requests?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "collective_agreements",
+     "patterns": [
+      "collective (labou?r )?agreements?"
+     ],
+     "reason": "no collective-agreement leave rules"
+    }
+   ]
+  },
+  {
+   "id": "attendance",
+   "label": "Attendance",
+   "area": "attendance",
+   "module": "hr_attendance",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "clock (in|out)",
+     "w": "strong"
+    },
+    {
+     "p": "attendance (sheets?|kiosk|tracking)",
+     "w": "strong"
+    },
+    {
+     "p": "employee attendance",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "biometric",
+     "patterns": [
+      "biometric (devices?|terminals?|scanners?)",
+      "fingerprint (scanners?|readers?)"
+     ],
+     "reason": "no biometric device integration"
+    }
+   ]
+  },
+  {
+   "id": "timesheet",
+   "label": "Timesheets",
+   "area": "timesheets",
+   "module": "hr_timesheet",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "timesheets?",
+     "w": "strong"
+    },
+    {
+     "p": "log (hours|time) (on|against)",
+     "w": "strong"
+    },
+    {
+     "p": "billable hours",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "overtime_rules",
+     "patterns": [
+      "overtime (rules?|premiums?|rates?)"
+     ],
+     "reason": "no overtime pay rules on timesheets"
+    }
+   ]
+  },
+  {
+   "id": "appraisal",
+   "label": "Appraisals",
+   "area": "hr",
+   "module": "hr_appraisal",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "appraisals?",
+     "w": "strong"
+    },
+    {
+     "p": "performance reviews?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "project",
+   "label": "Projects and tasks",
+   "area": "projects",
+   "module": "project",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "project (tasks?|stages?|milestones?|plans?)",
+     "w": "strong"
+    },
+    {
+     "p": "kanban",
+     "w": "strong"
+    },
+    {
+     "p": "task (boards?|assignments?)",
+     "w": "strong"
+    },
+    {
+     "p": "milestones?",
+     "w": "strong"
+    },
+    {
+     "p": "(create|set up|open|start) (the |a |new )?projects?\\b",
+     "w": "strong"
+    },
+    {
+     "p": "project budgets?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "earned_value",
+     "patterns": [
+      "earned value",
+      "critical path"
+     ],
+     "reason": "no earned-value or critical-path analysis"
+    }
+   ]
+  },
+  {
+   "id": "planning",
+   "label": "Shift planning",
+   "area": "planning",
+   "module": "planning",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "shift (planning|schedul)",
+     "w": "strong"
+    },
+    {
+     "p": "rosters?",
+     "w": "strong"
+    },
+    {
+     "p": "rota\\b",
+     "w": "strong"
+    },
+    {
+     "p": "staff schedul",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "helpdesk",
+   "label": "Helpdesk tickets",
+   "area": "helpdesk",
+   "module": "helpdesk",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "helpdesk",
+     "w": "strong"
+    },
+    {
+     "p": "support tickets?",
+     "w": "strong"
+    },
+    {
+     "p": "service desk",
+     "w": "strong"
+    },
+    {
+     "p": "sla\\b",
+     "w": "strong"
+    },
+    {
+     "p": "customer complaints?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "itil",
+     "patterns": [
+      "\\bitil\\b",
+      "\\bcmdb\\b",
+      "change management"
+     ],
+     "reason": "no ITIL change management / CMDB"
+    }
+   ]
+  },
+  {
+   "id": "field_service",
+   "label": "Field service",
+   "area": "field service",
+   "module": "industry_fsm",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "field service",
+     "w": "strong"
+    },
+    {
+     "p": "technicians? (visits?|dispatch|on site)",
+     "w": "strong"
+    },
+    {
+     "p": "on-?site (visits?|interventions?|service)",
+     "w": "strong"
+    },
+    {
+     "p": "service (calls?|visits?)",
+     "w": "strong"
+    },
+    {
+     "p": "dispatch (the |a )?(technicians?|engineers?|crews?)",
+     "w": "strong"
+    },
+    {
+     "p": "job sites?",
+     "w": "strong"
+    },
+    {
+     "p": "field service worksheets?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "appointment",
+   "label": "Online appointments",
+   "area": "appointments",
+   "module": "appointment",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "appointment (booking|slots?)",
+     "w": "strong"
+    },
+    {
+     "p": "online booking",
+     "w": "strong"
+    },
+    {
+     "p": "(books?|booking|schedul\\w*) (an? |the )?(follow-up )?appointments?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "event",
+   "label": "Events and registrations",
+   "area": "events",
+   "module": "event",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "event (registrations?|tickets?|attendees?)",
+     "w": "strong"
+    },
+    {
+     "p": "conferences?",
+     "w": "strong"
+    },
+    {
+     "p": "trade shows?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "seat_maps",
+     "patterns": [
+      "seat(ing)? maps?",
+      "reserved seating"
+     ],
+     "reason": "no seat maps"
+    }
+   ]
+  },
+  {
+   "id": "website",
+   "label": "Website pages",
+   "area": "website",
+   "module": "website",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "web ?pages?",
+     "w": "strong"
+    },
+    {
+     "p": "landing pages?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "ecommerce",
+   "label": "eCommerce shop",
+   "area": "website",
+   "module": "website_sale",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "e-?commerce",
+     "w": "strong"
+    },
+    {
+     "p": "online (shop|store)",
+     "w": "strong"
+    },
+    {
+     "p": "web ?shop",
+     "w": "strong"
+    },
+    {
+     "p": "shopping cart",
+     "w": "strong"
+    },
+    {
+     "p": "checkout page",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "marketplace",
+     "patterns": [
+      "multi[- ]vendor",
+      "marketplace sellers?"
+     ],
+     "reason": "no multi-vendor marketplace"
+    }
+   ]
+  },
+  {
+   "id": "blog",
+   "label": "Blog",
+   "area": "website",
+   "module": "website_blog",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "blog posts?",
+     "w": "strong"
+    },
+    {
+     "p": "blog\\b",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "forum",
+   "label": "Forum",
+   "area": "website",
+   "module": "website_forum",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "forums?",
+     "w": "strong"
+    },
+    {
+     "p": "q&a community",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "livechat",
+   "label": "Live chat",
+   "area": "website",
+   "module": "im_livechat",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "live ?chat",
+     "w": "strong"
+    },
+    {
+     "p": "chat ?bots?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "elearning",
+   "label": "eLearning courses",
+   "area": "website",
+   "module": "website_slides",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "e-?learning",
+     "w": "strong"
+    },
+    {
+     "p": "online courses?",
+     "w": "strong"
+    },
+    {
+     "p": "enrol\\w* (in )?(the |an |a )?(online )?courses?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "scorm",
+     "patterns": [
+      "\\bscorm\\b",
+      "\\blti\\b"
+     ],
+     "reason": "no SCORM/LTI packages"
+    }
+   ]
+  },
+  {
+   "id": "pos",
+   "label": "Point of Sale",
+   "area": "point of sale",
+   "module": "point_of_sale",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "point of sale",
+     "w": "strong"
+    },
+    {
+     "p": "\\bpos\\b",
+     "w": "strong"
+    },
+    {
+     "p": "cash registers?",
+     "w": "strong"
+    },
+    {
+     "p": "tills?\\b",
+     "w": "strong"
+    },
+    {
+     "p": "checkout counters?",
+     "w": "strong"
+    }
+   ],
+   "setup": [],
+   "known_limits": [
+    {
+     "id": "long_offline",
+     "patterns": [
+      "offline for (several |many )?(days|weeks)"
+     ],
+     "reason": "POS works offline only for a session; no multi-day offline sync"
+    }
+   ]
+  },
+  {
+   "id": "pos_restaurant",
+   "label": "POS restaurant (tables, kitchen)",
+   "area": "point of sale",
+   "module": "pos_restaurant",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "table (orders?|management|service)",
+     "w": "strong"
+    },
+    {
+     "p": "floor plans?",
+     "w": "strong"
+    },
+    {
+     "p": "kitchen (orders?|tickets?|display|printers?)",
+     "w": "strong"
+    },
+    {
+     "p": "split (the )?bills?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "rental",
+   "label": "Rental",
+   "area": "rental",
+   "module": "sale_renting",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "rental (orders?|contracts?|agreements?)",
+     "w": "strong"
+    },
+    {
+     "p": "rent out",
+     "w": "strong"
+    },
+    {
+     "p": "hire out",
+     "w": "strong"
+    },
+    {
+     "p": "equipment hire",
+     "w": "strong"
+    },
+    {
+     "p": "pick-?up and return dates?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "fleet",
+   "label": "Fleet",
+   "area": "fleet",
+   "module": "fleet",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "fleet",
+     "w": "strong"
+    },
+    {
+     "p": "company (cars?|vehicles?)",
+     "w": "strong"
+    },
+    {
+     "p": "vehicle (maintenance|contracts?|odometer|costs?)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "email_marketing",
+   "label": "Email marketing",
+   "area": "marketing",
+   "module": "mass_mailing",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "email (campaigns?|marketing|newsletters?)",
+     "w": "strong"
+    },
+    {
+     "p": "mailing lists?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "sms_marketing",
+   "label": "SMS marketing",
+   "area": "marketing",
+   "module": "mass_mailing_sms",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "sms (campaigns?|marketing|blasts?)",
+     "w": "strong"
+    },
+    {
+     "p": "text message campaigns?",
+     "w": "strong"
+    },
+    {
+     "p": "by sms\\b",
+     "w": "strong"
+    },
+    {
+     "p": "sms (reminders?|notifications?)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "marketing_automation",
+   "label": "Marketing automation",
+   "area": "marketing",
+   "module": "marketing_automation",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "marketing automation",
+     "w": "strong"
+    },
+    {
+     "p": "drip campaigns?",
+     "w": "strong"
+    },
+    {
+     "p": "nurture (flows?|campaigns?)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "social",
+   "label": "Social marketing",
+   "area": "marketing",
+   "module": "social",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "social (media|posts?) (scheduling|publishing|management)",
+     "w": "strong"
+    },
+    {
+     "p": "post (on|to) (facebook|linkedin|instagram)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "survey",
+   "label": "Surveys",
+   "area": "surveys",
+   "module": "survey",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "(create|send|build|run|design) (a |the |an? online |customer )?(surveys?|questionnaires?)",
+     "w": "strong"
+    },
+    {
+     "p": "feedback forms?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "documents",
+   "label": "Documents",
+   "area": "documents",
+   "module": "documents",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "document management",
+     "w": "strong"
+    },
+    {
+     "p": "dms\\b",
+     "w": "strong"
+    },
+    {
+     "p": "digiti[sz]e (documents|paper)",
+     "w": "strong"
+    },
+    {
+     "p": "file (archive|repository)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "sign",
+   "label": "eSignature",
+   "area": "sign",
+   "module": "sign",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "e-?signatures?",
+     "w": "strong"
+    },
+    {
+     "p": "electronic(ally)? sign",
+     "w": "strong"
+    },
+    {
+     "p": "sign (the )?(contracts?|agreements?) online",
+     "w": "strong"
+    },
+    {
+     "p": "(collect|capture|get|obtain|request) (the |a )?((customer|client)'?s? )?signatures?",
+     "w": "strong"
+    },
+    {
+     "p": "e-?sign\\w*",
+     "w": "strong"
+    },
+    {
+     "p": "signed (off )?(by|on) (the )?(customer|client)",
+     "w": "strong"
+    },
+    {
+     "p": "digital signatures?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "approvals",
+   "label": "Approvals",
+   "area": "approvals",
+   "module": "approvals",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "approval (requests?|workflows?|chains?)",
+     "w": "strong"
+    },
+    {
+     "p": "manager approval",
+     "w": "strong"
+    },
+    {
+     "p": "multi-?level approvals?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "knowledge",
+   "label": "Knowledge base",
+   "area": "knowledge",
+   "module": "knowledge",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "knowledge base",
+     "w": "strong"
+    },
+    {
+     "p": "wiki\\b",
+     "w": "strong"
+    },
+    {
+     "p": "internal (articles|documentation)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "studio",
+   "label": "Studio customisation",
+   "area": "customisation",
+   "module": "web_studio",
+   "min_major": 17,
+   "edition": "enterprise",
+   "patterns": [
+    {
+     "p": "custom fields?",
+     "w": "strong"
+    },
+    {
+     "p": "add (a )?fields?",
+     "w": "strong"
+    },
+    {
+     "p": "custom (forms?|views?)",
+     "w": "strong"
+    },
+    {
+     "p": "no-?code customi",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "dashboards",
+   "label": "Dashboards and reporting",
+   "area": "reporting",
+   "module": "spreadsheet_dashboard",
+   "min_major": 17,
+   "edition": "community",
+   "patterns": [
+    {
+     "p": "dashboards?",
+     "w": "strong"
+    },
+    {
+     "p": "kpis?\\b",
+     "w": "strong"
+    },
+    {
+     "p": "pivot (tables?|views?)",
+     "w": "strong"
+    },
+    {
+     "p": "real-?time analytics",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "assets",
+   "label": "Asset depreciation",
+   "module": "account_asset",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "accounting",
+   "patterns": [
+    {
+     "p": "fixed assets?",
+     "w": "strong"
+    },
+    {
+     "p": "asset (register|depreciation)",
+     "w": "strong"
+    },
+    {
+     "p": "depreciat\\w* (schedules?|of assets?)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "budgets",
+   "label": "Budgets",
+   "module": "account_budget",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "accounting",
+   "patterns": [
+    {
+     "p": "budget (vs\\.?|versus) actuals?",
+     "w": "strong"
+    },
+    {
+     "p": "budgetary (control|positions?)",
+     "w": "strong"
+    },
+    {
+     "p": "analytic budgets?",
+     "w": "strong"
+    },
+    {
+     "p": "budgets? (against|vs\\.?|versus|compared (to|with)) actuals?",
+     "w": "strong"
+    },
+    {
+     "p": "actuals? (against|vs\\.?|versus) budgets?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "followups",
+   "label": "Payment follow-ups",
+   "module": "account_followup",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "accounting",
+   "patterns": [
+    {
+     "p": "payment (follow-?ups?|reminders?)",
+     "w": "strong"
+    },
+    {
+     "p": "dunning",
+     "w": "strong"
+    },
+    {
+     "p": "overdue (invoice )?reminders?",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "consolidation",
+   "label": "Consolidation",
+   "module": "account_consolidation",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "accounting",
+   "patterns": [
+    {
+     "p": "(financial|group) consolidation",
+     "w": "strong"
+    },
+    {
+     "p": "consolidat\\w* (the )?(group )?accounts",
+     "w": "strong"
+    },
+    {
+     "p": "consolidat\\w* (the )?(financial statements|subsidiar\\w*|entities|group)",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "bank_sync",
+   "label": "Bank feeds",
+   "module": "account_online_synchronization",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "accounting",
+   "patterns": [
+    {
+     "p": "bank (feeds?|synchroni[sz]ation|sync)",
+     "w": "strong"
+    },
+    {
+     "p": "import bank transactions automatically",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "deferred_revenue",
+   "label": "Deferred revenue/expense",
+   "module": "account_accountant",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "accounting",
+   "patterns": [
+    {
+     "p": "deferred (revenues?|expenses?|income)",
+     "w": "strong"
+    },
+    {
+     "p": "revenue recognition",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  },
+  {
+   "id": "iot",
+   "label": "IoT devices",
+   "module": "iot",
+   "min_major": 17,
+   "edition": "enterprise",
+   "area": "manufacturing",
+   "patterns": [
+    {
+     "p": "iot (box|devices?)",
+     "w": "strong"
+    },
+    {
+     "p": "connect(ed)? (scales?|measuring tools?) to odoo",
+     "w": "strong"
+    }
+   ],
+   "setup": []
+  }
+ ],
+ "gaps": [
+  {
+   "id": "approval_matrix",
+   "concept": "approvals",
+   "label": "Approval matrix beyond Approvals' approver list",
+   "patterns": [
+    "(three|four|five|[3-9])[- ]levels? (of )?approvals?",
+    "approval matrix",
+    "approval (thresholds?|limits?) by (amount|value)"
+   ],
+   "reason": "Approvals takes a list of approvers with a minimum count; an amount-based multi-level matrix needs custom rules.",
+   "model": "ingenium.approval.matrix",
+   "depends": [
+    "approvals"
+   ],
+   "fields": [
+    {
+     "name": "name",
+     "ttype": "char",
+     "string": "Rule",
+     "required": true
+    },
+    {
+     "name": "min_amount",
+     "ttype": "float",
+     "string": "From amount"
+    },
+    {
+     "name": "level",
+     "ttype": "integer",
+     "string": "Level"
+    }
+   ],
+   "area": "approvals"
+  },
+  {
+   "id": "metered_billing",
+   "concept": "subscription",
+   "label": "Usage-based (metered) billing",
+   "patterns": [
+    "usage[- ]based",
+    "metered",
+    "pay per use"
+   ],
+   "reason": "Subscriptions bill fixed recurring lines; usage readings need a custom import and pricing model.",
+   "model": "ingenium.usage.reading",
+   "depends": [
+    "sale_subscription"
+   ],
+   "fields": [
+    {
+     "name": "name",
+     "ttype": "char",
+     "string": "Reading",
+     "required": true
+    },
+    {
+     "name": "quantity",
+     "ttype": "float",
+     "string": "Quantity"
+    }
+   ],
+   "area": "subscriptions"
+  },
+  {
+   "id": "route_optimisation",
+   "concept": null,
+   "label": "Route optimisation",
+   "patterns": [
+    "route optimi[sz]",
+    "optimi[sz]e (the )?routes?",
+    "plan (the )?delivery routes?",
+    "delivery route planning"
+   ],
+   "reason": "Field Service shows tasks on a map; it does not optimise multi-stop routes.",
+   "model": "ingenium.route.plan",
+   "depends": [
+    "industry_fsm"
+   ],
+   "fields": [
+    {
+     "name": "name",
+     "ttype": "char",
+     "string": "Route",
+     "required": true
+    }
+   ],
+   "area": "inventory"
+  },
+  {
+   "id": "telematics",
+   "concept": "fleet",
+   "label": "Vehicle telematics / GPS feed",
+   "patterns": [
+    "telematics",
+    "gps track",
+    "live vehicle location"
+   ],
+   "reason": "Fleet stores vehicles, contracts and odometer readings; live GPS feeds need an integration.",
+   "model": "ingenium.vehicle.position",
+   "depends": [
+    "fleet"
+   ],
+   "fields": [
+    {
+     "name": "name",
+     "ttype": "char",
+     "string": "Position",
+     "required": true
+    },
+    {
+     "name": "vehicle_id",
+     "ttype": "many2one",
+     "relation": "fleet.vehicle",
+     "string": "Vehicle"
+    }
+   ],
+   "area": "fleet"
+  }
+ ],
+ "negative": [
+  {
+   "p": "payments?",
+   "except": [
+    "accounting",
+    "point of sale"
+   ]
+  },
+  {
+   "p": "pay\\b",
+   "except": [
+    "accounting",
+    "point of sale"
+   ]
+  },
+  {
+   "p": "paid",
+   "except": [
+    "accounting",
+    "point of sale"
+   ]
+  },
+  {
+   "p": "invoic",
+   "except": [
+    "accounting",
+    "subscriptions"
+   ]
+  },
+  {
+   "p": "billing",
+   "except": [
+    "accounting",
+    "subscriptions"
+   ]
+  },
+  {
+   "p": "e-?mails?",
+   "except": [
+    "marketing"
+   ]
+  },
+  {
+   "p": "mail\\b",
+   "except": [
+    "marketing"
+   ]
+  },
+  "software",
+  "apps?\\b",
+  {
+   "p": "website",
+   "except": [
+    "website"
+   ]
+  },
+  {
+   "p": "web\\b",
+   "except": [
+    "website"
+   ]
+  },
+  "passwords?",
+  "log ?in",
+  {
+   "p": "accounting",
+   "except": [
+    "accounting"
+   ]
+  },
+  {
+   "p": "tax(es)?\\b",
+   "except": [
+    "accounting"
+   ]
+  },
+  {
+   "p": "salar",
+   "except": [
+    "payroll"
+   ]
+  },
+  {
+   "p": "payroll",
+   "except": [
+    "payroll"
+   ]
+  },
+  {
+   "p": "meeting",
+   "except": [
+    "appointments"
+   ]
+  },
+  "phone",
+  {
+   "p": "bank",
+   "except": [
+    "accounting"
+   ]
+  },
+  "cheque",
+  {
+   "p": "students?",
+   "except": [
+    "education",
+    "website"
+   ]
+  },
+  "essay",
+  "suitcase",
+  "vacation",
+  "printer",
+  "driver\\b",
+  "laptop",
+  "server",
+  "release",
+  "database"
+ ],
+ "office": [
+  {
+   "p": "reports?\\b",
+   "except": [
+    "expenses",
+    "accounting"
+   ]
+  },
+  "reporting",
+  "conduct",
+  "brochures?",
+  "office",
+  "match(es)?\\b",
+  "football",
+  "street",
+  "photos?\\b",
+  "photograph",
+  "managers?\\b",
+  "flyers?",
+  {
+   "p": "training",
+   "except": [
+    "website"
+   ]
+  },
+  "learning",
+  {
+   "p": "workshops?",
+   "except": [
+    "events"
+   ]
+  },
+  {
+   "p": "visits?\\b",
+   "except": [
+    "field service"
+   ]
+  },
+  {
+   "p": "interviews?",
+   "except": [
+    "recruitment"
+   ]
+  },
+  {
+   "p": "reviews?\\b",
+   "except": [
+    "hr",
+    "accounting"
+   ]
+  },
+  "polic(y|ies)",
+  "presentations?",
+  "speech",
+  "cabinets?",
+  {
+   "p": "contracts?",
+   "except": [
+    "rental",
+    "sign",
+    "fleet"
+   ]
+  },
+  {
+   "p": "files?\\b",
+   "except": [
+    "hr",
+    "accounting"
+   ]
+  },
+  "filing",
+  "newsletters?"
+ ],
+ "context": [
+  "goods",
+  "raw materials?",
+  "materials?\\b",
+  "inventory",
+  "pallets?",
+  "cartons?",
+  "stock\\b",
+  "warehouse",
+  "equipment",
+  "machinery",
+  "machines?\\b",
+  "conveyor",
+  "batch(es)?\\b",
+  "lots?\\b",
+  "trucks?",
+  "lorr(y|ies)"
+ ],
+ "enterprise_modules": {
+  "account_reports": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "appointment": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "approvals": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "documents": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "helpdesk": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "hr_appraisal": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "hr_payroll": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "industry_fsm": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "knowledge": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "marketing_automation": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "mrp_plm": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "mrp_workorder": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "planning": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "quality_control": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "sale_renting": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "sale_subscription": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "sign": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "social": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "stock_barcode": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "web_studio": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "account_accountant": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "account_asset": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "account_budget": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "account_followup": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "account_consolidation": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "account_online_synchronization": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  },
+  "iot": {
+   "min_major": 17,
+   "source": "reviewed: public Odoo Enterprise app list 17-20"
+  }
+ },
+ "matching": "word-start regex; a concept counts only with a strong hit, or a weak hit confirmed in the same step by a strong hit or an operations-vocabulary noun (generic context or a selected industry pack) that is not itself a keyword match; weak never confirms weak; any negative word -> human; negative and office/admin words beat every pattern in the step, strong ones included (e.g. warehouse, mill, inter-warehouse, lot code, return to supplier); remaining false positives are labelled suggestions and confirmed by a person; office words block concept matches only, so a named gap (e.g. yield/loss report) is still found; negative/office entries with 'except' do not block concepts or gaps of those areas"
+}

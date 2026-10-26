@@ -1,0 +1,2731 @@
+{
+ "generated_from": {
+  "catalogue_sha256": "fe99ac08073cf27a2d6a1cd4c68114f4fde6c66b746b31e08696ce88ef9cfcbc",
+  "community_lists": [
+   "community_modules_17_0.json",
+   "community_modules_18_0.json",
+   "community_modules_19_0.json"
+  ]
+ },
+ "modules": {
+  "account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "account_add_gln": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "account_check_printing": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "account_debit_note": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "account_edi_ubl_cii": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "account_fleet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "account_payment": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "account_payment_custom": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "account_payment_term": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "account_qr_code_sepa": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "analytic": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "api_doc": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "attachment_indexation": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "auth_ldap": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "auth_passkey": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "auth_passkey_portal": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "auth_signup": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "auth_totp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "auth_totp_mail": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "auth_totp_portal": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "barcodes": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "barcodes_gs1_nomenclature": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_address_extended": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "base_automation": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_geolocalize": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_import": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_import_module": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_install_request": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_report_wkhtmltox": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "base_setup": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "base_vat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "board": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "bus": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "calendar": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "calendar_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "contacts": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "crm_iap_enrich": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "crm_iap_mine": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "crm_livechat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "crm_mail_plugin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "crm_sale_project": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "crm_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "data_recycle": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "delivery": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "delivery_stock_picking_batch": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "digest": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event_booth": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event_booth_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event_crm_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event_product": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "event_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "event_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "fleet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "fleet_maintenance": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "gamification": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "gamification_sale_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "google_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "google_address_autocomplete": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "google_calendar": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "google_gmail": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "google_recaptcha": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_attendance": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_calendar": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_calendar_google": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "hr_contract": {
+   "edition": "unlisted",
+   "versions": [
+    17,
+    18
+   ]
+  },
+  "hr_expense": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_fleet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_gamification": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_holidays": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_holidays_attendance": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_holidays_contract": {
+   "edition": "unlisted",
+   "versions": [
+    18
+   ]
+  },
+  "hr_holidays_homeworking": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "hr_homeworking": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "hr_homeworking_calendar": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "hr_hourly_cost": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "hr_livechat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_maintenance": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_org_chart": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "hr_presence": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_recruitment": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_recruitment_skills": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_recruitment_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_skills": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_skills_event": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "hr_skills_slides": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_skills_survey": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_timesheet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_timesheet_attendance": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_work_entry": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "hr_work_entry_contract": {
+   "edition": "unlisted",
+   "versions": [
+    17,
+    18
+   ]
+  },
+  "hr_work_entry_holidays": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "html_builder": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "html_editor": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "http_routing": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "iap": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "iap_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "iap_mail": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "im_livechat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "im_livechat_mail_bot": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "iot_base": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "iot_webserial": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "l10n_mt_pos": {
+   "edition": "community",
+   "versions": [
+    17
+   ]
+  },
+  "link_tracker": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "loyalty": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "lunch": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mail": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mail_bot": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mail_bot_hr": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mail_group": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mail_plugin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "maintenance": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "marketing_card": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "marketing_card_event": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "mass_mailing": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_crm_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_event": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_event_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_sale_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_slides": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mass_mailing_themes": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "microsoft_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "microsoft_calendar": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "microsoft_outlook": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "mrp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_delivery": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "mrp_landed_costs": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_product_expiry": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_repair": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_subcontracting": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_subcontracting_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_subcontracting_dropshipping": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_subcontracting_landed_costs": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_subcontracting_purchase": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "mrp_subcontracting_repair": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "mrp_subonctracting_landed_costs": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "mysubscription": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "onboarding": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "partner_autocomplete": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "partnership": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "payment": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "payment_custom": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "payment_demo": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "phone_validation": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "point_of_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "portal": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "portal_discuss": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "portal_rating": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_epson_printer": {
+   "edition": "unlisted",
+   "versions": [
+    17,
+    18
+   ]
+  },
+  "pos_event": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_event_sale": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_hr": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_hr_restaurant": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_loyalty": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_mrp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_online_payment": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_online_payment_self_order": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_partner_autocomplete": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "pos_repair": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "pos_restaurant": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_restaurant_loyalty": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_sale_delivery": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "pos_sale_loyalty": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_sale_margin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "pos_sale_product_configurator": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "pos_sale_stock": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "pos_self_order": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_self_order_epson_printer": {
+   "edition": "unlisted",
+   "versions": [
+    17,
+    18
+   ]
+  },
+  "pos_self_order_event": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "pos_self_order_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "pos_sms": {
+   "edition": "community",
+   "versions": [
+    18
+   ]
+  },
+  "pos_stock": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "printer": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "privacy_lookup": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "product": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "product_expiry": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_hr_expense": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_hr_skills": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_mail_plugin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "project_mrp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_mrp_account": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_mrp_sale": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_mrp_stock_landed_costs": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_purchase": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_purchase_stock": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_sale_expense": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_stock": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_stock_account": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_stock_landed_costs": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "project_timesheet_holidays": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "project_todo": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase_edi_ubl_bis3": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase_mrp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase_repair": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase_requisition": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase_requisition_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "purchase_requisition_stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "purchase_stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "rating": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "repair": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "resource": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "resource_mail": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "rpc": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_async_emails": {
+   "edition": "unlisted",
+   "versions": [
+    17,
+    18
+   ]
+  },
+  "sale_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_edi_ubl": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_expense": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_expense_margin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "sale_loyalty": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_loyalty_delivery": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_management": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_margin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "sale_mrp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_pdf_quote_builder": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_product_configurator": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "sale_project": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_project_margin": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "sale_project_stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_project_stock_account": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_purchase": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_purchase_project": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_purchase_stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_service": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_stock_margin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "sale_stock_product_expiry": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "sale_timesheet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sale_timesheet_margin": {
+   "edition": "community",
+   "versions": [
+    20
+   ]
+  },
+  "sales_team": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "snailmail": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "snailmail_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "social_media": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_event_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_hr_expense": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_hr_timesheet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_im_livechat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_pos_hr": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_pos_restaurant": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_purchase": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "spreadsheet_dashboard_purchase_stock": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "spreadsheet_dashboard_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_sale_timesheet": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_stock_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "spreadsheet_dashboard_website_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "stock_account": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "stock_delivery": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "stock_dropshipping": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "stock_landed_costs": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "stock_landed_costs_company": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "stock_maintenance": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "stock_picking_batch": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19
+   ]
+  },
+  "stock_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "survey": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "survey_crm": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  },
+  "uom": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "utm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "web": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "web_editor": {
+   "edition": "unlisted",
+   "versions": [
+    17,
+    18
+   ]
+  },
+  "web_hierarchy": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "web_tour": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "web_unsplash": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_address_autocomplete": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "website_blog": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_crm_livechat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_crm_partner_assign": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_crm_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_customer": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_event": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_event_booth": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_event_booth_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_event_crm": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_event_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_form_project": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "website_forum": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_google_map": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_hr_recruitment": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_links": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_livechat": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_mail": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_mail_group": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_mass_mailing": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_mass_mailing_event": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "website_mass_mailing_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_partner": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_partnership": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "website_payment": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_profile": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_project": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sale": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sale_autocomplete": {
+   "edition": "community",
+   "versions": [
+    18,
+    19
+   ]
+  },
+  "website_sale_comparison": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "website_sale_comparison_wishlist": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "website_sale_loyalty": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sale_mass_mailing": {
+   "edition": "community",
+   "versions": [
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sale_mrp": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sale_product_configurator": {
+   "edition": "unlisted",
+   "versions": [
+    17
+   ]
+  },
+  "website_sale_project": {
+   "edition": "unlisted",
+   "versions": [
+    20
+   ]
+  },
+  "website_sale_stock": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sale_stock_wishlist": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "website_sale_wishlist": {
+   "edition": "community",
+   "versions": [
+    19
+   ]
+  },
+  "website_slides": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_slides_forum": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_slides_survey": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_sms": {
+   "edition": "community",
+   "versions": [
+    17,
+    18,
+    19,
+    20
+   ]
+  },
+  "website_timesheet": {
+   "edition": "community",
+   "versions": [
+    19,
+    20
+   ]
+  }
+ }
+}

@@ -73,8 +73,9 @@ class Step:
     id: str
     text: str
     locator: str
-    kind: str = "step"  # step | event | gateway | cell | line
+    kind: str = "step"  # step | event | gateway | cell | line | requirement
     box: tuple[float, float, float, float] | None = None  # x, y, w, h (doc units, y down)
+    priority: str | None = None  # must | should | could | wont (requirement lists)
 
 
 @dataclass
@@ -431,10 +432,60 @@ def parse_xlsx(data: bytes, source: str = "document.xlsx") -> FlowGraph:
         _connect(g.steps, lines, g.edges, g.notes)
         _drop_titles(g)
         _position_fill(g.steps, g.edges)
+    elif req := _xlsx_requirements(cells):
+        return _requirements_graph(g, req)
     else:
         g.steps = cells
         g.edges = _sequence(cells, 0.6)
     return _finish(g)
+
+
+def _xlsx_requirements(cells: list[Step]) -> list[Step] | None:
+    """Cells of the first sheet grouped by row (column letters kept as positions)."""
+    sheets = list(dict.fromkeys(c.id.split("!")[0] for c in cells))
+    if not sheets:
+        return None
+    rows: dict[int, dict[int, str]] = {}
+    for c in cells:
+        sheet, ref = c.id.split("!")
+        m = re.fullmatch(r"([A-Z]+)(\d+)", ref)
+        if sheet != sheets[0] or not m:
+            continue
+        col = 0
+        for ch in m.group(1):
+            col = col * 26 + ord(ch) - 64
+        rows.setdefault(int(m.group(2)), {})[col - 1] = c.text
+    table = [
+        ([r.get(i, "") for i in range(max(r) + 1)], f"{sheets[0]} row {n}")
+        for n, r in sorted(rows.items())
+    ]
+    return requirement_rows(table)
+
+
+FORMULA_LEAD = "=+@\t\r"
+
+
+def defang(text: str) -> str:
+    """Cell text is data: drop leading spreadsheet-formula triggers (CSV/formula injection)."""
+    return text.lstrip(FORMULA_LEAD).strip() if text[:1] in FORMULA_LEAD else text
+
+
+def _hidden_sheets(z: zipfile.ZipFile) -> set[str]:
+    """Worksheet paths marked hidden/veryHidden in workbook.xml (their text is ignored)."""
+    names = z.namelist()
+    if "xl/workbook.xml" not in names or "xl/_rels/workbook.xml.rels" not in names:
+        return set()
+    wb = _xml(_member(z, "xl/workbook.xml"))
+    rels = _xml(_member(z, "xl/_rels/workbook.xml.rels"))
+    target = {
+        r.get("Id"): "xl/" + (r.get("Target") or "").lstrip("/").removeprefix("xl/") for r in rels
+    }
+    rid = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+    return {
+        target.get(sh.get(rid), "")
+        for sh in wb.iter()
+        if sh.tag.endswith("}sheet") and sh.get("state") in ("hidden", "veryHidden")
+    }
 
 
 def _xlsx_cells(z: zipfile.ZipFile) -> list[Step]:
@@ -447,7 +498,9 @@ def _xlsx_cells(z: zipfile.ZipFile) -> list[Step]:
         ]
     out: list[Step] = []
     m = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
-    for name in sorted(n for n in z.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)):
+    hidden = _hidden_sheets(z)
+    sheets = [n for n in z.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", n)]
+    for name in sorted(n for n in sheets if n not in hidden):
         root = _xml(_member(z, name))
         for c in root.iter(f"{m}c"):
             v = c.find(f"{m}v")
@@ -459,15 +512,86 @@ def _xlsx_cells(z: zipfile.ZipFile) -> list[Step]:
                 text = _clean("".join(t.text or "" for t in c.iter(f"{m}t")))
             elif c.get("t") == "str" and v is not None:
                 text = _clean(v.text or "")
+            text = defang(text)
             if text and not re.fullmatch(r"[\d.,\s%-]*", text):
                 ref = c.get("r", "?")
                 out.append(Step(f"{name}!{ref}", text, f"{name} cell {ref}", "cell"))
     return out
 
 
+REQ_HEAD = re.compile(
+    r"^(requirements?|description|process steps?|steps?|activit(y|ies)|user stor(y|ies)|"
+    r"features?|tasks?|business requirements?|functional requirements?|need)\b",
+    re.I,
+)
+PRIO_HEAD = re.compile(r"^(priority|moscow|importance|criticality|must/should)\b", re.I)
+PRIO = (
+    ("must", r"must( have)?|m|high|critical|mandatory|essential|p1|1"),
+    ("should", r"should( have)?|s|medium|med|important|p2|2"),
+    ("could", r"could( have)?|c|low|nice to have|optional|p3|3"),
+    ("wont", r"won'?t( have)?|w|out of scope|future"),
+)
+REQ_CONF = 0.9
+
+
+def priority(text: str | None) -> str | None:
+    t = (text or "").strip().strip("()[]").strip().lower()
+    return next((k for k, p in PRIO if re.fullmatch(p, t)), None)
+
+
+def requirement_rows(rows: list[tuple[list[str], str]]) -> list[Step] | None:
+    """A table with a recognised header column -> requirement steps (None: not a list)."""
+    for h, (head, _) in enumerate(rows[:5]):
+        cells = [_clean(c) for c in head]
+        col = next((i for i, c in enumerate(cells) if REQ_HEAD.match(c)), None)
+        if col is None:
+            continue
+        pcol = next((i for i, c in enumerate(cells) if PRIO_HEAD.match(c)), None)
+        out = []
+        for cells_, loc in rows[h + 1 :]:
+            cells_ = [defang(_clean(c)) for c in cells_]
+            if all(re.fullmatch(r"[-:= ]*", c) for c in cells_):
+                continue  # markdown separator row
+            text = cells_[col] if col < len(cells_) else ""
+            if not text or re.fullmatch(r"[\d.,\s%-]*", text):
+                continue
+            prio = priority(cells_[pcol]) if pcol is not None and pcol < len(cells_) else None
+            out.append(Step(f"r{len(out) + 1}", text, loc, "requirement", None, prio))
+        return out or None
+    return None
+
+
+def _requirements_graph(g: FlowGraph, steps: list[Step]) -> FlowGraph:
+    if len(steps) > MAX_STEPS:
+        raise IngestError("too many steps")
+    g.steps = steps
+    g.edges = _sequence(steps, REQ_CONF)
+    g.notes.append(f"requirement list: {len(steps)} requirements")
+    return _finish(g)
+
+
+def _text_table(raw: list[str]) -> list[tuple[list[str], str]]:
+    rows = []
+    for n, ln in enumerate(raw, 1):
+        if "|" in ln or "\t" in ln:
+            cells = [c for c in re.split(r"\s*\|\s*|\t", ln.strip().strip("|"))]
+            if len(cells) >= 2:
+                rows.append((cells, f"line {n}"))
+                continue
+        if rows and ln.strip():
+            break
+    return rows
+
+
 def parse_text(text: str, source: str = "document.txt", fmt: str = "text") -> FlowGraph:
     g = FlowGraph(source, fmt)
     raw = [ln.strip() for ln in text.splitlines()]
+    start = next((i for i, ln in enumerate(raw) if "|" in ln or "\t" in ln), None)
+    if start is not None and (req := requirement_rows(_text_table(raw[start:]))):
+        for s in req:
+            n = int(s.locator.split()[1]) + start
+            s.locator = f"line {n}"
+        return _requirements_graph(g, req)
     arrow = re.compile(r"\s*(?:->|→|=>|⇒|>>)\s*")
     ids: dict[str, str] = {}
 
@@ -494,7 +618,11 @@ def parse_text(text: str, source: str = "document.txt", fmt: str = "text") -> Fl
             continue
         m = re.match(r"^(?:step\s*)?(\d+)[.)\]:-]\s+(.+)$|^[-*•]\s+(.+)$", ln, re.I)
         if m:
-            numbered.append(step(_clean(m.group(2) or m.group(3)), f"line {n}", reuse=False))
+            label = _clean(m.group(2) or m.group(3))
+            pm = re.match(r"^[(\[]?(must|should|could|won'?t)( have)?[)\]:]?\s+(.+)$", label, re.I)
+            numbered.append(step(pm.group(3) if pm else label, f"line {n}", reuse=False))
+            if pm:
+                g.steps[-1].priority = priority(pm.group(1))
         elif len(ln) <= 120:
             numbered.append(step(_clean(ln), f"line {n}", reuse=False))
     if len(g.steps) > MAX_STEPS:
@@ -511,12 +639,26 @@ def parse_docx(data: bytes, source: str = "document.docx") -> FlowGraph:
     z = _zip(data)
     root = _xml(_member(z, "word/document.xml"))
     lines: list[str] = []
-    for p in root.iter(f"{{{NS['w']}}}p"):
-        text = "".join(t.text or "" for t in p.iter(f"{{{NS['w']}}}t")).strip()
-        if not text:
+    w = f"{{{NS['w']}}}"
+    body = root.find("w:body", NS)
+    for el in list(body if body is not None else root):
+        if el.tag == f"{w}tbl":  # tables -> pipe rows (parse_text detects requirement lists)
+            for tr in el.iter(f"{w}tr"):
+                cells = []
+                for tc in tr.iter(f"{w}tc"):  # merged cells: gridSpan keeps columns aligned
+                    span = tc.find("w:tcPr/w:gridSpan", NS)
+                    n = int(span.get(f"{w}val", "1")) if span is not None else 1
+                    text = _clean(" ".join(t.text or "" for t in tc.iter(f"{w}t")))
+                    cells += [text] + [""] * (max(1, min(n, 50)) - 1)
+                lines.append(" | ".join(c.replace("|", "/") for c in cells))
+            lines.append("")
             continue
-        is_list = p.find("w:pPr/w:numPr", NS) is not None
-        lines.append(f"- {text}" if is_list and not re.match(r"^\d+[.)]", text) else text)
+        for p in el.iter(f"{w}p"):
+            text = "".join(t.text or "" for t in p.iter(f"{w}t")).strip()
+            if not text:
+                continue
+            is_list = p.find("w:pPr/w:numPr", NS) is not None
+            lines.append(f"- {text}" if is_list and not re.match(r"^\d+[.)]", text) else text)
     return parse_text("\n".join(lines), source, "docx")
 
 

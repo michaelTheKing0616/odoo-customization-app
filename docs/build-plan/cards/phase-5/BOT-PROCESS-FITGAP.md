@@ -1,5 +1,8 @@
 # BOT-PROCESS-FITGAP
 
+> SUPERSEDED by BOT-FITGAP.md (2026-10-26). Package moved `app/bots/process/` -> `app/bots/fitgap/`;
+> test moved to `tests/test_nf_bot_fitgap.py`. Kept as a history stub.
+
 Goal: any client process document -> true flow -> fit-gap vs stock Odoo (connected db's
 version, edition, installed/installable modules) -> Odoo-native mapping; only genuine
 gaps become custom. Read-only; the plan is a dry run (execution = BOT-SPINE-WIRE).

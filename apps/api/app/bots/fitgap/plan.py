@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.bots.process.fitgap import FitGap, Table, load_table
+from app.bots.fitgap.fitgap import FitGap, Table, load_table
 from app.bots.risk import rules
 from app.bots.risk.rules import Policy, Refusal, Route
 from app.catalogue import loader
@@ -51,17 +51,21 @@ def build_plan(
     policy: Policy = rules.DEFAULT_POLICY,
     table: Table | None = None,
 ) -> Plan:
-    t = table or load_table()
+    t = table or load_table(packs=fit.packs)
     cat = loader.load()
     concepts = {c.id: c for c in t.concepts}
     actions: list[PlanAction] = []
     installs: dict[str, list[str]] = {}
     by_key: dict[tuple[str, str], PlanAction] = {}
     for f in fit.steps:
-        if f.verdict != "stock-with-config" and f.verdict != "stock":
+        if f.verdict not in ("stock-with-config", "stock", "partial"):
             continue
-        for use in f.concepts:
-            if use.status == "unavailable":
+        if f.confidence == "model-suggested":
+            continue  # model suggestions never add plan actions
+        for use in f.concepts:  # partial steps: only the parts this edition has
+            if use.status == "unavailable" or (
+                use.status == "unverified" and concepts[use.concept].edition == "enterprise"
+            ):
                 continue
             if use.status == "install":
                 installs.setdefault(use.module, []).append(f.step_id)
@@ -109,7 +113,7 @@ def _tier(
 
 def module_spec(fit: FitGap, table: Table | None = None) -> dict[str, Any] | None:
     """App Studio draft (input of `module_spec_codec.draft_dict_to_module_spec`)."""
-    t = table or load_table()
+    t = table or load_table(packs=fit.packs)
     gaps = {g.id: g for g in t.gaps}
     used = [gaps[g] for g in fit.gaps if g in gaps]
     if not used:
@@ -124,8 +128,8 @@ def module_spec(fit: FitGap, table: Table | None = None) -> dict[str, Any] | Non
         for g in used
     ]
     return {
-        "technical_name": "ingenium_process_gaps",
-        "display_name": "Process gaps",
+        "technical_name": "ingenium_fit_gaps",
+        "display_name": "Business fit-gap: custom gaps",
         "depends": depends,
         "models": models,
         "odoo_major": fit.env.major if fit.env else None,
