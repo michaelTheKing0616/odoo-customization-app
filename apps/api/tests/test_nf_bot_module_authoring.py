@@ -6,7 +6,9 @@ import ast
 import copy
 import importlib
 import inspect
+import os
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from test_nf_bot_module_test_gate import KEY, Fake
@@ -30,6 +32,15 @@ def key(monkeypatch):
 def run(tmp_path, req=ASSETS, **kw):
     kw.setdefault("runner", Fake(tmp_path))
     kw.setdefault("tmp_root", str(tmp_path))
+    if "seed" in kw:
+        with mock.patch.dict(os.environ, {ma.SEED_FLAG: "1"}):
+            return ma.author_seeded_for_tests(
+                copy.deepcopy(req),
+                version=kw.pop("version", 17),
+                owner_context=kw.pop("ctx", CTX),
+                technical_name=kw.pop("name", MOD),
+                **kw,
+            )
     return ma.author(
         copy.deepcopy(req),
         version=kw.pop("version", 17),
@@ -333,3 +344,37 @@ def test_flag_cannot_be_flipped_by_env_or_input(monkeypatch):
 def test_audit_counts_match_final_files(tmp_path):
     r = run(tmp_path, seed=drop_access)
     assert ca.audit(oc._zip(MOD, r.files), version=17, owned_names={MOD}).counts == r.audit_counts
+
+
+# ---------------------------------------------------------------- round 5
+def test_r5_public_author_has_no_seed(tmp_path) -> None:
+    with pytest.raises(TypeError):
+        ma.author(ASSETS, version=17, owner_context=CTX, technical_name=MOD, seed=drop_access)
+
+
+def test_r5_seeded_refused_without_flag(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv(ma.SEED_FLAG, raising=False)
+    r = ma.author_seeded_for_tests(
+        copy.deepcopy(ASSETS),
+        version=17,
+        owner_context=CTX,
+        technical_name=MOD,
+        seed=drop_access,
+        runner=Fake(tmp_path),
+        tmp_root=str(tmp_path),
+    )
+    assert not r.ok and not r.promotable
+
+
+def test_r5_repairer_exception_fails_closed(tmp_path) -> None:
+    def bad(ctx):
+        raise RuntimeError("repairer blew up")
+
+    r = run(tmp_path, seed=drop_access, repairer=bad)
+    assert r.ok and not r.promotable
+    assert r.attempts[-1].outcome == "repairer-error"
+    assert r.stop_reason == "repairer-error"
+
+
+def test_r5_checklist_names_prior_hash() -> None:
+    assert any("prior_hash" in x for x in ma.REVIEW_CHECKLIST)

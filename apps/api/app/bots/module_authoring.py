@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import io
+import os
 import tempfile
 import zipfile
 from collections.abc import Callable, Mapping
@@ -169,7 +170,44 @@ def _run_gate(files, module, version, runner, tmp_root):
 # ---------------------------------------------------------------- entry point
 
 
+SEED_FLAG = "INGENIUM_AUTHORING_SEED_TESTS"
+
+
 def author(
+    requirement: Any,
+    *,
+    version: Any,
+    owner_context: Any,
+    technical_name: Any,
+    installed_modules: Any = ("base",),
+    runner: gate.Runner | None = None,
+    repairer: Repairer | None = restore_generated,
+    max_attempts: int = DEFAULT_ATTEMPTS,
+    tmp_root: str = "/tmp",
+) -> AuthoringResult:
+    """Produce an AuthoringResult. Never raises on bad input; never installs or applies."""
+    return _author(
+        requirement,
+        version=version,
+        owner_context=owner_context,
+        technical_name=technical_name,
+        installed_modules=installed_modules,
+        runner=runner,
+        repairer=repairer,
+        max_attempts=max_attempts,
+        seed=None,
+        tmp_root=tmp_root,
+    )
+
+
+def author_seeded_for_tests(
+    requirement: Any, *, seed: Callable[[dict[str, bytes]], dict[str, bytes]], **kw: Any
+) -> AuthoringResult:
+    """Seeded-defect testing only: refused unless the SEED_FLAG env var is "1"."""
+    return _author(requirement, seed=seed, **kw)
+
+
+def _author(
     requirement: Any,
     *,
     version: Any,
@@ -191,6 +229,8 @@ def author(
     try:
         if type(version) is not int or version not in rm.VERSIONS:
             raise AuthoringError(f"version must be one of {rm.VERSIONS}")
+        if seed is not None and os.environ.get(SEED_FLAG) != "1":
+            raise AuthoringError("seed is a test-only hook")
         res.version = version
         res.owner_context = _ctx(owner_context)
         if type(max_attempts) is not int or not 0 <= max_attempts <= MAX_ATTEMPTS:
@@ -245,7 +285,11 @@ def author(
             "notes": sorted({x for c in rep.checks.values() for x in c.notes}),
             "version": version,
         }
-        edits = repairer(ctx) if repairer else None
+        try:
+            edits = repairer(ctx) if repairer else None
+        except Exception:  # noqa: BLE001 - any repairer failure stops the loop, fail closed
+            att.outcome = "repairer-error"
+            break
         if not edits:
             att.outcome = "no-repair"
             break
@@ -416,6 +460,9 @@ REVIEW_CHECKLIST = (
     "module-authoring: the spine (BOT-SPINE-WIRE) re-verifies gate_passed(report, module_hash) "
     "on the stored result and installs only the exact hashed files, after owner approval.",
     "module-authoring: every change set in the result was reviewed as a diff by a human.",
+    "module-authoring: promoting an upgrade of an installed module requires gate_passed(..., "
+    "prior_hash=<hash of the installed version>); a report without the matching prior_hash "
+    "is never accepted for an upgrade.",
 )
 
 
