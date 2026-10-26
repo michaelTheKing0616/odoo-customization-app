@@ -1,1 +1,13 @@
-{"count": 16, "sha256": "f7cb09e1b482932d3987fef7d6e09f64b889daaf4ba61d7e5f1c4d23dbe94e00"}
+{
+ "count": 16,
+ "history": [
+  {
+   "at": "2026-10-26T20:51:15+00:00",
+   "new": "94475f8fcdc639d008da223d22a8bf20223bb128d294251d1320f51f84d0380e",
+   "note": "one-time correction after c2649849 review: closed installed lists, verified version fields, 2 per refusal grade per split",
+   "old": "f7cb09e1b482932d3987fef7d6e09f64b889daaf4ba61d7e5f1c4d23dbe94e00",
+   "reviewer": "ingenium-app-builder"
+  }
+ ],
+ "sha256": "94475f8fcdc639d008da223d22a8bf20223bb128d294251d1320f51f84d0380e"
+}

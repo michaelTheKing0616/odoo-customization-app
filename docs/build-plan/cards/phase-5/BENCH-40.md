@@ -15,3 +15,14 @@ Code: `apps/api/evals/bots/` (`bench40.py`, `make_bench40.py`, `dev.json`, seale
   without `ODOO_LIVE=1`.
 - Reuses the evals/v2 sealing convention (`EVAL_UNSEAL`); the v2 brief harness is HTTP App Studio
   scoring and does not fit tier grading, so this is a small grader, not a second harness.
+
+## Review fixes (after c2649849)
+- `installed` per version = owner apps closed over real `depends` + `auto_install` (country-bound
+  l10n excluded) from `evals/bots/module_deps.json`, dumped from the odoo:17..20 images' manifests.
+- Expectations re-derived from real Odoo; holdout rebuilt once with `EVAL_UNSEAL=yes` and recorded
+  in `seal_manifest.json` history. Default versions 17, 18, 19, 20.
+- 12 boundary tasks (30%): 2 per refusal grade, one in dev and one in holdout.
+- `seal(reviewer)` needs `EVAL_UNSEAL=yes` and a reviewer and appends {old, new, reviewer, at}.
+  `promote` copies only whitelisted keys, and `until_capability` comes only from the reviewer.
+  Candidate ids must match `^b40-[0-9a-z-]+$`, duplicates are rejected and promotion needs one
+  unique match. Multi-part tasks carry fields/module_hint per part.
