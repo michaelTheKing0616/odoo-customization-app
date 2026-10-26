@@ -273,7 +273,9 @@ class _Ctx:
         self.prod_tests: set[str] = set()  # test-dir files production code imports or loads
 
     def add(self, sev, code, file, line, msg, fix):
-        if (file.startswith("tests/") or "/tests/" in file) and file not in self.prod_tests:
+        tdir = file.startswith("tests/") or "/tests/" in file
+        # test-tamper keeps its rank: test code runs inside the gate and can forge its result
+        if tdir and file not in self.prod_tests and code != "test-tamper":
             sev = LOW if _SEV_RANK[sev] < _SEV_RANK[LOW] else sev  # test code never loads in prod
         if not self.owned:
             fix = f"{FOREIGN_HINT} Suggested fix: {fix}"
@@ -288,6 +290,56 @@ def _is_dynamic_str(n: ast.AST) -> bool:
         isinstance(n, ast.Call)
         and isinstance(n.func, ast.Attribute)
         and n.func.attr in ("format", "join")
+    )
+
+
+# Constant SQL that escapes the database sandbox or reshapes name resolution: always HIGH.
+_SQL_DANGER = re.compile(
+    r"\bCOPY\b[\s\S]*\bPROGRAM\b|\bALTER\s+(?:DATABASE|ROLE|USER|SYSTEM)\b"
+    r"|\bCREATE\s+SCHEMA\b|\bSET\s+(?:SESSION\s+|LOCAL\s+)?search_path\b"
+    r"|\bset_config\s*\(\s*'search_path'|\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b"
+    r"[\s\S]*\bLANGUAGE\s+(?:plpython\w*|plperlu|c)\b|\bpg_(?:read|write)_(?:binary_)?file\b"
+    r"|\blo_(?:import|export)\b|\bdblink\w*\s*\(|\bCREATE\s+EXTENSION\b",
+    re.IGNORECASE,
+)
+# SQL entry points and the position of their query argument.
+_SQL_CALLS = {
+    "execute": 0,
+    "executemany": 0,
+    "copy_expert": 0,
+    "mogrify": 0,
+    "execute_values": 1,
+    "execute_batch": 1,
+}
+# Test-runner internals a module could patch to turn failures into passes.
+_TEST_INTERNALS = frozenset(
+    {
+        "OdooTestResult",
+        "TestResult",
+        "TextTestResult",
+        "TestCase.run",
+        "addFailure",
+        "addError",
+        "addSubTest",
+        "addExpectedFailure",
+        "addUnexpectedSuccess",
+        "wasSuccessful",
+        "_feedErrorsToResult",
+        "_outcome",
+        "testsRun",
+        "stopTestRun",
+    }
+)
+_TEST_MODULES = ("unittest", "odoo.tests.result", "odoo.tests.runner", "odoo.tests.loader")
+_HOOK_DEFS = frozenset({"post_init_hook", "pre_init_hook", "uninstall_hook", "post_load"})
+
+
+def _sql_text(n: ast.AST | None) -> str:
+    """Every literal piece of a (possibly formatted) query, joined: for the danger patterns."""
+    if n is None:
+        return ""
+    return " ".join(
+        x.value for x in ast.walk(n) if isinstance(x, ast.Constant) and isinstance(x.value, str)
     )
 
 
@@ -620,6 +672,11 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
             if node is not lp and isinstance(node, ast.Call):
                 in_loop.add(id(node))
     searched: list[tuple[str, int]] = []
+    has_hook = any(
+        isinstance(d, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and (d.name in _HOOK_DEFS or d.name.endswith("_hook"))
+        for d in ast.walk(tree)
+    )
     aliases = _aliases(tree)
     local_sql, sql_safe = _local_sql(tree)
     for n in ast.walk(tree):
@@ -688,8 +745,12 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 "SQL() built from a formatted string (the template must be a literal).",
                 "Use SQL('... %s', value) or SQL.identifier() for names.",
             )
-        elif name == "execute" and isinstance(fn, ast.Attribute) and n.args:
-            q = local_sql.get(id(n), n.args[0])
+        elif (
+            name in _SQL_CALLS
+            and (isinstance(fn, ast.Attribute) or name in ("execute_values", "execute_batch"))
+            and len(n.args) > _SQL_CALLS[name]
+        ):
+            q = local_sql.get(id(n), n.args[_SQL_CALLS[name]])
             if _is_dynamic_str(q) and _sql_has_variable(q, sql_safe.get(id(n), frozenset())):
                 c.add(
                     HIGH,
@@ -717,6 +778,20 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 "Markup() of non-constant text disables HTML escaping.",
                 "Escape the values (markupsafe.escape / Markup(...) % values).",
             )
+        if (name in _SQL_CALLS or name == "SQL") and n.args:
+            qi = _SQL_CALLS.get(name, 0)
+            q = local_sql.get(id(n), n.args[qi] if len(n.args) > qi else None)
+            if _SQL_DANGER.search(_sql_text(q)):
+                c.add(
+                    HIGH,
+                    "sql-dangerous",
+                    path,
+                    ln,
+                    "SQL runs server programs, changes database/role settings, schemas or the"
+                    " search path.",
+                    "Remove it: modules must never run COPY PROGRAM, ALTER DATABASE/ROLE or"
+                    " change search_path.",
+                )
         if name in _DB_CALLS and id(n) in in_loop:
             c.add(
                 MEDIUM,
@@ -754,9 +829,19 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
             full = [a.name for a in n.names]
         elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
             full = [n.module, *(f"{n.module}.{a.name}" for a in n.names)]
+        bad_t = sorted({m for m in full if m.startswith(_TEST_MODULES)})
+        if bad_t:
+            c.add(
+                HIGH,
+                "test-tamper",
+                path,
+                n.lineno,
+                f"Imports test-runner internals ({bad_t[0]}).",
+                "Tests use odoo.tests.common only; never touch the runner or result classes.",
+            )
         net = sorted({m for m in full if m.startswith(_NET_MODULES)})
         if net:
-            hook = path.rsplit("/", 1)[-1] in ("__init__.py", "hooks.py")
+            hook = path.rsplit("/", 1)[-1] in ("__init__.py", "hooks.py") or has_hook
             c.add(
                 MEDIUM if hook else LOW,
                 "outbound-network",
@@ -776,6 +861,16 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                     f"Imports {mname}.",
                     "Remove the import unless a reviewed integration needs it.",
                 )
+        tn = n.attr if isinstance(n, ast.Attribute) else n.id if isinstance(n, ast.Name) else ""
+        if tn in _TEST_INTERNALS:
+            c.add(
+                HIGH,
+                "test-tamper",
+                path,
+                n.lineno,
+                f"Touches test-result internals ({tn}): can turn failures into passes.",
+                "Remove it; tests must only assert, never change how results are counted.",
+            )
         if isinstance(n, ast.Name) and n.id in ("__builtins__", "builtins"):
             c.add(
                 HIGH,

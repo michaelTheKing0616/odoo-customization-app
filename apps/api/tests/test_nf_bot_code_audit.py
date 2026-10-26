@@ -681,3 +681,79 @@ def test_r4_star_import_from_risky_module_high(mod):
 )
 def test_r4_outbound_network_flagged(src, path, sev):
     assert (sev, "outbound-network") in _sev(src, path)
+
+
+# ---------------------------------------------------------------- round 5
+R5_SQL = [
+    "self.env.cr.execute(\"COPY t FROM PROGRAM 'id'\")",
+    "self.env.cr.execute('ALTER DATABASE x SET search_path = evil, public')",
+    "self.env.cr.execute('ALTER ROLE odoo SET work_mem = 1')",
+    "self.env.cr.execute('ALTER SYSTEM SET x = 1')",
+    "self.env.cr.execute('CREATE SCHEMA evil')",
+    "self.env.cr.execute('SET search_path TO evil, public')",
+    "self.env.cr.copy_expert(\"COPY t TO PROGRAM 'sh'\", f)",
+]
+
+
+@pytest.mark.parametrize("line", R5_SQL)
+def test_r5_constant_dangerous_sql_high(line) -> None:
+    rep = _r5(f"        {line}\n")
+    assert any(f.code == "sql-dangerous" and f.severity == ca.HIGH for f in rep.findings), line
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "self.env.cr.copy_expert('COPY ' + name + ' TO STDOUT', f)",
+        "execute_values(self.env.cr, 'INSERT INTO ' + name + ' VALUES %s', rows)",
+    ],
+)
+def test_r5_variable_sql_in_copy_and_execute_values(line) -> None:
+    rep = _r5(f"        name = self.x\n        {line}\n")
+    assert any(f.code == "sql-injection" and f.severity == ca.HIGH for f in rep.findings), line
+
+
+def test_r5_plain_select_not_dangerous() -> None:
+    rep = _r5("        self.env.cr.execute('SELECT id FROM res_partner WHERE id = %s', (1,))\n")
+    assert not any(f.code in ("sql-dangerous", "sql-injection") for f in rep.findings)
+
+
+def test_r5_net_in_hook_function_is_medium() -> None:
+    body = "import requests\n\n\ndef post_init_hook(env):\n    requests.get('http://x')\n"
+    rep = _r5_files({"models/setup.py": body})
+    f = [x for x in rep.findings if x.code == "outbound-network"]
+    assert f and f[0].severity == ca.MEDIUM
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "from odoo.tests.result import OdooTestResult\n"
+        "OdooTestResult.addFailure = lambda *a: None\n",
+        "import unittest\nunittest.TestResult.addError = lambda *a: None\n",
+        "def f(r):\n    r.addFailure = None\n",
+    ],
+)
+def test_r5_test_runner_tamper_is_high(body) -> None:
+    rep = _r5_files({"tests/__init__.py": body})
+    assert any(f.code == "test-tamper" and f.severity == ca.HIGH for f in rep.findings)
+
+
+def _r5_files(extra: dict) -> ca.Report:
+    files = {
+        "__manifest__.py": b"{'name': 'x_r5', 'version': '17.0.1.0.0', 'depends': ['base'],"
+        b" 'license': 'LGPL-3', 'data': []}",
+        "__init__.py": b"from . import models\n",
+        "models/__init__.py": b"",
+    }
+    files |= {k: v.encode() for k, v in extra.items()}
+    return ca.audit(zbytes(files, root="x_r5"), version=17)
+
+
+def _r5(method_body: str) -> ca.Report:
+    src = (
+        "from odoo import models\nfrom psycopg2.extras import execute_values\n\n\n"
+        "class X(models.Model):\n    _inherit = 'res.partner'\n\n"
+        "    def go(self, f=None, rows=()):\n" + method_body
+    )
+    return _r5_files({"models/x.py": src})
