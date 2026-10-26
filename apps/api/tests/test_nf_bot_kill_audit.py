@@ -29,14 +29,28 @@ HOST = f"127.0.0.1:{PORT}"
 ADMIN = f"postgresql://ingenium:ingenium@{HOST}/ingenium_wt_admin"
 DB = f"ingenium_wt_botkill_{uuid.uuid4().hex[:12]}"
 URL = f"postgresql+psycopg://ingenium:ingenium@{HOST}/{DB}"
-REV, DOWN = "d8e9f0a1b2c3", "c7d8e9f0a1b2"
+REV, DOWN, HEAD = "d8e9f0a1b2c3", "c7d8e9f0a1b2", "e9f0a1b2c3d4"
 FP, FP2, OWNER = "fp-prod-a", "fp-prod-b", "owner-1"
 H = "a" * 64
 ANCHOR = Path(os.environ.get("TMPDIR", "/tmp")) / f"{DB}.anchor"
 _GRANTS: dict[int, tuple[Any, str]] = {}
 
 
-def fake_owner(sw, a, db, plan, n, actor):
+class _Rehearsed:
+    """Test stand-in for rehearse.StoreRehearsals: any named rehearsal is fresh and matching
+    (the clone suite exercises the real store)."""
+
+    def reserve(self, spec, model, ids, values):
+        return None if spec.rehearsal_id else gd.NO_REHEARSAL
+
+    def release(self, spec):
+        pass
+
+
+REH = _Rehearsed()
+
+
+def fake_owner(sw, a, db, plan, n, actor, rehearsal_id):
     """Test stand-in for the owner-authenticated approval UI: the human signs one Approval
     object once; presenting the same object again replays that one grant."""
     if a.grant_id:
@@ -46,7 +60,9 @@ def fake_owner(sw, a, db, plan, n, actor):
     if not a.approver:
         return None
     try:
-        gid = sw.create_grant(OWNER, db, plan, n, a.level, a.approver, actor)
+        gid = sw.create_grant(
+            OWNER, db, plan, n, a.level, a.approver, actor, rehearsal_id=rehearsal_id
+        )
     except (PermissionError, ValueError):
         return None
     _GRANTS[id(a)] = (a, gid)
@@ -123,6 +139,7 @@ def spec(key: str | None = None, level: int = 1, approver: str | None = None, **
         approval=gd.Approval(level, approver),
         idempotency_key=key or uuid.uuid4().hex,
         snapshot_id="snap-1",
+        rehearsal_id="rh-1",
     )
     return gd.RunSpec(**{**base, **kw})
 
@@ -166,10 +183,10 @@ def test_ac1_switch_on_zero_writes(env, scope) -> None:
     sw.turn_on(scope, "anyone", "drill")
     rpc = Rpc()
     s = spec()
-    rep = run(gd.WriteGate(sw, log, rpc), s, [1, 2, 3])
+    rep = run(gd.WriteGate(sw, log, rpc, REH), s, [1, 2, 3])
     assert rep.status == "refused" and rpc.calls == [] and rep.refusal.rule == "RF-ANY"
     with pytest.raises(PermissionError, match="kill switch"):
-        gd.WriteGate(sw, log, rpc).call(s, "res.partner", "action_x", [[1]])
+        gd.WriteGate(sw, log, rpc, REH).call(s, "res.partner", "action_x", [[1]])
     assert rpc.calls == [] and rows(engine, s.idempotency_key)[0]["decision"] == "refused"
 
 
@@ -177,7 +194,7 @@ def test_ac1_other_db_unaffected(env) -> None:
     _, sw, log = env
     sw.turn_on(FP2, "anyone", "drill")
     rpc = Rpc()
-    assert run(gd.WriteGate(sw, log, rpc), spec(), [1, 2]).status == "done"
+    assert run(gd.WriteGate(sw, log, rpc, REH), spec(), [1, 2]).status == "done"
     assert len(rpc.calls) == 2
 
 
@@ -190,7 +207,7 @@ def test_ac6_unreadable_or_missing_state_is_on(env) -> None:
     try:
         sw = gd.KillSwitch(engine, lambda s: OWNER)
         rpc = Rpc()
-        assert run(gd.WriteGate(sw, log, rpc), spec(), [1]).status == "refused"
+        assert run(gd.WriteGate(sw, log, rpc, REH), spec(), [1]).status == "refused"
         assert rpc.calls == []
     finally:
         with engine.begin() as c:
@@ -203,7 +220,9 @@ def test_ac6_unreadable_or_missing_state_is_on(env) -> None:
 def test_ac2_readback_mismatch_trips_and_undoes(env) -> None:
     engine, sw, log = env
     u, s = Undo(), spec()
-    rep = run(gd.WriteGate(sw, log, Rpc()), s, list(range(1, 80)), readback=lambda c: False, undo=u)
+    rep = run(
+        gd.WriteGate(sw, log, Rpc(), REH), s, list(range(1, 80)), readback=lambda c: False, undo=u
+    )
     assert rep.status == "tripped" and rep.written == 0 and rep.batches == 1
     assert sw.check(FP) is not None and u.images == [{"ids": list(range(1, 51))}]
     assert [r["decision"] for r in rows(engine, s.idempotency_key)] == [
@@ -221,7 +240,7 @@ def test_ac2_readback_mismatch_trips_and_undoes(env) -> None:
 def test_ac3_row_fields(env) -> None:
     engine, sw, log = env
     s = spec(level=2, approver="alice", risk_class="R3")
-    run(gd.WriteGate(sw, log, Rpc()), s, [7, 8])
+    run(gd.WriteGate(sw, log, Rpc(), REH), s, [7, 8])
     r = rows(engine, s.idempotency_key)[0]
     assert (r["actor"], r["approver"], r["approval_level"], r["task_id"]) == (
         "bot-1",
@@ -344,7 +363,7 @@ def test_finding3_anchor_unwritable_no_row_no_write(env, tmp_path) -> None:
     rpc = Rpc()
     try:
         log = AuditLog(engine, anchor=d / "x" / "a.anchor")
-        assert run(gd.WriteGate(sw, log, rpc), spec(), [1]).status == "refused"
+        assert run(gd.WriteGate(sw, log, rpc, REH), spec(), [1]).status == "refused"
     finally:
         d.chmod(0o700)
     assert rpc.calls == []
@@ -383,8 +402,8 @@ def test_finding3_app_role_cannot_alter_or_rewrite(env) -> None:
 def test_ac5_same_key_twice_is_duplicate(env) -> None:
     engine, sw, log = env
     rpc, s = Rpc(), spec()
-    assert run(gd.WriteGate(sw, log, rpc), s, [1, 2]).status == "done"
-    assert run(gd.WriteGate(sw, log, rpc), s, [1, 2]).status == "duplicate"
+    assert run(gd.WriteGate(sw, log, rpc, REH), s, [1, 2]).status == "done"
+    assert run(gd.WriteGate(sw, log, rpc, REH), s, [1, 2]).status == "duplicate"
     assert len(rpc.calls) == 2
     assert [r["decision"] for r in rows(engine, s.idempotency_key)] == [
         "intent",
@@ -399,7 +418,9 @@ def test_chaos_concurrent_same_key_writes_once(env) -> None:
     rpc, s = Rpc(), spec()
     out: list[str] = []
     ts = [
-        threading.Thread(target=lambda: out.append(run(gd.WriteGate(sw, log, rpc), s, [1]).status))
+        threading.Thread(
+            target=lambda: out.append(run(gd.WriteGate(sw, log, rpc, REH), s, [1]).status)
+        )
         for _ in range(6)
     ]
     [t.start() for t in ts]
@@ -417,7 +438,7 @@ def test_chaos_kill_between_batches(env) -> None:
         sw.turn_on(FP, OWNER, "stop after batch 1")
         return True
 
-    rep = run(gd.WriteGate(sw, log, rpc), s, list(range(120)), readback=rb)
+    rep = run(gd.WriteGate(sw, log, rpc, REH), s, list(range(120)), readback=rb)
     assert (rep.status, rep.written, rep.batches, len(rpc.calls)) == ("partial", 50, 1, 50)
     assert rows(engine, s.idempotency_key)[-1]["decision"] == "killed"
 
@@ -426,7 +447,7 @@ def test_chaos_kill_in_flight_stops_and_undoes(env) -> None:
     engine, sw, log = env
     u, s = Undo(), spec()
     rpc = Rpc(on_call=lambda n: n == 3 and sw.turn_on(FP, "ops", "panic"))
-    rep = run(gd.WriteGate(sw, log, rpc), s, list(range(10)), undo=u)
+    rep = run(gd.WriteGate(sw, log, rpc, REH), s, list(range(10)), undo=u)
     assert rep.status == "partial" and len(rpc.calls) == 3 and rep.written == 0
     assert u.images == [{"ids": list(range(10))}]
     assert [r["decision"] for r in rows(engine, s.idempotency_key)][-2:] == ["killed", "undone"]
@@ -440,11 +461,11 @@ def test_chaos_audit_drop_refuses_write(env) -> None:
             raise AuditError("audit write failed: OperationalError")
 
     rpc = Rpc()
-    rep = run(gd.WriteGate(sw, Dropped(None), rpc), spec(), [1, 2])
+    rep = run(gd.WriteGate(sw, Dropped(None), rpc, REH), spec(), [1, 2])
     assert rep.status == "refused" and rpc.calls == []
     assert sw.check(FP) is not None  # lost audit row trips the DB switch
     with pytest.raises(AuditError):  # fresh DB: the intent row itself cannot be written
-        gd.WriteGate(sw, Dropped(None), rpc).call(
+        gd.WriteGate(sw, Dropped(None), rpc, REH).call(
             spec(db_fingerprint=FP2), "res.partner", "write", [[1], {}]
         )
     assert rpc.calls == []
@@ -459,7 +480,7 @@ def test_chaos_post_write_audit_loss_trips_switch(env) -> None:
                 raise AuditError("lost")
             return super().append(row)
 
-    run(gd.WriteGate(sw, LoseApplied(engine), Rpc()), spec(), [1])
+    run(gd.WriteGate(sw, LoseApplied(engine), Rpc(), REH), spec(), [1])
     assert sw.check(FP) is not None
 
 
@@ -467,10 +488,10 @@ def test_chaos_post_write_audit_loss_trips_switch(env) -> None:
 def test_caps_batching_and_tighten_only(env) -> None:
     engine, sw, log = env
     rpc = Rpc()
-    rep = run(gd.WriteGate(sw, log, rpc), spec(), list(range(120)))
+    rep = run(gd.WriteGate(sw, log, rpc, REH), spec(), list(range(120)))
     assert (rep.batches, rep.written) == (3, 120)
     sw.set_caps(FP, OWNER, 10, 100)
-    rep = run(gd.WriteGate(sw, log, Rpc()), spec(), list(range(25)))
+    rep = run(gd.WriteGate(sw, log, Rpc(), REH), spec(), list(range(25)))
     assert rep.batches == 3
     for b, r in ((51, 500), (50, 501), (0, 10)):
         with pytest.raises(ValueError):
@@ -486,7 +507,7 @@ def test_caps_batching_and_tighten_only(env) -> None:
 def test_caps_dedup_ids_cannot_inflate_or_dodge(env) -> None:
     _, sw, log = env
     rpc = Rpc()
-    rep = run(gd.WriteGate(sw, log, rpc), spec(), [1] * 600)
+    rep = run(gd.WriteGate(sw, log, rpc, REH), spec(), [1] * 600)
     assert rep.total == 1 and len(rpc.calls) == 1
 
 
@@ -503,7 +524,7 @@ def test_caps_dedup_ids_cannot_inflate_or_dodge(env) -> None:
 def test_run_cap_needs_l3_distinct_approver(env, level, approver, ok) -> None:
     engine, sw, log = env
     rpc, s = Rpc(), spec(level=level, approver=approver)
-    rep = run(gd.WriteGate(sw, log, rpc), s, list(range(501)))
+    rep = run(gd.WriteGate(sw, log, rpc, REH), s, list(range(501)))
     assert (rep.status == "done") is ok and (len(rpc.calls) == 501) is ok
     assert "run_cap" in rows(engine, s.idempotency_key)[0]["caps_hit"]
 
@@ -511,9 +532,9 @@ def test_run_cap_needs_l3_distinct_approver(env, level, approver, ok) -> None:
 def test_risk_class_tier_enforced(env) -> None:
     _, sw, log = env
     rpc = Rpc()
-    assert run(gd.WriteGate(sw, log, rpc), spec(risk_class="R8"), [1]).status == "refused"
+    assert run(gd.WriteGate(sw, log, rpc, REH), spec(risk_class="R8"), [1]).status == "refused"
     ok = spec(risk_class="R8", level=3, approver="alice")
-    assert run(gd.WriteGate(sw, log, rpc), ok, [1]).status == "done"
+    assert run(gd.WriteGate(sw, log, rpc, REH), ok, [1]).status == "done"
 
 
 # --------------------------------------------------------------------------- owner-only
@@ -527,12 +548,54 @@ def test_owner_only_controls(engine) -> None:
     gd.KillSwitch(engine, lambda s: OWNER).turn_off(FP, OWNER, "ok")
 
 
+RPC_COPY = API / "app" / "bots" / "clone" / "rpc_copy.py"
+WRAPPER = "_guarded_execute_kw"
+
+
+def test_rpc_copy_execute_kw_pinned_to_guarded_wrapper() -> None:
+    """BOT-CLONE-REHEARSAL exemption: exactly one execute_kw, inside the wrapper, whose first
+    statement is the copy-proof check; only rehearse.py imports rpc_copy under app/bots."""
+    import ast
+
+    tree = ast.parse(RPC_COPY.read_text())
+    funcs = {n: f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef) for n in [f.name]}
+    hits = [n for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value == "execute_kw"]
+    names = [n for n in ast.walk(tree) if isinstance(n, ast.Name | ast.Attribute)]
+    assert not [n for n in names if getattr(n, "id", getattr(n, "attr", "")) == "execute_kw"]
+    assert len(hits) == 1
+    w = funcs[WRAPPER]
+    assert hits[0] in list(ast.walk(w))
+    first = (
+        w.body[1]
+        if isinstance(w.body[0], ast.Expr) and isinstance(w.body[0].value, ast.Constant)
+        else w.body[0]
+    )
+    call = first.value
+    assert isinstance(call, ast.Call) and call.func.attr == "_require_proof"
+    assert [a.id for a in call.args] == ["model", "method", "args"]
+    rq = funcs["_require_proof"]
+    assert any(isinstance(n, ast.Raise) for n in ast.walk(rq))
+    bots = API / "app" / "bots"
+    for p in (API / "app").rglob("*.py"):  # all of app/, not only app/bots
+        if p in (RPC_COPY, bots / "clone" / "rehearse.py"):
+            continue
+        t = ast.parse(p.read_text())
+        mods = [m.module or "" for m in ast.walk(t) if isinstance(m, ast.ImportFrom)]
+        mods += [a.name for m in ast.walk(t) if isinstance(m, ast.Import) for a in m.names]
+        assert not [m for m in mods if "rpc_copy" in m], p
+        used = {getattr(n, "attr", getattr(n, "id", "")) for n in ast.walk(t)}
+        assert not used & {WRAPPER, "JsonRpc", "_PROOF_KEY", "_mac", "_require_proof"}, p
+        if bots in p.parents:  # app/ outside bots has its own (non-prod-gated) RPC clients
+            assert "execute_kw" not in used and "execute_kw" not in p.read_text(), p
+
+
 def test_no_raw_rpc_writes_in_bots() -> None:
     bots = API / "app" / "bots"
     hits = [
         p
         for p in bots.rglob("*.py")
         if p.name != "guard.py"
+        and p != RPC_COPY  # pinned below: one guarded execute_kw wrapper
         and re.search(r"execute_kw|(?<!os)\.write\(|\.create\(|\.unlink\(", p.read_text())
     ]
     assert hits == []
@@ -540,19 +603,19 @@ def test_no_raw_rpc_writes_in_bots() -> None:
 
 # --------------------------------------------------------------------------- AC7
 def test_ac7_migration_round_trip(engine) -> None:
-    assert re.search(rf"\b{REV}\b \(head\)", _alembic("heads"))
+    assert re.search(rf"\b{HEAD}\b \(head\)", _alembic("heads"))
     _alembic("downgrade", DOWN)
     with engine.connect() as c:
         assert c.execute(text("SELECT to_regclass('bot_audit')")).scalar() is None
     _alembic("upgrade", "head")
-    assert REV in _alembic("current")
+    assert HEAD in _alembic("current")
 
 
 # --------------------------------------------------------------------------- jobs (pacing)
 def test_job_1200_approved_plan_completes_with_checkpoints(env) -> None:
     engine, sw, log = env
     rpc, s = Rpc(), spec(level=3, approver="alice")
-    rep = run(gd.WriteGate(sw, log, rpc), s, list(range(1200)))
+    rep = run(gd.WriteGate(sw, log, rpc, REH), s, list(range(1200)))
     assert (rep.status, rep.written, rep.batches, rep.checkpoints) == ("done", 1200, 24, 3)
     assert len(rpc.calls) == 1200 and log.verify_chain() == (True, None)
 
@@ -560,7 +623,9 @@ def test_job_1200_approved_plan_completes_with_checkpoints(env) -> None:
 def test_job_new_keys_cannot_exceed_or_extend_plan(env) -> None:
     _, sw, log = env
     rpc = Rpc()
-    out = [run(gd.WriteGate(sw, log, rpc), spec(), list(range(1, 401))).status for _ in range(3)]
+    out = [
+        run(gd.WriteGate(sw, log, rpc, REH), spec(), list(range(1, 401))).status for _ in range(3)
+    ]
     assert out == ["done", "duplicate", "duplicate"] and len(rpc.calls) == 400
 
 
@@ -568,9 +633,9 @@ def test_job_new_plan_needs_new_grant_single_use(env) -> None:
     _, sw, log = env
     rpc, ids = Rpc(), list(range(600))
     a = gd.Approval(3, "alice")
-    assert run(gd.WriteGate(sw, log, rpc), spec(approval=a), ids).status == "done"
+    assert run(gd.WriteGate(sw, log, rpc, REH), spec(approval=a), ids).status == "done"
     bigger = [*ids, 600]  # a different plan presenting the same (used) grant
-    assert run(gd.WriteGate(sw, log, rpc), spec(approval=a), bigger).status == "refused"
+    assert run(gd.WriteGate(sw, log, rpc, REH), spec(approval=a), bigger).status == "refused"
     assert len(rpc.calls) == 600
 
 
@@ -597,6 +662,7 @@ def test_grant_binding(env, bad) -> None:
         level=3,
         approver="alice",
         bot_actor="bot-1",
+        rehearsal_id="rh-1",
     )
     args.update(
         {
@@ -612,7 +678,7 @@ def test_grant_binding(env, bad) -> None:
             c.execute(text("UPDATE bot_grant SET used_at=now() WHERE id=:g"), {"g": gid})
     who = "mallory" if bad == "approver" else "alice"
     rpc = Rpc()
-    rep = run(gd.WriteGate(sw, log, rpc), spec(approval=gd.Approval(3, who, gid)), ids)
+    rep = run(gd.WriteGate(sw, log, rpc, REH), spec(approval=gd.Approval(3, who, gid)), ids)
     assert rep.status == "refused" and rpc.calls == []
 
 
@@ -620,14 +686,14 @@ def test_grant_only_by_owner_and_never_the_bot(env) -> None:
     _, sw, _ = env
     for who, approver in (("bot-1", "alice"), (OWNER, "\uff42\uff4f\uff54-1"), (OWNER, " Bot-1 ")):
         with pytest.raises(PermissionError):
-            sw.create_grant(who, FP, H, 1, 3, approver, "bot-1")
+            sw.create_grant(who, FP, H, 1, 3, approver, "bot-1", rehearsal_id="rh-1")
 
 
 def test_checkpoint_failure_undoes_segment(env) -> None:
     _, sw, log = env
     u = Undo()
     rep = run(
-        gd.WriteGate(sw, log, Rpc()),
+        gd.WriteGate(sw, log, Rpc(), REH),
         spec(level=3, approver="alice"),
         list(range(600)),
         readback=lambda c: len(c) <= 50,
@@ -655,7 +721,7 @@ def go(gate, s, ids, readback=lambda c: True, undo=None):
 def G(env, rpc=None):
     e, sw, al = env
     r = rpc or Rpc()
-    return gd.WriteGate(sw, al, r), r, sw, al, e
+    return gd.WriteGate(sw, al, r, REH), r, sw, al, e
 
 
 def cnt(e, where="true"):
@@ -714,7 +780,7 @@ def test_rv1_p04_global_null_like_on(env):
 def test_rv1_p05_kill_mid_batch_stops(env):
     e, sw, al = env
     r = Rpc(on_call=lambda n: n == 3 and sw.turn_on(FP, "ops", "stop"))
-    g = gd.WriteGate(sw, al, r)
+    g = gd.WriteGate(sw, al, r, REH)
     u = Undo()
     rep = go(g, spec(), list(range(1, 11)), undo=u)
     assert len(r.calls) == 3 and rep.status == "partial" and u.images
@@ -723,7 +789,7 @@ def test_rv1_p05_kill_mid_batch_stops(env):
 def test_rv1_p06_kill_between_batches(env):
     e, sw, al = env
     r = Rpc(on_call=lambda n: n == 50 and sw.turn_on("global", "ops", "s"))
-    g = gd.WriteGate(sw, al, r)
+    g = gd.WriteGate(sw, al, r, REH)
     rep = go(g, spec(), list(range(1, 120)))
     assert len(r.calls) == 50 and rep.written == 50
 
@@ -829,7 +895,7 @@ def test_rv1_p20_retry_same_key_noop(env):
 def test_rv1_p21_concurrent_same_key_single_write(env):
     e, sw, al = env
     r = Rpc()
-    g = gd.WriteGate(sw, al, r)
+    g = gd.WriteGate(sw, al, r, REH)
     s = spec(key="c-" + uuid.uuid4().hex)
     ts = [threading.Thread(target=go, args=(g, s, [1, 2, 3])) for _ in range(6)]
     [t.start() for t in ts]
@@ -840,7 +906,7 @@ def test_rv1_p21_concurrent_same_key_single_write(env):
 # chain / triggers
 def test_rv1_p22_update_delete_truncate_blocked(env):
     e, sw, al = env
-    go(gd.WriteGate(sw, al, Rpc()), spec(), [1])
+    go(gd.WriteGate(sw, al, Rpc(), REH), spec(), [1])
     for sql in ("UPDATE bot_audit SET reason='x'", "DELETE FROM bot_audit", "TRUNCATE bot_audit"):
         with pytest.raises(DBAPIError), e.begin() as c:
             c.execute(text(sql))
@@ -848,7 +914,7 @@ def test_rv1_p22_update_delete_truncate_blocked(env):
 
 def test_rv1_p23_owner_can_disable_trigger_and_truncate_tail_undetected(env):
     e, sw, al = env
-    go(gd.WriteGate(sw, al, Rpc()), spec(), [1, 2])
+    go(gd.WriteGate(sw, al, Rpc(), REH), spec(), [1, 2])
     with e.connect() as c:
         own = c.execute(
             text("SELECT tableowner=current_user FROM pg_tables WHERE tablename='bot_audit'")
@@ -860,7 +926,7 @@ def test_rv1_p23_owner_can_disable_trigger_and_truncate_tail_undetected(env):
 
 def test_rv1_p24_verify_detects_middle_edit(env):
     e, sw, al = env
-    go(gd.WriteGate(sw, al, Rpc()), spec(), [1])
+    go(gd.WriteGate(sw, al, Rpc(), REH), spec(), [1])
 
     def upd(v):
         with e.begin() as c:
@@ -898,7 +964,7 @@ def test_rv1_p27_mid_batch_applied_audit_fail_trips(env):
                 raise AuditError("x")
             return super().append(row)
 
-    g = gd.WriteGate(sw, Flaky(e), r)
+    g = gd.WriteGate(sw, Flaky(e), r, REH)
     go(g, spec(), list(range(1, 80)))
     assert len(r.calls) == 50 and sw.check(FP) is not None
 

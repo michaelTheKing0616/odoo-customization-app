@@ -6,18 +6,23 @@ Every write goes through ``WriteGate``: kill-switch check (fail closed) before t
 batch and each record call; an 'intent' audit row before the write (no row = no write);
 read-back per batch and at each checkpoint; failure trips the per-DB switch and undoes.
 Approvals are stored single-use grants bound to (db, plan hash, N, level, approver, expiry),
-issued only by the owner. Only the owner may clear a switch or set overrides (tighten only).
+issued only by the owner, and bound to the rehearsal id. Every production run must name a
+rehearsal (RunSpec.rehearsal_id) that the gate's ``Rehearsals`` reserves (fresh, same plan hash,
+same record set, unchanged prod state, single use) before the job opens; a refusal before the
+first write releases it. No ``Rehearsals`` = every run refused (fail closed).
+Only the owner may clear a switch or set overrides (tighten only).
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import unicodedata
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -54,7 +59,18 @@ class Approval:
     grant_id: str | None = None
 
 
-GrantSource = Callable[["KillSwitch", Approval, str, str, int, str], str | None]
+GrantSource = Callable[["KillSwitch", Approval, str, str, int, str, str], str | None]
+NO_REHEARSAL = Refusal("RF-ANY", "clone-rehearsal", "no rehearsal bound to this production run")
+
+
+class Rehearsals(Protocol):
+    """Rehearsal check the gate calls (rehearse.StoreRehearsals)."""
+
+    def reserve(
+        self, spec: RunSpec, model: str, ids: Sequence[Any], values: dict[str, Any]
+    ) -> Refusal | None: ...
+
+    def release(self, spec: RunSpec) -> None: ...
 
 
 class KillSwitch:
@@ -150,21 +166,23 @@ class KillSwitch:
         approver: str,
         bot_actor: str,
         ttl_s: int = GRANT_TTL_S,
+        *,
+        rehearsal_id: str,
     ) -> str:
         if not self._is_owner(db, owner):
             raise PermissionError("only the owner may issue an approval grant")
         a = norm(approver)
         if not a or a == norm(bot_actor) or a.startswith("bot"):
             raise PermissionError("approver must be a human other than the bot")
-        if level not in (1, 2, 3) or n_records < 1:
+        if level not in (1, 2, 3) or n_records < 1 or not rehearsal_id:
             raise ValueError("bad grant")
         gid = uuid.uuid4().hex
         with self.engine.begin() as c:
             c.execute(
                 text(
                     "INSERT INTO bot_grant (id, db_fingerprint, plan_hash, n_records, level,"
-                    " approver_norm, created_by, expires_at) VALUES (:i,:d,:p,:n,:l,:a,:o,"
-                    " now() + make_interval(secs => :t))"
+                    " approver_norm, created_by, rehearsal_id, expires_at) VALUES (:i,:d,:p,:n,"
+                    " :l,:a,:o,:r, now() + make_interval(secs => :t))"
                 ),
                 {
                     "i": gid,
@@ -174,18 +192,29 @@ class KillSwitch:
                     "l": level,
                     "a": a,
                     "o": owner,
+                    "r": rehearsal_id,
                     "t": ttl_s,
                 },
             )
         return gid
 
-    def resolve_grant(self, a: Approval, db: str, plan: str, n: int, actor: str) -> str | None:
+    def resolve_grant(
+        self, a: Approval, db: str, plan: str, n: int, actor: str, rehearsal_id: str
+    ) -> str | None:
         if self.grant_source is not None:
-            return self.grant_source(self, a, db, plan, n, actor)
+            return self.grant_source(self, a, db, plan, n, actor, rehearsal_id)
         return a.grant_id
 
     def open_job(
-        self, db: str, plan: str, n: int, need: int, grant_id: str | None, a: Approval, actor: str
+        self,
+        db: str,
+        plan: str,
+        n: int,
+        need: int,
+        grant_id: str | None,
+        a: Approval,
+        actor: str,
+        rehearsal_id: str = "",
     ) -> tuple[str, int, bool] | Refusal:
         """(job id, level, resumed). A live job for the same plan is reused (no new grant, no
         extra records); otherwise a grant is consumed atomically (single use)."""
@@ -209,7 +238,8 @@ class KillSwitch:
                         "UPDATE bot_grant SET used_at=now(), job_id=:j WHERE id=:g"
                         " AND used_at IS NULL AND expires_at > now() AND db_fingerprint=:d"
                         " AND plan_hash=:p AND n_records=:n AND level >= :need"
-                        " AND approver_norm=:an AND approver_norm <> :bot RETURNING level"
+                        " AND approver_norm=:an AND approver_norm <> :bot AND rehearsal_id=:r"
+                        " RETURNING level"
                     ),
                     {
                         "j": jid,
@@ -220,13 +250,14 @@ class KillSwitch:
                         "need": need,
                         "an": norm(a.approver),
                         "bot": norm(actor),
+                        "r": rehearsal_id,
                     },
                 ).scalar()
                 if got is None:
                     return Refusal(
                         "RF-R3",
                         f"human-approve-L{need}",
-                        "grant not valid for this database/plan/count/level/approver",
+                        "grant not valid for this database/plan/count/level/approver/rehearsal",
                     )
                 level = int(got)
             c.execute(
@@ -260,6 +291,7 @@ class RunSpec:
     approval: Approval
     idempotency_key: str
     snapshot_id: str | None = None
+    rehearsal_id: str | None = None
 
 
 @dataclass
@@ -280,8 +312,11 @@ Rpc = Callable[[str, str, Sequence[Any], dict[str, Any] | None], Any]
 class WriteGate:
     """The only path from a Bot to an Odoo write."""
 
-    def __init__(self, switch: KillSwitch, audit: AuditLog, rpc: Rpc) -> None:
+    def __init__(
+        self, switch: KillSwitch, audit: AuditLog, rpc: Rpc, rehearsals: Rehearsals | None = None
+    ) -> None:
         self.switch, self.audit, self._rpc = switch, audit, rpc
+        self.rehearsals = rehearsals
 
     def _row(self, spec: RunSpec, **kw: Any) -> AuditRow:
         base = dict(
@@ -326,7 +361,7 @@ class WriteGate:
         def one(m: str, _meth: str, a: Sequence[Any], k: dict | None) -> Any:
             out.append(self._rpc(model, method, args, kw))
 
-        gate = WriteGate(self.switch, self.audit, one)
+        gate = WriteGate(self.switch, self.audit, one, self.rehearsals)
         rep = gate.run(
             spec,
             model,
@@ -365,12 +400,23 @@ class WriteGate:
         caps = "run_cap" if n > ckpt else ""
         plan = plan_hash(db, spec.task_id, model, values, ids)
         a = spec.approval
+        rh, rid = self.rehearsals, spec.rehearsal_id
+        if rh is None or not rid:
+            return self._refuse(spec, NO_REHEARSAL, n, caps)
         try:
-            gid = self.switch.resolve_grant(a, db, plan, n, spec.actor)
-            job = self.switch.open_job(db, plan, n, need, gid, a, spec.actor)
+            ref = rh.reserve(spec, model, ids, values)
+        except Exception as exc:  # noqa: BLE001 - unreadable rehearsal = refused
+            ref = Refusal("RF-ANY", "clone-rehearsal", type(exc).__name__)
+        if ref is not None:
+            return self._refuse(spec, ref, n, caps)
+        try:
+            gid = self.switch.resolve_grant(a, db, plan, n, spec.actor, rid)
+            job = self.switch.open_job(db, plan, n, need, gid, a, spec.actor, rid)
         except Exception as exc:
-            return self._refuse(spec, Refusal("RF-ANY", "grant", type(exc).__name__), n, caps)
+            job = Refusal("RF-ANY", "grant", type(exc).__name__)
         if isinstance(job, Refusal):
+            with contextlib.suppress(Exception):  # nothing written: rehearsal stays usable
+                rh.release(spec)
             return self._refuse(spec, job, n, caps)
         job_id, level, _resumed = job
         dh = diff_hash({"model": model, "values": values})

@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import Engine, select
 
 from app.bot_verify.models import VerifyAuditRow, VerifyWalkApprovalRow
+from app.bots.clone.fingerprint import Identity, fingerprint, norm_host
 from app.sandbox import DEV_PORTS
 
 TARGET_NOT_ALLOWED = "TARGET_NOT_ALLOWED"
@@ -234,12 +235,16 @@ def resolve_target(
     db_name: str,
     major: int,
     connection_id: str | None = None,
+    identity: Identity | None = None,
+    prod_fingerprint: str | None = None,
     **caller_flags: Any,
 ) -> WalkTarget:
     """Return the walk target or raise TargetNotAllowed (persisted either way).
 
     walkthrough_allowed / approved_by / owner_id passed by a caller are ignored: approval
-    comes only from the stored row for ``connection_id``.
+    comes only from the stored row for ``connection_id``. With ``prod_fingerprint`` (a
+    rehearsal walk) the target's read ``identity`` is required and must match this url/db
+    and differ from production (BOT-CLONE-REHEARSAL AC3).
     """
     unknown = set(caller_flags) - _IGNORED_CALLER_FLAGS
     if unknown:
@@ -257,6 +262,17 @@ def resolve_target(
         raise refuse(f"reserved port {port}")
     if int(major) not in MAJORS:
         raise refuse(f"unsupported Odoo {major}")
+    if prod_fingerprint is not None:
+        if identity is None:
+            raise refuse("rehearsal walk without target identity")
+        if (identity.db_name, identity.host, identity.major) != (
+            db_name,
+            norm_host(url),
+            int(major),
+        ):
+            raise refuse("target identity does not match url/db")
+        if fingerprint(identity) == prod_fingerprint:
+            raise refuse("walk target is the production database")
     if is_disposable(db_name):
         kind: Kind = "disposable_clone"
     elif _approval_granted(connection_id, refuse):
