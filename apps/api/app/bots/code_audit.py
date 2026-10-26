@@ -731,7 +731,7 @@ def audit(
         )
     top = files.pop(".module_dir", b"").decode() or None
     name = module_name or top or (src.name if isinstance(src, Path) else None)
-    if not name or not re.match(r"^[a-z][a-z0-9_]*$", name):
+    if not name or not re.fullmatch(r"[a-z][a-z0-9_]*", name):
         return Report(False, None, False, False, version, error="module name unknown or invalid")
     owned = isinstance(owned_names, (list, tuple, set, frozenset)) and name in set(owned_names)
     c = _Ctx(files, version, owned)

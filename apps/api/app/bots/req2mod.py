@@ -29,6 +29,7 @@ from module_generator import (
     PythonAutomationSpec,
     RecordRuleSpec,
     ViewSpec,
+    ensure_monetary_currency_fields,
     list_view_for_major,
     manifest_version_for_major,
 )
@@ -37,7 +38,9 @@ from app.bots import tiers as tt
 from app.bots.versioncaps import caps
 
 VERSIONS = (17, 18, 19, 20)
-KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,39}")
+TECH_RE = re.compile(r"x_[a-z0-9_]{1,38}")
+PG_NAME_MAX = 63
 SCALAR_TYPES = frozenset(
     {"char", "text", "html", "integer", "float", "monetary", "boolean", "date", "datetime"}
 )
@@ -89,14 +92,20 @@ def _blocked() -> tuple[bool, str]:
 
 
 def _key(v: Any, where: str, errs: list[str]) -> str:
-    if not isinstance(v, str) or not KEY_RE.match(v) or keyword.iskeyword(v):
+    if not isinstance(v, str) or not KEY_RE.fullmatch(v) or keyword.iskeyword(v):
         errs.append(f"{where}: key must be lower_snake_case (a-z, 0-9, _), max 40 characters")
         return "invalid"
     return v
 
 
 def _label(v: Any, where: str, errs: list[str]) -> str:
-    if not isinstance(v, str) or not v.strip() or len(v) > 80 or any(c in v for c in "<>\"'"):
+    if (
+        not isinstance(v, str)
+        or not v.strip()
+        or len(v) > 80
+        or any(c in v for c in "<>\"'")
+        or any(ord(c) < 0x20 or ord(c) == 0x7F for c in v)
+    ):
         errs.append(f"{where}: label must be plain text, 1-80 characters")
         return "Invalid"
     return v.strip()
@@ -105,9 +114,11 @@ def _label(v: Any, where: str, errs: list[str]) -> str:
 def _lit(v: Any) -> str:
     if isinstance(v, bool) or v is None or isinstance(v, (int, float)):
         return repr(v)
-    if isinstance(v, str) and len(v) <= 200:
+    if isinstance(v, str) and len(v) <= 200 and "]]>" not in v:
         return repr(v)
-    raise Req2ModError("literal must be a number, boolean, empty, or text up to 200 characters")
+    raise Req2ModError(
+        "literal must be a number, boolean, empty, or text up to 200 characters without ']]>'"
+    )
 
 
 class _Builder:
@@ -119,6 +130,7 @@ class _Builder:
         self.depends: set[str] = {"base"}
         self.fields_of: dict[str, dict[str, str]] = {}  # model -> field -> ttype
         self.chatter: set[str] = set()
+        self.model_of: dict[str, str] = {}  # "entities[i]"/"extend[i]" -> model
 
     def tr(self, item: str, element: str) -> None:
         self.trace.setdefault(item, []).append(element)
@@ -168,6 +180,17 @@ class _Builder:
             if rel not in own_models:
                 self.stock_dep(rel, where)
             kw["relation"] = rel
+            if t == "many2many":
+                # Odoo default: "<a>_<b>_rel" from sorted table names; Postgres caps names at 63.
+                me = where.split(".", 1)[0]
+                tables = sorted([self.model_of.get(me, ""), rel])
+                tables = [x.replace(".", "_") for x in tables]
+                if len(f"{tables[0]}_{tables[1]}_rel") > PG_NAME_MAX:
+                    self.errs.append(
+                        f"{where}: link table name would exceed {PG_NAME_MAX} characters; "
+                        "use shorter record type keys"
+                    )
+                    return None
             if t == "many2one":
                 kw["on_delete"] = "restrict" if kw["required"] else "set null"
         elif "options" in f or "relation" in f:
@@ -188,7 +211,7 @@ def build(req: Any, *, version: Any, installed_modules: Any, technical_name: Any
 
 
 def _build(req: Any, version: Any, installed: Any, tech: Any) -> Result:
-    if version not in VERSIONS:
+    if type(version) is not int or version not in VERSIONS:
         raise Req2ModError(f"Odoo version must be one of {VERSIONS}")
     if not isinstance(req, dict):
         raise Req2ModError("requirement must be an object")
@@ -196,8 +219,10 @@ def _build(req: Any, version: Any, installed: Any, tech: Any) -> Result:
         isinstance(m, str) for m in installed
     ):
         raise Req2ModError("installed modules must be a list of names")
-    if not isinstance(tech, str) or not KEY_RE.match(tech):
-        raise Req2ModError("technical name must be lower_snake_case")
+    if not isinstance(tech, str) or not TECH_RE.fullmatch(tech):
+        raise Req2ModError("technical name must be x_ plus lower_snake_case, max 40 characters")
+    if caps.module_info(version, tech):
+        raise Req2ModError(f"technical name {tech} is a stock Odoo {version} module")
     unknown = set(req) - {"name", "summary", "entities", "extend", "roles", "rules"}
     if unknown:
         raise Req2ModError(f"unknown requirement keys {sorted(unknown)}")
@@ -235,6 +260,7 @@ def _build(req: Any, version: Any, installed: Any, tech: Any) -> Result:
         k = _key(e.get("key"), w, errs)
         lab = _label(e.get("label"), w, errs)
         model = f"x_{k}"
+        b.model_of[w] = model
         fl = e.get("fields", [])
         if not isinstance(fl, list) or not fl:
             errs.append(f"{w}: needs at least one field")
@@ -342,6 +368,7 @@ def _build(req: Any, version: Any, installed: Any, tech: Any) -> Result:
             errs.append(f"{w}: {m!r} is not a stock model in Odoo {version}")
             continue
         b.stock_dep(m, w)
+        b.model_of[w] = m
         existing = set((caps.model_info(version, m) or {}).get("fields", {}))
         specs = []
         for j, f in enumerate(x.get("fields") or []):
@@ -391,6 +418,7 @@ def _build(req: Any, version: Any, installed: Any, tech: Any) -> Result:
         record_rules=rrules,
         custom_code_blocks=_tests(tech, models, roles, access),
     )
+    ensure_monetary_currency_fields(spec)  # monetary needs a currency field (x_currency_id)
     runnable, why = _blocked()
     return Result(
         True,
@@ -425,7 +453,7 @@ def _security(b: _Builder, tech: str, title: str, roles: list, own: set[str]):
             GroupSpec(
                 id=gid,
                 name=f"{title} / {_label(r.get('label'), w, errs)}",
-                category_id="base.module_category_custom" if v <= 18 else None,
+                category_id="base.module_category_customizations" if v <= 18 else None,
                 implied_ids=["base.group_user"],
             )
         )
@@ -464,8 +492,8 @@ def _security(b: _Builder, tech: str, title: str, roles: list, own: set[str]):
                 continue
             if not caps.model_info(v, "ir.rule"):
                 errs.append(
-                    f"{w}.own_only: own-records-only rules are not supported for Odoo {v} "
-                    "module authoring yet"
+                    f"{w}.own_only: Odoo {v} replaced record rules with domain access rights "
+                    "(ir.access); generating those is not supported yet"
                 )
                 continue
             rid = f"rule_{model}_{k}_own"

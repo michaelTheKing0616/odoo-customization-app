@@ -168,7 +168,7 @@ def test_security_fail_closed(mutate, needle):
 
 def test_own_only_refused_where_record_rules_absent():
     r = mk(v=20)
-    assert not r.ok and any("own-records-only" in e for e in r.errors)
+    assert not r.ok and any("ir.access" in e for e in r.errors)
 
 
 # AC4 automations: closed vocabulary; requirement text is only ever a literal
@@ -355,3 +355,115 @@ def test_generated_tests_cover_create_and_access():
     assert {"test_create_x_request", "test_create_x_topic"} <= names
     assert {f"test_{a.id}" for a in r.spec.access_rules} <= names
     assert "'x_contact': self.env['res.partner']" in src
+
+
+# Review fixes (64579245)
+@pytest.mark.parametrize("v", [17, 18])
+def test_group_category_is_real_xmlid(v):
+    r = mk(v=v)
+    assert {g.category_id for g in r.spec.groups} == {"base.module_category_customizations"}
+
+
+@pytest.mark.parametrize("bad", ["x_app\n", "abc", "x_", "X_app", "x_app ", 17])
+def test_technical_name_exact_and_x_prefixed(bad):
+    assert not mk(tech=bad).ok
+
+
+def test_technical_name_cannot_be_stock_module(monkeypatch):
+    monkeypatch.setattr(
+        rm.caps, "module_info", lambda v, n: {"name": n} if n == "x_stock" else None
+    )
+    r = mk(req=ASSETS, tech="x_stock")
+    assert not r.ok and "stock" in r.errors[0]
+
+
+@pytest.mark.parametrize("v", [17.0, True, "17", 17.5])
+def test_version_must_be_exact_int(v):
+    assert not mk(v=v).ok
+
+
+def test_keys_reject_trailing_newline():
+    q = copy.deepcopy(ASSETS)
+    q["entities"][0]["key"] = "asset\n"
+    assert not mk(req=q, tech="x_assets").ok
+
+
+def test_monetary_gets_currency_field():
+    q = copy.deepcopy(ASSETS)
+    q["entities"][0]["fields"].append({"key": "cost", "type": "monetary"})
+    r = mk(req=q, tech="x_assets")
+    m = r.spec.models[0]
+    cost = next(f for f in m.fields if f.name == "x_cost")
+    cur = next(f for f in m.fields if f.name == cost.currency_field)
+    assert cur.ttype == "many2one" and cur.relation == "res.currency"
+
+
+def test_many2many_link_table_name_capped():
+    q = copy.deepcopy(ASSETS)
+    long_key = "a" * 39
+    q["entities"].append({"key": long_key, "label": "L", "fields": [{"key": "c", "type": "char"}]})
+    q["entities"][1]["fields"].append(
+        {"key": "peers", "type": "many2many", "relation": f"x_{long_key}"}
+    )
+    q["entities"][0]["fields"].append(
+        {"key": "ls", "type": "many2many", "relation": f"x_{long_key}"}
+    )
+    q["roles"][0]["access"][long_key] = "r"
+    r = mk(req=q, tech="x_assets")
+    assert not r.ok and any("63" in e for e in r.errors)
+    q["entities"][1]["key"] = "tag"
+    q["entities"][1]["fields"][-1]["relation"] = "x_tag"
+    q["entities"][0]["fields"][-1]["relation"] = "x_tag"
+    q["roles"][0]["access"] = {"asset": "rwcd", "tag": "r"}
+    assert mk(req=q, tech="x_assets").ok
+
+
+PAYLOADS = ["a\nb", "trail\n", "x]]>y", "q'\"q", "Ünï ✓ 日本", "\x00", "\x1b[31m"]
+SLOTS = (
+    "name",
+    "entity_label",
+    "field_label",
+    "option",
+    "state",
+    "role_label",
+    "rule_label",
+    "note",
+    "value",
+)
+
+
+def _put(slot, p):
+    q = copy.deepcopy(REQUESTS)
+    e = q["entities"][0]
+    {
+        "name": lambda: q.__setitem__("name", p),
+        "entity_label": lambda: e.__setitem__("label", p),
+        "field_label": lambda: e["fields"][2].__setitem__("label", p),
+        "option": lambda: e["fields"][1].__setitem__("options", ["Low", p]),
+        "state": lambda: e.__setitem__("states", ["New", p]),
+        "role_label": lambda: q["roles"][1].__setitem__("label", p),
+        "rule_label": lambda: q["rules"][0].__setitem__("label", p),
+        "note": lambda: q["rules"][0]["then"][1].__setitem__("note", p),
+        "value": lambda: q["rules"][0]["if"][0].__setitem__(2, p),
+    }[slot]()
+    q["roles"][0].pop("own_only")
+    q["rules"][0]["then"] = [a for a in q["rules"][0]["then"] if "set" not in a]
+    return q
+
+
+@pytest.mark.parametrize("v", [17, 19])
+@pytest.mark.parametrize("slot", SLOTS)
+@pytest.mark.parametrize("p", PAYLOADS)
+def test_hostile_free_text_renders_parseable(v, slot, p):
+    import xml.etree.ElementTree as ET
+
+    r = mk(req=_put(slot, p), v=v)
+    if not r.ok:
+        return  # refused is safe
+    with zipfile.ZipFile(io.BytesIO(build_module_zip(r.spec, odoo_major=v))) as z:
+        for n in z.namelist():
+            body = z.read(n)
+            if n.endswith(".py"):
+                ast.parse(body)
+            elif n.endswith(".xml"):
+                ET.fromstring(body)
