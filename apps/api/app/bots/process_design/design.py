@@ -583,7 +583,7 @@ def _ground(i: Item, inv: Inventory | None) -> None:
             )
         elif i.module in ENTERPRISE_ONLY:
             i.verdict, i.reason = "needs-custom", f"model {i.model}: " + _absent(i.module, inv)
-        else:
+        elif not _caps(i, inv, ()):
             i.verdict, i.reason = (
                 "needs review",
                 (f"model {i.model} unknown on this database (module {i.module or '?'} absent)"),
@@ -591,13 +591,36 @@ def _ground(i: Item, inv: Inventory | None) -> None:
         return
     used = (set(i.key) | set(i.expected) | set(i.relations)) - {"group"}
     missing = sorted(f for f in used if f not in fields)
-    if missing:
+    if missing and not _caps(i, inv, missing):
         i.verdict, i.reason = (
             "needs-custom",
             (f"field(s) {', '.join(missing)} missing on {i.model} (Odoo {inv.major})"),
         )
     else:
         i.verdict, i.reason = "stock", f"{i.model} has all {len(used)} field(s) used"
+
+
+def _caps(i: Item, inv: Inventory, fields: Iterable[str]) -> bool:
+    """Version catalogue: stock Odoo N via a not-installed module? Sets verdict if decisive."""
+    try:
+        from app.bots.versioncaps import availability, load
+
+        ed = "enterprise" if ENTERPRISE_MARKER in inv.installed else "community"
+        v = availability(inv.major, ed, inv.installed, i.model, list(fields), i.module or None)
+        c = load(inv.major)
+        blocked = bool(c is None or c.blocked)
+    except Exception:  # noqa: BLE001 - catalogue fault: keep the existing wording
+        return False
+    if v.status == "available-needs-install":
+        chain = (
+            f" (depends to install: {', '.join(v.missing_depends)})" if v.missing_depends else ""
+        )
+        i.verdict, i.reason = "stock-install", f"{i.model}: {v.reason}{chain}"
+        return True
+    if v.status == "not-in-this-version" and not fields and not blocked:
+        i.verdict, i.reason = "needs-custom", f"{v.reason}"
+        return True
+    return False  # installed-ok/enterprise-only/unknown: keep existing fail-closed wording
 
 
 def _absent(module: str, inv: Inventory) -> str:

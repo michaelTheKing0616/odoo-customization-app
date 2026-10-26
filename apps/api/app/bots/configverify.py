@@ -75,6 +75,9 @@ class Verifier:
         self.partial: str | None = None
         self._archived: set[tuple[str, int]] = set()
         self.truncated = False
+        self.major: Any = None  # spec odoo_major; feeds the version catalogue hint
+        self._inst: frozenset[str] | None = None
+        self._module: Any = None
 
     # ------------------------------------------------------------ reads
     def _ctx(self) -> dict[str, Any]:
@@ -101,6 +104,46 @@ class Verifier:
             except _Unreadable:
                 self._fg[model] = None
         return self._fg[model]
+
+    def caps_hint(self, model: str, fields: Sequence[str] = (), module: Any = None) -> str:
+        """'; available in Odoo N via module X; needs install' etc. from the version catalogue."""
+        try:
+            return self._caps_hint(model, fields, module)
+        except ReadOnlyViolation:
+            raise
+        except Exception:  # noqa: BLE001 - catalogue fault: keep the existing wording
+            return ""
+
+    def _caps_hint(self, model: str, fields: Sequence[str], module: Any) -> str:
+        from app.bots.versioncaps import availability
+
+        if self._inst is None:
+            try:
+                rows = self._r(
+                    "ir.module.module",
+                    "search_read",
+                    [[["state", "=", "installed"]]],
+                    {"fields": ["name"]},
+                )
+                self._inst = (
+                    frozenset(
+                        x["name"]
+                        for x in rows
+                        if isinstance(x, dict) and isinstance(x.get("name"), str)
+                    )
+                    if isinstance(rows, list)
+                    else frozenset()
+                )
+            except _Unreadable:
+                self._inst = frozenset()
+        if not self._inst:
+            return ""  # installed set unknown: no install claim
+        ed = "enterprise" if "web_enterprise" in self._inst else "community"
+        hint = module if isinstance(module, str) and module else None
+        v = availability(self.major, ed, self._inst, model, list(fields), hint)
+        if v.status in ("available-needs-install", "not-in-this-version", "enterprise-only"):
+            return f"; {v.reason}"
+        return ""
 
     def _company_view(self) -> None:
         try:
@@ -218,6 +261,7 @@ class Verifier:
         key, exp = it.get("key"), it.get("expected") or {}
         rels = it.get("relations") or {}
         res: dict[str, Any] = {"ref": it.get("ref"), "kind": kind, "model": model, "diffs": []}
+        self._module = it.get("module")  # caps hint only; never in the result
         if it.get("verdict") in NOT_DESIGNED:
             return res | {"status": "not designed", "reason": it.get("reason") or it.get("verdict")}
         if (
@@ -261,13 +305,17 @@ class Verifier:
         if fg is None:
             return res | {
                 "status": "cannot-read",
-                "reason": f"model {model} not readable or absent",
+                "reason": f"model {model} not readable or absent"
+                + self.caps_hint(model, (), self._module),
             }
         plain_rels = {f: v for f, v in rels.items() if f != "group" and not _is_ref(v)}
         used = set(key) | set(exp) | {f for f in rels if f != "group"}
         bad = sorted(f for f in used if f not in fg)
         if bad:
-            return res | {"status": "cannot-read", "reason": f"{model} has no field(s) {bad}"}
+            return res | {
+                "status": "cannot-read",
+                "reason": f"{model} has no field(s) {bad}" + self.caps_hint(model, bad),
+            }
         dom: list[Any] = []
         for f, v in key.items():
             t = fg[f].get("type")
@@ -337,6 +385,7 @@ def verify(spec: Any, call: Call, *, companies: Sequence[int] | None = None) -> 
     ):
         return {"status": "not enough input", "summary": {}, "groups": {}, "items": []}
     v = Verifier(call, companies=companies)
+    v.major = spec.get("odoo_major")
     v._company_view()
     items = [i for i in spec["items"] if isinstance(i, dict)]
     out, by_ref = [], {}
