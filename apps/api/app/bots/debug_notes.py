@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -55,7 +56,8 @@ _EXTRA_SECRETS = (
     re.compile(r"(?i)\b(bearer|basic)\s{1,3}[A-Za-z0-9._~+/=-]{6,2000}"),
     re.compile(
         r"\b(?:(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AKIA)[-_]?[A-Za-z0-9_-]{8,200}"
-        r"|AIza[0-9A-Za-z_-]{35})"
+        r"|AIza[0-9A-Za-z_-]{35}|xapp-[A-Za-z0-9-]{8,300}|whsec_[A-Za-z0-9+/=_-]{8,300}"
+        r"|https?://hooks\.slack\.com/services/[A-Za-z0-9/_-]{1,300})"
     ),
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}"),
     re.compile(
@@ -68,9 +70,33 @@ _PEM = re.compile(
 )
 # a secret keyword ending its line ("password=" / "'password':") redacts the next line's value
 _KV_NEXT_LINE = re.compile(
-    r"""(?i)(["']?)(""" + _KEYWORD + r""")\1(\s{0,3}(?:[=:]|=>)[ \t]{0,3}["']?[ \t]{0,3}\r?\n)"""
-    r"""([ \t]{0,40})[^\r\n]{1,1000}"""
+    r"""(?i)(["']?)("""
+    + _KEYWORD
+    + r""")\1(\s{0,3}(?:[=:]|=>)[ \t]{0,3}(?:["']|[>|][+-]?[0-9]?)?[ \t]{0,3}\r?\n"""
+    r"""(?:[ \t]{0,40}\r?\n){0,5})([ \t]{0,40})[^\r\n]{1,1000}"""
 )
+# credential header whose value (or "Bearer"/"Basic" plus value) continues on a later line
+_HDR_NEXT_LINE = re.compile(
+    r"(?im)\b(cookie|set-cookie|x-openerp-session-id|x-odoo-session-id|x-api-key|"
+    r"proxy-authorization|authorization)(\s{0,3}[:=][ \t]{0,3}(?:(?:bearer|basic|token)[ \t]{0,3})?"
+    r"\r?\n(?:[ \t]{0,40}\r?\n){0,5}[ \t]{0,40})[^\r\n]{1,4000}"
+)
+# array value after a secret key: {"passwords": ["a", "b"]} / passwords = ['a']
+_KV_ARRAY = re.compile(
+    r"""(?i)(["']?)(""" + _KEYWORD + r""")\1(\s{0,3}(?:[=:]|=>)\s{0,3}\[)[^\]]{0,4000}\]"""
+)
+# secret key as an array element followed by its value: ["password", "x"]
+_KEY_THEN_ELEM = re.compile(
+    r"""(?i)(["'])("""
+    + _KEYWORD
+    + r""")\1(\s{0,3},\s{0,3})(?:"[^"\r\n]{0,1000}"|'[^'\r\n]{0,1000}')"""
+)
+# lookalike letters folded to ASCII before key matching (Cyrillic/Greek homoglyphs)
+_CONFUSABLE = str.maketrans(
+    "аеорсухіѕјԁԛԝһӏАВЕКМНОРСТХІЅЈοαρειкνтυχΑΒΕΖΗΙΚΜΝΟΡΤΥΧ",
+    "aeopcyxisjdqwhlABEKMHOPCTXISJoapeikvtuxABEZHIKMNOPTYX",
+)
+_INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]")
 _LINE_CTRL = re.compile(r"[\x00-\x1f\x7f\u2028\u2029\x85]")
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
@@ -79,12 +105,21 @@ def redact(text: str) -> str:
     """Remove credentials, session material and email addresses. Apply to whole text before
     any slicing so a cut can never separate a secret from the keyword that identifies it."""
     hdr, uri, kv, bearer, tok, jwt, email = _EXTRA_SECRETS
+    text = unicodedata.normalize("NFKC", text).translate(_CONFUSABLE)
+    text = _INVISIBLE.sub("", text)
     # keep the line count so redacted lines still line up with the original ones
     text = _PEM.sub(lambda m: "[REDACTED PRIVATE KEY]" + "\n" * m.group(0).count("\n"), text)
     text = _KV_NEXT_LINE.sub(
         lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}{m.group(4)}[REDACTED]", text
     )
+    text = _HDR_NEXT_LINE.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
     text = hdr.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
+    text = _KV_ARRAY.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[REDACTED]]", text
+    )
+    text = _KEY_THEN_ELEM.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[REDACTED]", text
+    )
     text = uri.sub(lambda m: f"{m.group(1)}[REDACTED]@", text)
     text = kv.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[REDACTED]", text)
     text = bearer.sub(lambda m: f"{m.group(1)} [REDACTED]", text)

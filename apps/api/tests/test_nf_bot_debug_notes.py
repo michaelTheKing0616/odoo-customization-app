@@ -415,3 +415,52 @@ def test_r4_check_note_rejects_format_chars(tmp_path, bad):
     note["diagnosis"], note["sample"] = [], "line1\n" + bad
     with pytest.raises(ValueError):
         dn.check_note(note)
+
+
+# ---------------------------------------------------------------- round 5 redaction
+R5_SECRET = "Zq9vK2mPx7Lw"
+R5_LEAKS = [
+    f"Authorization: Bearer\n{R5_SECRET}\n",
+    f"Authorization: Bearer\n\n   {R5_SECRET}\n",
+    f"db:\n  password: >\n    {R5_SECRET}\n",
+    f"password: |-\n  {R5_SECRET}\n",
+    f'{{"passwords":["{R5_SECRET}"]}}',
+    f'{{"api_keys": ["a1", "{R5_SECRET}"]}}',
+    f'["password","{R5_SECRET}"]',
+    f"['token', '{R5_SECRET}']",
+    f"xapp-1-A0B1C2-{R5_SECRET}",
+    f"https://hooks.slack.com/services/T000/B000/{R5_SECRET}",
+    f"whsec_{R5_SECRET}",
+    f"p\u0430ssword={R5_SECRET}",
+    f"\u0440\u0430ssword: {R5_SECRET}",
+    f"pass\u200bword={R5_SECRET}",
+    f"ｐａｓｓｗｏｒｄ={R5_SECRET}",
+]
+
+
+@pytest.mark.parametrize("text", R5_LEAKS)
+def test_r5_redact_leaks(text) -> None:
+    out = dn.redact(text)
+    assert R5_SECRET not in out, out
+
+
+def test_r5_redact_keeps_neutral_lines() -> None:
+    text = "password:\n\nnext_field: visible\nother: keep\n"
+    out = dn.redact(text)
+    assert "other: keep" in out
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "password:\n" * 20000,
+        '["password",' * 20000,
+        "Authorization:\n" * 20000,
+        '{"passwords":[' + "a," * 100000,
+        "\u0430" * 200000,
+    ],
+)
+def test_r5_redact_redos_bounded(text) -> None:
+    t0 = time.perf_counter()
+    dn.redact(text)
+    assert time.perf_counter() - t0 < 0.5
