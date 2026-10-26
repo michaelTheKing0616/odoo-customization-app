@@ -228,6 +228,10 @@ class KillSwitch:
                 {"d": db, "p": plan},
             ).first()
             if live:
+                if int(live[1]) < need:  # a weaker live job never carries a stronger plan
+                    return Refusal(
+                        "RF-R3", f"human-approve-L{need}", f"live job is L{int(live[1])} < L{need}"
+                    )
                 return live[0], int(live[1]), True
             level, jid = 1, uuid.uuid4().hex
             if need >= 2 or n > CHECKPOINT:
