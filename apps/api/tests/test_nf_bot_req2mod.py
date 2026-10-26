@@ -1,0 +1,357 @@
+"""BOT-REQ2MOD: requirement -> module spec. Offline (versioncaps data); never touches Odoo."""
+
+from __future__ import annotations
+
+import ast
+import copy
+import io
+import zipfile
+from pathlib import Path
+from types import MappingProxyType
+
+import pytest
+from module_generator import build_module_zip
+from module_generator.ispec import ispec_to_module_spec, module_spec_to_ispec
+
+from app.bots import req2mod as rm
+from app.bots import tiers as tt
+
+BASE = ["base", "web", "mail", "contacts", "base_automation"]
+
+# Two unrelated, neutral fixtures: the mapper has no domain knowledge.
+REQUESTS = {
+    "name": "Requests",
+    "summary": "Track incoming requests and who handles them",
+    "entities": [
+        {
+            "key": "request",
+            "label": "Request",
+            "chatter": True,
+            "states": ["New", "In Progress", "Done"],
+            "fields": [
+                {"key": "contact", "type": "many2one", "relation": "res.partner", "required": True},
+                {"key": "priority", "type": "selection", "options": ["Low", "High"]},
+                {"key": "due", "type": "date"},
+                {"key": "notes", "type": "html"},
+                {"key": "topic", "type": "many2one", "relation": "x_topic"},
+            ],
+        },
+        {"key": "topic", "label": "Topic", "fields": [{"key": "code", "type": "char"}]},
+    ],
+    "extend": [{"model": "res.partner", "fields": [{"key": "request_ref", "type": "char"}]}],
+    "roles": [
+        {
+            "key": "member",
+            "label": "Member",
+            "access": {"request": "rwc", "topic": "r"},
+            "own_only": ["request"],
+        },
+        {"key": "lead", "label": "Lead", "access": {"request": "rwcd", "topic": "rwcd"}},
+    ],
+    "rules": [
+        {
+            "label": "Flag urgent",
+            "entity": "request",
+            "when": "on_create",
+            "if": [["priority", "=", "high"]],
+            "then": [{"set": {"state": "in_progress"}}, {"note": "Marked urgent"}],
+        },
+    ],
+}
+ASSETS = {
+    "name": "Asset Register",
+    "entities": [
+        {
+            "key": "asset",
+            "label": "Asset",
+            "fields": [
+                {"key": "serial", "type": "char", "required": True},
+                {"key": "value", "type": "float"},
+                {"key": "in_use", "type": "boolean"},
+            ],
+        }
+    ],
+    "roles": [{"key": "keeper", "label": "Keeper", "access": {"asset": "rwcd"}}],
+}
+
+
+def mk(req=REQUESTS, v=17, tech="x_requests_app", inst=BASE):
+    return rm.build(copy.deepcopy(req), version=v, installed_modules=inst, technical_name=tech)
+
+
+def items(req):
+    """Every requirement item path the trace must cover."""
+    out = []
+    for i, e in enumerate(req.get("entities", [])):
+        out.append(f"entities[{i}]")
+        out += [f"entities[{i}].fields[{j}]" for j in range(len(e["fields"]))]
+        if "states" in e:
+            out.append(f"entities[{i}].states")
+    for i, x in enumerate(req.get("extend", [])):
+        out.append(f"extend[{i}]")
+        out += [f"extend[{i}].fields[{j}]" for j in range(len(x["fields"]))]
+    for i, r in enumerate(req.get("roles", [])):
+        out.append(f"roles[{i}]")
+        out += [f"roles[{i}].access.{k}" for k in r["access"]]
+        if r.get("own_only"):
+            out.append(f"roles[{i}].own_only")
+    out += [f"rules[{i}]" for i in range(len(req.get("rules", [])))]
+    return out
+
+
+# AC1 trace: every requirement item maps to at least one spec element
+@pytest.mark.parametrize("req", [REQUESTS, ASSETS])
+def test_every_item_traced(req):
+    r = mk(req, tech="x_app_" + req["name"].split()[0].lower())
+    assert r.ok, r.errors
+    assert set(items(req)) <= set(r.trace) and all(r.trace.values())
+
+
+# AC2 spec renders for every supported version; ISPEC round-trips; python parses
+@pytest.mark.parametrize("v", rm.VERSIONS)
+def test_renders_and_roundtrips(v):
+    req = REQUESTS if v <= 19 else _no_own(REQUESTS)
+    r = mk(req, v=v)
+    assert r.ok, r.errors
+    assert ispec_to_module_spec(module_spec_to_ispec(r.spec)) == r.spec
+    with zipfile.ZipFile(io.BytesIO(build_module_zip(r.spec, odoo_major=v))) as z:
+        names = z.namelist()
+        for n in names:
+            if n.endswith(".py"):
+                ast.parse(z.read(n).decode())
+        assert "x_requests_app/tests/test_x_requests_app.py" in names
+        man = z.read("x_requests_app/__manifest__.py").decode()
+    assert f"'{v}.0.1.0.0'" in man or f'"{v}.0.1.0.0"' in man
+    lt = [x for x in r.spec.views if x.name.endswith("list")][0]
+    assert lt.type == ("tree" if v == 17 else "list")
+    assert {"base", "base_automation", "mail"} <= set(r.spec.depends)
+
+
+def _no_own(req):
+    req = copy.deepcopy(req)
+    for ro in req["roles"]:
+        ro.pop("own_only", None)
+    return req
+
+
+# AC3 security: every new model has access; letters validated; own-only rule; version gate
+def test_security_shape():
+    r = mk()
+    acl = {
+        (a.model, a.group): (a.perm_read, a.perm_write, a.perm_create, a.perm_unlink)
+        for a in r.spec.access_rules
+    }
+    assert acl[("model_x_request", "group_x_requests_app_member")] == (1, 1, 1, 0)
+    assert acl[("model_x_topic", "group_x_requests_app_member")] == (1, 0, 0, 0)
+    (rule,) = r.spec.record_rules
+    assert "create_uid" in rule.domain_force and rule.group_xml_ids
+    assert all(g.category_id for g in r.spec.groups)
+    assert all(g.category_id is None for g in mk(v=19).spec.groups)  # 19+: privilege_id
+
+
+@pytest.mark.parametrize(
+    "mutate,needle",
+    [
+        (lambda q: [ro["access"].pop("topic") for ro in q["roles"]], "no role can open topic"),
+        (lambda q: q["roles"][0]["access"].update(request="wc"), "needs read"),
+        (lambda q: q["roles"][0]["access"].update(request="rx"), "letters"),
+        (lambda q: q["roles"][0]["access"].update(ghost="r"), "not a record type"),
+        (lambda q: q.update(roles=[]), "at least one role"),
+    ],
+)
+def test_security_fail_closed(mutate, needle):
+    q = copy.deepcopy(REQUESTS)
+    mutate(q)
+    r = mk(q)
+    assert not r.ok and r.spec is None and any(needle in e for e in r.errors), r.errors
+
+
+def test_own_only_refused_where_record_rules_absent():
+    r = mk(v=20)
+    assert not r.ok and any("own-records-only" in e for e in r.errors)
+
+
+# AC4 automations: closed vocabulary; requirement text is only ever a literal
+def test_automation_code_is_closed_vocabulary():
+    q = copy.deepcopy(REQUESTS)
+    evil = "x'); env['res.users'].unlink(); ('"
+    q["rules"][0]["then"] = [{"note": evil}, {"set": {"state": "done"}}]
+    r = mk(q)
+    (a,) = r.spec.python_automations
+    tree = ast.parse(a.code)
+    calls = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call)}
+    assert calls == {"message_post"}
+    assert any(isinstance(n, ast.Constant) and n.value == evil for n in ast.walk(tree))
+    assert a.filter_domain == "[('x_priority', '=', 'high')]"
+    assert a.trigger == "on_create"
+
+
+@pytest.mark.parametrize(
+    "rule,needle",
+    [
+        ({"label": "a", "entity": "request", "when": "daily", "then": [{"note": "x"}]}, "when"),
+        ({"label": "a", "entity": "ghost", "when": "on_create", "then": [{"note": "x"}]}, "entity"),
+        (
+            {"label": "a", "entity": "request", "when": "on_create", "then": [{"code": "x"}]},
+            "actions are",
+        ),
+        (
+            {
+                "label": "a",
+                "entity": "request",
+                "when": "on_create",
+                "then": [{"set": {"contact": 1}}],
+            },
+            "plain field",
+        ),
+        (
+            {
+                "label": "a",
+                "entity": "request",
+                "when": "on_create",
+                "if": [["priority", "like; drop", "x"]],
+                "then": [{"note": "x"}],
+            },
+            "condition",
+        ),
+        (
+            {"label": "a", "entity": "topic", "when": "on_create", "then": [{"note": "x"}]},
+            "chatter",
+        ),
+    ],
+)
+def test_automation_fail_closed(rule, needle):
+    q = copy.deepcopy(REQUESTS)
+    q["rules"] = [rule]
+    r = mk(q)
+    assert not r.ok and any(needle in e for e in r.errors), r.errors
+
+
+# AC5 bad input fails closed with a reason, never raises, never returns a partial spec
+@pytest.mark.parametrize(
+    "req,kw,needle",
+    [
+        ("text", {}, "object"),
+        ({"name": "A"}, {}, "nothing to build"),
+        ({**ASSETS, "extra": 1}, {}, "unknown requirement keys"),
+        (ASSETS, {"v": 16}, "version"),
+        (ASSETS, {"tech": "Bad-Name"}, "technical name"),
+        (ASSETS, {"inst": "base"}, "installed"),
+        ({**ASSETS, "entities": [{**ASSETS["entities"][0], "key": "class"}]}, {}, "key"),
+        (
+            {
+                **ASSETS,
+                "entities": [{**ASSETS["entities"][0], "fields": [{"key": "a", "type": "python"}]}],
+            },
+            {},
+            "type",
+        ),
+        (
+            {
+                **ASSETS,
+                "entities": [
+                    {**ASSETS["entities"][0], "fields": [{"key": "name", "type": "char"}]}
+                ],
+            },
+            {},
+            "reserved",
+        ),
+        (
+            {
+                **ASSETS,
+                "entities": [
+                    {
+                        **ASSETS["entities"][0],
+                        "fields": [{"key": "r", "type": "many2one", "relation": "x_nowhere"}],
+                    }
+                ],
+            },
+            {},
+            "relation",
+        ),
+        ({**ASSETS, "entities": [{**ASSETS["entities"][0], "label": "<b>x</b>"}]}, {}, "label"),
+        (
+            {
+                **ASSETS,
+                "extend": [{"model": "no.such.model", "fields": [{"key": "a", "type": "char"}]}],
+            },
+            {},
+            "not a stock model",
+        ),
+        (
+            {
+                **ASSETS,
+                "extend": [
+                    {"model": "res.partner", "fields": [{"key": "a", "type": "char"}]},
+                ]
+                * 15,
+            },
+            {},
+            "split the requirement",
+        ),
+    ],
+)
+def test_bad_input_fails_closed(req, kw, needle):
+    r = mk(req, **kw)
+    assert not r.ok and r.spec is None and any(needle in e for e in r.errors), r.errors
+
+
+def test_existing_stock_field_not_redefined():
+    q = copy.deepcopy(ASSETS)
+    q["extend"] = [{"model": "res.partner", "fields": [{"key": "a", "type": "char"}] * 2}]
+    assert not mk(q).ok
+
+
+# AC6 does not switch T3 on: spec only; runnable follows tiers, never the requirement
+def test_t3_stays_off_and_runnable_follows_tiers(monkeypatch):
+    r = mk(ASSETS)
+    assert r.ok and r.runnable is False and "not built" in r.blocked_reason
+    assert tt.tier_ready(tt.T3) is False
+    assert tt._CAPABILITIES["module-authoring"] is False
+    assert tt._CAPABILITIES["module-test-gate"] is False
+    on = dict(tt._CAPABILITIES, **{"module-authoring": True, "module-test-gate": True})
+    monkeypatch.setattr(tt, "_CAPABILITIES", MappingProxyType(on))
+    r2 = mk(ASSETS)
+    assert r2.runnable is True and r2.blocked_reason == ""
+
+
+# AC7 read-only: no Odoo client, no RPC, no writes from this module
+def test_module_is_read_only():
+    src = Path(rm.__file__).read_text()
+    tree = ast.parse(src)
+    mods = {
+        getattr(n, "module", None) or ""
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.Import, ast.ImportFrom))
+    }
+    mods |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    assert not any(
+        m.startswith(("odoo_client", "app.changeset", "xmlrpc", "httpx", "requests")) for m in mods
+    )
+    assert "execute_kw" not in src
+
+
+# AC8 version-aware: relations, extensions and dependencies come from that version's catalogue
+def test_version_aware_dependencies():
+    q = copy.deepcopy(ASSETS)
+    q["entities"][0]["fields"].append(
+        {"key": "order", "type": "many2one", "relation": "sale.order"}
+    )
+    r = mk(q, inst=BASE)
+    assert r.ok and "sale" in r.spec.depends
+    assert any("sale must be installed first" in a for a in r.assumptions)
+
+
+# AC9 generated tests: create each new record type and check every role's access
+def test_generated_tests_cover_create_and_access():
+    r = mk()
+    src = next(
+        b["content"]
+        for b in r.spec.custom_code_blocks
+        if b["path"].endswith(".py") and "test_" in b["path"]
+    )
+    tree = ast.parse(src)
+    names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert {"test_create_x_request", "test_create_x_topic"} <= names
+    assert {f"test_{a.id}" for a in r.spec.access_rules} <= names
+    assert "'x_contact': self.env['res.partner']" in src
