@@ -97,11 +97,22 @@ def closure(apps: list[str], version: int) -> list[str]:
             add(m)
 
 
+def check_chain(m: dict[str, Any]) -> None:
+    """Seal history must be a chain ending at the pinned hash; a rewritten history fails."""
+    h = m.get("history", [])
+    if any(a["new"] != b["old"] for a, b in zip(h, h[1:], strict=False)) or (
+        h and h[-1]["new"] != m["sha256"]
+    ):
+        raise Sealed("seal history is not a chain ending at the manifest hash")
+
+
 def load(split: str) -> list[dict[str, Any]]:
     if split == "holdout":
         if os.environ.get("EVAL_UNSEAL") != "yes":
             raise Sealed("holdout is sealed; set EVAL_UNSEAL=yes only for the final evaluation")
-        if file_sha(HOLDOUT) != json.loads(MANIFEST.read_text())["sha256"]:
+        m = json.loads(MANIFEST.read_text())
+        check_chain(m)
+        if file_sha(HOLDOUT) != m["sha256"]:
             raise Sealed("holdout changed since it was sealed")
         return json.loads(HOLDOUT.read_text())
     if split != "dev":
@@ -126,7 +137,7 @@ def _part(p: Any) -> dict[str, Any]:
 
 
 def check_task(task: dict[str, Any]) -> None:
-    if not isinstance(task.get("id"), str) or not ID_RE.match(task["id"]):
+    if not isinstance(task.get("id"), str) or not ID_RE.fullmatch(task["id"]):
         raise ValueError("task id must match ^b40-[0-9a-z-]+$")
     if "parts" in task:
         if "task" in task or "fields" in task or "module_hint" in task:
@@ -240,6 +251,8 @@ def seal(reviewer: str, *, note: str = "") -> None:
     if not isinstance(reviewer, str) or not reviewer.strip():
         raise PermissionError("re-sealing needs a named reviewer")
     old = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {}
+    if old:
+        check_chain(old)
     new = file_sha(HOLDOUT)
     hist = list(old.get("history", []))
     hist.append(

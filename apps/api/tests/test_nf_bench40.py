@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
@@ -123,7 +124,7 @@ def test_candidates_are_one_way(tmp_bench):
         b.append_candidate({"id": "b40-x"}, source="s", note="n")
 
 
-@pytest.mark.parametrize("bad", ["real-1", "b40-A", "b40-1/..", "", None])
+@pytest.mark.parametrize("bad", ["real-1", "b40-A", "b40-1/..", "b40-x\n", "", None])
 def test_candidate_id_pattern(tmp_bench, bad):
     with pytest.raises(ValueError):
         b.append_candidate({"id": bad, "task": "m:res.partner:create"}, source="s", note="n")
@@ -210,3 +211,25 @@ def test_promote_needs_reviewer_and_unseal_for_holdout(tmp_bench, monkeypatch):
 @pytest.mark.skipif(os.environ.get("ODOO_LIVE") != "1", reason="live runner needs ODOO_LIVE=1")
 def test_live_runner_stub():
     pytest.skip("live bench runner not built yet (needs BOT-SPINE-WIRE read path)")
+
+
+def test_seal_history_must_chain(tmp_bench, monkeypatch):
+    import shutil
+
+    shutil.copy(Path(b.__file__).parent / "seal_manifest.json", b.MANIFEST)
+    m = json.loads(b.MANIFEST.read_text())
+    b.check_chain(m)
+    monkeypatch.setenv("EVAL_UNSEAL", "yes")
+    for mutate in (
+        lambda x: x["history"][-1].update(new="0" * 64),
+        lambda x: x["history"].append(dict(x["history"][-1], old="1" * 64)),
+    ):
+        bad = json.loads(json.dumps(m))
+        mutate(bad)
+        b.MANIFEST.write_text(json.dumps(bad))
+        with pytest.raises(b.Sealed):
+            b.check_chain(bad)
+        with pytest.raises(b.Sealed):
+            b.load("holdout")
+        with pytest.raises(b.Sealed):
+            b.seal("tope")
