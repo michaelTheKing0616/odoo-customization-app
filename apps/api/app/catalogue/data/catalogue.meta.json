@@ -1,0 +1,22 @@
+{
+ "source": "catalogue.csv",
+ "sha256": "fe99ac08073cf27a2d6a1cd4c68114f4fde6c66b746b31e08696ce88ef9cfcbc",
+ "rows": 11929,
+ "columns": [
+  "id",
+  "area",
+  "verb",
+  "object",
+  "tier",
+  "versions",
+  "prerequisites",
+  "risk_class",
+  "risk_name",
+  "reversibility",
+  "blast",
+  "controls",
+  "verification",
+  "source",
+  "note"
+ ]
+}
