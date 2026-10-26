@@ -1,0 +1,348 @@
+{
+ "_doc": "Generic concept -> Odoo-native records. Keyed by BOT-FITGAP concept id. Each item: kind, model, module, key field, fields expected. {step} is the step name. 'relations' hold link fields (ref to another item, never text); 'needs' lists values the description must supply (item goes to review).",
+ "crm_pipeline": [
+  {
+   "model": "crm.stage",
+   "module": "crm",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "sequence": "{seq}"
+   }
+  }
+ ],
+ "project": [
+  {
+   "model": "project.task.type",
+   "module": "project",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "sequence": "{seq}"
+   }
+  }
+ ],
+ "helpdesk": [
+  {
+   "model": "helpdesk.stage",
+   "module": "helpdesk",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "sequence": "{seq}"
+   }
+  }
+ ],
+ "recruitment": [
+  {
+   "model": "hr.recruitment.stage",
+   "module": "hr_recruitment",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "sequence": "{seq}"
+   }
+  }
+ ],
+ "approvals": [
+  {
+   "model": "approval.category",
+   "module": "approvals",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "approval_minimum": 1
+   }
+  }
+ ],
+ "purchase": [
+  {
+   "model": "res.config.settings",
+   "module": "purchase",
+   "key": "po_order_approval",
+   "fields": {
+    "po_order_approval": true
+   }
+  }
+ ],
+ "purchase_agreement": [
+  {
+   "model": "purchase.requisition.type",
+   "module": "purchase_requisition",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   },
+   "needs": [
+    "exclusive / quantity_copy rules"
+   ]
+  }
+ ],
+ "pricelist": [
+  {
+   "model": "product.pricelist",
+   "module": "product",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "quotation": [
+  {
+   "model": "sale.order.template",
+   "module": "sale_management",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "customer_invoice": [
+  {
+   "model": "account.journal",
+   "module": "account",
+   "key": "code",
+   "fields": {
+    "name": "{step}",
+    "type": "sale",
+    "code": "{code}"
+   },
+   "notes": "code derived from step name (max 5 chars)"
+  }
+ ],
+ "vendor_bill": [
+  {
+   "model": "account.journal",
+   "module": "account",
+   "key": "code",
+   "fields": {
+    "name": "{step}",
+    "type": "purchase",
+    "code": "{code}"
+   },
+   "notes": "code derived from step name (max 5 chars)"
+  }
+ ],
+ "tax_localisation": [
+  {
+   "model": "account.tax",
+   "module": "account",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "type_tax_use": "sale"
+   },
+   "needs": [
+    "amount",
+    "amount_type"
+   ]
+  }
+ ],
+ "expenses": [
+  {
+   "model": "product.product",
+   "module": "hr_expense",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "can_be_expensed": true
+   },
+   "needs": [
+    "standard_price (expense cost)"
+   ]
+  }
+ ],
+ "employees": [
+  {
+   "model": "res.groups",
+   "module": "base",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "time_off": [
+  {
+   "model": "hr.leave.type",
+   "module": "hr_holidays",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "receipt": [
+  {
+   "model": "stock.picking.type",
+   "module": "stock",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "code": "incoming"
+   }
+  }
+ ],
+ "warehouse": [
+  {
+   "model": "stock.location",
+   "module": "stock",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "usage": "internal"
+   }
+  }
+ ],
+ "putaway": [
+  {
+   "model": "stock.putaway.rule",
+   "module": "stock",
+   "key": "location_in_id",
+   "fields": {},
+   "relations": {
+    "location_in_id": "stock.location:name={step}"
+   },
+   "needs": [
+    "location_out_id (destination location)"
+   ]
+  }
+ ],
+ "resupply": [
+  {
+   "model": "stock.route",
+   "module": "stock",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "return": [
+  {
+   "model": "stock.picking.type",
+   "module": "stock",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "code": "incoming"
+   }
+  }
+ ],
+ "repair": [
+  {
+   "model": "stock.picking.type",
+   "module": "repair",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "code": "repair_operation"
+   }
+  }
+ ],
+ "maintenance": [
+  {
+   "model": "maintenance.equipment",
+   "module": "maintenance",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   },
+   "needs": [
+    "category_id"
+   ]
+  }
+ ],
+ "subscription": [
+  {
+   "model": "sale.subscription.plan",
+   "module": "sale_subscription",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   },
+   "needs": [
+    "billing_period_value",
+    "billing_period_unit"
+   ]
+  }
+ ],
+ "timesheet": [
+  {
+   "model": "project.project",
+   "module": "hr_timesheet",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "allow_timesheets": true
+   }
+  }
+ ],
+ "planning": [
+  {
+   "model": "planning.role",
+   "module": "planning",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "field_service": [
+  {
+   "model": "project.task.type",
+   "module": "industry_fsm",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   }
+  }
+ ],
+ "event": [
+  {
+   "model": "event.stage",
+   "module": "event",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "sequence": "{seq}"
+   }
+  }
+ ],
+ "survey": [
+  {
+   "model": "survey.survey",
+   "module": "survey",
+   "key": "title",
+   "fields": {
+    "title": "{step}"
+   }
+  }
+ ],
+ "fleet": [
+  {
+   "model": "fleet.vehicle.state",
+   "module": "fleet",
+   "key": "name",
+   "fields": {
+    "name": "{step}",
+    "sequence": "{seq}"
+   }
+  }
+ ],
+ "dashboards": [
+  {
+   "model": "ir.filters",
+   "module": "base",
+   "key": "name",
+   "fields": {
+    "name": "{step}"
+   },
+   "needs": [
+    "model_id",
+    "domain"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,33 @@
+{
+  "_doc": "Generic BOT-PROCESS-DESIGN / BOT-FITGAP test pack: shared by-products, loops and recirculation, shared inputs (utilities), quality test points. Neutral product names.",
+  "multi_step": {"steps": [
+    {"id": "s1", "name": "Prepare", "work_center": "Line A",
+     "utilities": [{"name": "Utility U1", "cost_per_hour": 12.5}, {"name": "Utility U2", "cost_per_hour": 2.5}],
+     "inputs": [{"product": "Raw R1", "qty": 10}, {"product": "Recycled Stream", "qty": 1}],
+     "outputs": [{"product": "Intermediate I1", "qty": 9}, {"product": "Side Output S1", "qty": 1, "role": "by_product"}],
+     "checks": [{"name": "I1 moisture", "type": "measure", "min": 2, "max": 4}]},
+    {"id": "s2", "name": "Convert", "work_center": "Line B",
+     "utilities": [{"name": "Utility U1", "cost_per_hour": 12.5}],
+     "inputs": [{"product": "Intermediate I1", "qty": 9}, {"product": "Additive A1", "qty": 1}],
+     "outputs": [{"product": "Finished F1", "qty": 6}, {"product": "Finished F2", "qty": 2, "role": "co_product", "cost_share": 25},
+                 {"product": "Side Output S1", "qty": 0.5, "role": "by_product"},
+                 {"product": "Recycled Stream", "qty": 1, "role": "by_product"}],
+     "loop_to": "s1",
+     "checks": [{"name": "F1 visual", "type": "passfail"}]},
+    {"id": "s3", "name": "Pack", "work_center": "Line A",
+     "inputs": [{"product": "Finished F1", "qty": 1}, {"product": "Additive A1", "qty": 0.1}],
+     "outputs": [{"product": "Packed P1", "qty": 1}]}
+  ]},
+  "cycle": {"steps": [
+    {"id": "a", "name": "A", "inputs": [{"product": "Y"}], "outputs": [{"product": "X"}]},
+    {"id": "b", "name": "B", "inputs": [{"product": "X"}], "outputs": [{"product": "Y"}]}
+  ]},
+  "services": {"steps": [
+    {"id": "q", "name": "Qualify", "concepts": ["crm_pipeline"]},
+    {"id": "o", "name": "Offer", "concepts": ["quotation", "pricelist"]},
+    {"id": "ap", "name": "Discount sign-off", "approval": {"min": 2, "group": "Sales Manager"}},
+    {"id": "inv", "name": "Bill", "concepts": ["customer_invoice"],
+     "automation": {"model": "account.move", "trigger": "on_create"}},
+    {"id": "x", "name": "Ring the bell"}
+  ]}
+}

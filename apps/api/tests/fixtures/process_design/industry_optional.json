@@ -1,0 +1,16 @@
+{
+  "_doc": "OPTIONAL industry test data only (never referenced by app code). Example continuous-process plant with steam/water utilities and recirculated fines.",
+  "steps": [
+    {"id": "m1", "name": "Wet milling", "work_center": "Mill 1",
+     "utilities": [{"name": "Steam", "cost_per_hour": 40}, {"name": "Process water", "cost_per_hour": 5}],
+     "inputs": [{"product": "Grain", "qty": 100}, {"product": "Recovered fines", "qty": 2}],
+     "outputs": [{"product": "Slurry", "qty": 95}, {"product": "Bran", "qty": 5, "role": "by_product"}],
+     "checks": [{"name": "Slurry density", "type": "measure", "min": 1.1, "max": 1.3}]},
+    {"id": "m2", "name": "Drying", "work_center": "Dryer 1",
+     "utilities": [{"name": "Steam", "cost_per_hour": 40}],
+     "inputs": [{"product": "Slurry", "qty": 95}],
+     "outputs": [{"product": "Flour", "qty": 80}, {"product": "Recovered fines", "qty": 2, "role": "by_product"}],
+     "loop_to": "m1",
+     "checks": [{"name": "Flour moisture", "type": "measure", "min": 12, "max": 14}]}
+  ]
+}
