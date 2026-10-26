@@ -58,6 +58,15 @@ T3_SWITCH_PRECONDITIONS = (
     "module-authoring: install targets only the client's staging/clone first "
     "(BOT-CLONE-REHEARSAL), with a backup and an uninstall path; kill switch and audit chain "
     "cover the install.",
+    "module-test-gate: the sandbox is detectable by the module under test (empty database, no "
+    "outbound network, container limits, the harness re-run); a module can behave differently "
+    "in the gate than on a client database. Names are neutral, but this is not a guarantee: "
+    "code_audit findings and human diff review stay required, and the first install targets a "
+    "staging clone.",
+    "module-test-gate: test results are counted from a harness report at a random path plus the "
+    "stock log line; both still come from the module's own process, so a module that patches "
+    "the runner can in principle forge them. code_audit flags test-runner tampering HIGH; the "
+    "reviewer must confirm none is suppressed.",
     "Both capabilities are flipped in tiers._CAPABILITIES in the same reviewed commit that ships "
     "the wiring above, with tests proving tier_ready(T3) is False if either is missing.",
 )
@@ -83,9 +92,11 @@ class Runner(Protocol):
 
 
 _SAFE_ARG = re.compile(r"[A-Za-z0-9_./:=,@+-]{1,512}")
-_ENV_KEYS = frozenset(
-    {"HOST", "USER", "PASSWORD", "POSTGRES_USER", "POSTGRES_PASSWORD", "GATE_MODULE"}
-)
+_ENV_KEYS = frozenset({"HOST", "USER", "PASSWORD", "POSTGRES_USER", "POSTGRES_PASSWORD"})
+# Database roles: the image superuser only sets the sandbox up; Odoo (and so the module) runs as
+# a role with no superuser, createdb, createrole, replication or bypassrls; every read the gate
+# trusts uses a separate read-only role with a pinned search_path and schema-qualified names.
+PG_ADMIN, APP_ROLE, READ_ROLE = "postgres", "odoo", "reader"
 _BAD_FLAGS = frozenset(
     {
         "--privileged",
@@ -125,13 +136,14 @@ PG_HARDEN = (
 )
 _RUN_FLAGS = frozenset(ODOO_HARDEN + PG_HARDEN)
 _ODOO_FLAGS = frozenset({"--stop-after-init", "--without-demo=all", "--test-enable", "--no-http"})
-DB_RE = re.compile(r"gateu?_[0-9a-f]{16}")
-_NET_RE = re.compile(r"ingate-[0-9a-f]{12}-net")
-_PSQL_TAIL = ["-At", "-v", "ON_ERROR_STOP=1"]
+DB_RE = re.compile(r"dbu?_[0-9a-f]{16}")
+_NET_RE = re.compile(r"ws-[0-9a-f]{12}-net")
+_RES_RE = re.compile(r"r[0-9a-f]{16}")  # harness result dir: random, unknown to the module
+_PSQL_TAIL = ["-q", "-At", "-v", "ON_ERROR_STOP=1"]
 
 
 def _sandbox_name(v: str) -> bool:
-    return bool(re.fullmatch(r"ingate-[0-9a-f]{12}(-pg|-net|-o\d{1,3})?", v))
+    return bool(re.fullmatch(r"ws-[0-9a-f]{12}(-pg|-net|-o\d{1,3})?", v))
 
 
 def _validate_odoo_args(rest: Sequence[str]) -> None:
@@ -188,16 +200,18 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
             raise GateError("rm only for sandbox containers")
         return
     if argv[1] == "exec":
-        pg = re.compile(r"ingate-[0-9a-f]{12}-pg")
-        if len(argv) == 6 and pg.fullmatch(argv[2]) and argv[3:] == ["pg_isready", "-U", "odoo"]:
+        pg = re.compile(r"ws-[0-9a-f]{12}-pg")
+        if len(argv) == 6 and pg.fullmatch(argv[2]) and argv[3:] == ["pg_isready", "-U", PG_ADMIN]:
             return
         if (
-            len(argv) == 12
+            len(argv) == 9 + len(_PSQL_TAIL)
             and argv[2] == "-i"
             and pg.fullmatch(argv[3])
-            and argv[4:8] == ["psql", "-U", "odoo", "-d"]
-            and DB_RE.fullmatch(argv[8])
             and argv[9:] == _PSQL_TAIL
+            and (
+                (argv[4:8] == ["psql", "-U", READ_ROLE, "-d"] and DB_RE.fullmatch(argv[8]))
+                or argv[4:9] == ["psql", "-U", PG_ADMIN, "-d", "postgres"]
+            )
         ):
             return
         raise GateError("exec only pg_isready or psql (stdin) in the sandbox db")
@@ -208,7 +222,7 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
         raise GateError("image outside the allow-list")
     image = images[0]
     img_at = argv.index(image)
-    i, net, name, host, mounts, seen = 2, None, None, None, 0, set()
+    i, net, name, host, mounts, res, seen = 2, None, None, None, 0, 0, set()
     while i < img_at:
         a = argv[i]
         if a in ("--rm", "-i", "-d") or a in _RUN_FLAGS:
@@ -234,10 +248,14 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
                 raise GateError("environment variable not allowed")
             if k == "HOST":
                 host = v
-            if k == "GATE_MODULE" and not MODULE_RE.fullmatch(v):
-                raise GateError("module name invalid")
+            if (k == "USER" and v != APP_ROLE) or (k == "POSTGRES_USER" and v != PG_ADMIN):
+                raise GateError("database role not allowed")
         else:
             src, _, rest = val.partition(":")
+            base = src.rsplit("/", 1)[-1]
+            if _RES_RE.fullmatch(base) and rest == f"/var/tmp/{base}:rw":
+                rest, res = "/mnt/extra-addons:ro", res + 1  # harness result dir, same checks
+                mounts -= 1
             if (
                 rest != "/mnt/extra-addons:ro"
                 or ".." in src.split("/")
@@ -249,19 +267,19 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
         i += 2
     if net is None or name is None:
         raise GateError("sandbox containers must be named and join the sandbox network")
-    tag = net[7:19]
+    tag = net[3:15]
     if image == PG_IMAGE:
-        if name != f"ingate-{tag}-pg" or mounts or argv[img_at + 1 :]:
+        if name != f"ws-{tag}-pg" or mounts or res or argv[img_at + 1 :]:
             raise GateError("sandbox database container malformed")
         if not all(f in seen for f in PG_HARDEN):
             raise GateError("sandbox database missing resource limits")
         return
-    if not re.fullmatch(rf"ingate-{tag}-o\d{{1,3}}", name):
+    if not re.fullmatch(rf"ws-{tag}-o\d{{1,3}}", name):
         raise GateError("odoo container name must match the sandbox")
-    if host != f"ingate-{tag}-pg":
+    if host != f"ws-{tag}-pg":
         raise GateError("HOST must be this sandbox's database")
-    if mounts != 1:
-        raise GateError("exactly one addons mount")
+    if mounts != 1 or res > 1:
+        raise GateError("exactly one addons mount and at most one result mount")
     if not all(f in seen for f in ODOO_HARDEN):
         raise GateError("odoo container missing containment flags")
     _validate_odoo_args(argv[img_at + 1 :])
@@ -438,43 +456,17 @@ def _test_methods(files: Mapping[str, bytes]) -> tuple[set[str], set[str]]:
     return every, access
 
 
-def _declared_roles(files: Mapping[str, bytes], module: str) -> int:
-    """Access rows granting this module's own groups (the spec's roles): CSV ir.model.access
-    rows and XML ir.model.access / ir.access (Odoo 20) records. -1 when unreadable."""
-    import csv
-    import io
-
-    def own(g: str) -> bool:
-        g = g.strip()
-        return bool(g) and (g.startswith(module + ".") or "." not in g)
-
-    n = 0
-    for p, b in files.items():
-        try:
-            if p.endswith("ir.model.access.csv"):
-                for row in csv.DictReader(io.StringIO(b.decode("utf-8-sig"))):
-                    n += own(row.get("group_id:id") or "")
-            elif p.startswith("security/") and p.endswith(".xml"):
-                root = ca._parse_xml(b)
-                for rec in root.iter("record"):
-                    if rec.get("model") in ("ir.model.access", "ir.access"):
-                        n += any(
-                            f.get("name") == "group_id" and own(f.get("ref") or "")
-                            for f in rec.findall("field")
-                        )
-        except Exception:  # noqa: BLE001 - fail closed
-            return -1
-    return n
-
-
 # Uninstall runs inside the module's own process, so nothing it prints is trusted: the result
 # is read afterwards from the sandbox database by psql in the postgres container, which never
 # has the module on any path.
-_UNINSTALL_SCRIPT = r"""
-m = __import__('os').environ['GATE_MODULE']
-env['ir.module.module'].search([('name', '=', m)]).button_immediate_uninstall()
-env.cr.commit()
-"""
+def uninstall_script(module: str) -> str:
+    assert MODULE_RE.fullmatch(module)
+    return (
+        f"env['ir.module.module'].search([('name', '=', {module!r})])"
+        ".button_immediate_uninstall()\n"
+        "env.cr.commit()\n"
+    )
+
 
 COUNT_TABLES = (
     "ir_model_data",
@@ -491,47 +483,98 @@ COUNT_TABLES = (
     "ir_rule",
     "res_groups",
 )
-SQL_SCHEMA = (
-    "-- gate:schema\n"
-    "SELECT 'c', table_name, column_name FROM information_schema.columns "
-    "WHERE table_schema = 'public'\n"
-    + "".join(f"UNION ALL SELECT 'n', '{t}', count(*)::text FROM {t}\n" for t in COUNT_TABLES)
-    + ";\n"
+# rows compared by id (not count) before install and after uninstall; optional ones may be absent
+ID_TABLES = COUNT_TABLES + (
+    "ir_config_parameter",
+    "ir_sequence",
+    "ir_attachment",
+    "mail_template",
+    "res_users",
+    "res_partner",
 )
+# every read the gate trusts: pinned search_path, then a settings probe (must be 0 rows)
+_READ_PREFIX = (
+    "SET search_path = pg_catalog, public;\n"
+    "SELECT 'k0', count(*) FROM pg_catalog.pg_db_role_setting;\n"
+)
+_NS = (
+    "{n}.nspname NOT IN ('pg_catalog', 'information_schema') "
+    "AND {n}.nspname NOT LIKE 'pg\\_toast%' AND {n}.nspname NOT LIKE 'pg\\_temp%'"
+)
+SQL_TABLES = (
+    "-- gate:tables\nSELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n "
+    "ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname IN ("
+    + ", ".join(f"'{t}'" for t in ID_TABLES)
+    + ");\n"
+)
+
+
+def sql_schema(tables: Sequence[str]) -> str:
+    """Every schema, relation (all relkinds incl. sequences), column and function outside the
+    catalogs, plus the row ids of the given public tables."""
+    assert all(t in ID_TABLES for t in tables)
+    ns = _NS.format(n="n")
+    rel = "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+    return (
+        "-- gate:schema\n"
+        f"SELECT 's', n.nspname, '' FROM pg_catalog.pg_namespace n WHERE {ns}\n"
+        f"UNION ALL SELECT 'k', n.nspname || '.' || c.relname, c.relkind::text {rel} WHERE {ns}\n"
+        "UNION ALL SELECT 'c', n.nspname || '.' || c.relname, a.attname "
+        f"FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+        "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+        f"WHERE a.attnum > 0 AND NOT a.attisdropped AND {ns}\n"
+        "UNION ALL SELECT 'f', n.nspname || '.' || p.proname, "
+        "pg_catalog.pg_get_function_identity_arguments(p.oid) FROM pg_catalog.pg_proc p "
+        f"JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace WHERE {ns}\n"
+        + "".join(
+            f"UNION ALL SELECT 'i', '{t}', COALESCE(pg_catalog.string_agg(id::text, ',' "
+            f"ORDER BY id), '') FROM public.{t}\n"
+            for t in tables
+        )
+        + ";\n"
+    )
+
+
 FORBIDDEN_GROUPS = frozenset({"base.group_public", "base.group_portal"})
 
 
 def sql_state(module: str) -> str:
     assert MODULE_RE.fullmatch(module)
-    return f"-- gate:state\nSELECT state FROM ir_module_module WHERE name = '{module}';\n"
+    return f"-- gate:state\nSELECT state FROM public.ir_module_module WHERE name = '{module}';\n"
 
 
-def sql_access(module: str) -> str:
+def sql_access(module: str, after: Mapping[str, int] | None = None) -> str:
+    """Live access rows and record rules on the module's models, created by its xml ids, or
+    created after the baseline (any id above the baseline maximum, whoever made it)."""
     assert MODULE_RE.fullmatch(module)
+    after = after or {}
+    ma, mr = int(after.get("ir_model_access", 0)), int(after.get("ir_rule", 0))
     grp = (
-        "COALESCE((SELECT d.module || '.' || d.name FROM ir_model_data d WHERE "
+        "COALESCE((SELECT d.module || '.' || d.name FROM public.ir_model_data d WHERE "
         "d.model = 'res.groups' AND d.res_id = {g} ORDER BY d.id LIMIT 1), '')"
     )
     mx = (
-        "COALESCE((SELECT d.module || '.' || d.name FROM ir_model_data d WHERE "
+        "COALESCE((SELECT d.module || '.' || d.name FROM public.ir_model_data d WHERE "
         "d.model = 'ir.model' AND d.res_id = m.id ORDER BY d.id LIMIT 1), m.model)"
     )
+    dom = "replace(replace(COALESCE(r.domain_force, ''), E'\\n', ' '), E'\\r', ' ')"
     return (
         "-- gate:access\n"
-        f"WITH own AS (SELECT res_id FROM ir_model_data WHERE module = '{module}' "
+        f"WITH own AS (SELECT res_id FROM public.ir_model_data WHERE module = '{module}' "
         "AND model = 'ir.model')\n"
         f"SELECT 'a', {mx}, {grp.format(g='a.group_id')}, a.perm_read::int, "
-        "a.perm_write::int, a.perm_create::int, a.perm_unlink::int\n"
-        "FROM ir_model_access a JOIN ir_model m ON m.id = a.model_id\n"
-        "WHERE a.active AND (a.model_id IN (SELECT res_id FROM own) OR a.id IN "
-        f"(SELECT res_id FROM ir_model_data WHERE module = '{module}' "
+        "a.perm_write::int, a.perm_create::int, a.perm_unlink::int, ''\n"
+        "FROM public.ir_model_access a JOIN public.ir_model m ON m.id = a.model_id\n"
+        f"WHERE a.active AND (a.model_id IN (SELECT res_id FROM own) OR a.id > {ma} OR a.id IN "
+        f"(SELECT res_id FROM public.ir_model_data WHERE module = '{module}' "
         "AND model = 'ir.model.access'))\n"
         f"UNION ALL SELECT 'r', {mx}, {grp.format(g='rg.group_id')}, r.perm_read::int, "
-        "r.perm_write::int, r.perm_create::int, r.perm_unlink::int\n"
-        "FROM ir_rule r JOIN ir_model m ON m.id = r.model_id\n"
-        "LEFT JOIN rule_group_rel rg ON rg.rule_group_id = r.id\n"
-        "WHERE r.active AND (r.model_id IN (SELECT res_id FROM own) OR r.id IN "
-        f"(SELECT res_id FROM ir_model_data WHERE module = '{module}' AND model = 'ir.rule'));\n"
+        f"r.perm_write::int, r.perm_create::int, r.perm_unlink::int, {dom}\n"
+        "FROM public.ir_rule r JOIN public.ir_model m ON m.id = r.model_id\n"
+        "LEFT JOIN public.rule_group_rel rg ON rg.rule_group_id = r.id\n"
+        f"WHERE r.active AND (r.model_id IN (SELECT res_id FROM own) OR r.id > {mr} OR r.id IN "
+        f"(SELECT res_id FROM public.ir_model_data WHERE module = '{module}' "
+        "AND model = 'ir.rule'));\n"
     )
 
 
@@ -592,18 +635,56 @@ def declared_access(
     return out
 
 
-def access_diff(spec: Mapping, rows: Sequence[Sequence[str]]) -> list[str]:
-    """Compare live ir.model.access / ir.rule rows with the declared role spec."""
+def _dom(d: str) -> str:
+    return re.sub(r"\s+", "", d or "").replace('"', "'")
+
+
+_TRUE_DOMAINS = frozenset({"", "[]", "()", "None", "False", "True", "[(1,'=',1)]", "[(1,'=',1),]"})
+
+
+def _always_true(d: str) -> bool:
+    n = _dom(d)
+    return n in _TRUE_DOMAINS or "(1,'=',1)" in n or "(0,'=',0)" in n
+
+
+def role_spec_from(spec: Any, module: str) -> dict[str, dict] | None:
+    """The req2mod role spec (not the module's own files): access (model, group) -> rights and
+    record rules (model, group) -> normalised domain. None when unreadable."""
+    try:
+        acc = {
+            (_norm_ref(a.model, module), _norm_ref(a.group, module)): (
+                int(a.perm_read),
+                int(a.perm_write),
+                int(a.perm_create),
+                int(a.perm_unlink),
+            )
+            for a in spec.access_rules
+        }
+        rules = {}
+        for r in spec.record_rules:
+            for gx in list(r.group_xml_ids) or [""]:
+                rules[(_norm_ref(r.model_xml_id, module), _norm_ref(gx, module))] = _dom(
+                    r.domain_force
+                )
+        return {"access": acc, "rules": rules}
+    except Exception:  # noqa: BLE001 - fail closed
+        return None
+
+
+def access_diff(role_spec: Mapping, rows: Sequence[Sequence[str]]) -> list[str]:
+    """Compare live ir.model.access / ir.rule rows with the req2mod role spec. Anything not in
+    the spec fails, as does any global rule or always-true domain."""
     bad: list[str] = []
-    groups = {g for _, g in spec if g}
-    seen = set()
+    spec, rspec = role_spec.get("access") or {}, role_spec.get("rules") or {}
+    groups = {g for _, g in spec if g} | {g for _, g in rspec if g}
+    seen, rseen = set(), set()
     for r in rows:
-        if len(r) != 7:
+        if len(r) != 8:
             bad.append("unreadable access row")
             continue
-        kind, model, grp = r[0], r[1], r[2]
+        kind, model, grp, dom = r[0], r[1], r[2], r[7]
         try:
-            p = tuple(int(x) for x in r[3:])
+            p = tuple(int(x) for x in r[3:7])
         except ValueError:
             bad.append("unreadable access row")
             continue
@@ -617,47 +698,155 @@ def access_diff(spec: Mapping, rows: Sequence[Sequence[str]]) -> list[str]:
             elif spec.get((model, grp)) != p:
                 bad.append(f"access {model}/{grp} rights {p} != spec {spec.get((model, grp))}")
             seen.add((model, grp))
-        elif kind == "r" and grp and grp not in groups:
-            bad.append(f"record rule on {model} for undeclared group {grp}")
+        elif kind == "r":
+            if not grp:
+                bad.append(f"global record rule on {model}")
+            elif _always_true(dom):
+                bad.append(f"always-true record rule on {model} for {grp}")
+            elif (model, grp) not in rspec:
+                bad.append(f"record rule on {model} for {grp} not in the role spec")
+            elif rspec[(model, grp)] != _dom(dom):
+                bad.append(f"record rule on {model} for {grp} differs from the role spec")
+            rseen.add((model, grp))
+        else:
+            bad.append("unreadable access row")
     for k in spec:
         if k not in seen:
             bad.append(f"declared access {k[0]}/{k[1] or '-'} not present")
+    for k in rspec:
+        if k not in rseen:
+            bad.append(f"declared record rule {k[0]}/{k[1] or '-'} not present")
     return bad
 
 
 def _snapshot(rows: Sequence[Sequence[str]] | None):
     if rows is None:
         return None
-    cols, counts = set(), {}
+    snap: dict[str, Any] = {"s": set(), "k": set(), "c": set(), "f": set(), "i": {}}
     for r in rows:
-        if len(r) != 3:
+        if len(r) != 3 or r[0] not in snap:
             return None
-        if r[0] == "c":
-            cols.add((r[1], r[2]))
-        elif r[0] == "n":
-            counts[r[1]] = int(r[2])
+        if r[0] == "i":
+            try:
+                snap["i"][r[1]] = {int(x) for x in r[2].split(",") if x}
+            except ValueError:
+                return None
         else:
-            return None
-    if set(counts) != set(COUNT_TABLES) or not cols:
+            snap[r[0]].add((r[1], r[2]))
+    if not snap["k"] or not set(COUNT_TABLES) <= set(snap["i"]):
         return None
-    return cols, counts
+    return snap
+
+
+_KIND = {"r": "table", "S": "sequence", "v": "view", "m": "matview", "i": "index", "f": "foreign"}
 
 
 def snapshot_diff(s0, s1) -> list[str]:
-    """Anything present after uninstall that was not there before install."""
-    (c0, n0), (c1, n1) = s0, s1
-    t0 = {t for t, _ in c0}
-    new_tables = sorted({t for t, _ in c1} - t0)
-    new_cols = sorted(f"{t}.{c}" for t, c in c1 - c0 if t in t0)
+    """Anything present after uninstall that was not there before install (compared by name and
+    by row id, never by count)."""
     bad = []
-    if new_tables:
-        bad.append(f"tables left: {', '.join(new_tables[:10])}")
-    if new_cols:
-        bad.append(f"columns left: {', '.join(new_cols[:10])}")
-    for t in COUNT_TABLES:
-        if n1.get(t, 0) > n0.get(t, 0):
-            bad.append(f"{n1[t] - n0[t]} {t} row(s) left")
+    new_s = sorted(n for n, _ in s1["s"] - s0["s"])
+    if new_s:
+        bad.append(f"schemas left: {', '.join(new_s[:10])}")
+    rel0 = {n for n, _ in s0["k"]}
+    new_k = sorted(s1["k"] - s0["k"])
+    by_kind: dict[str, list[str]] = {}
+    for n, k in new_k:
+        by_kind.setdefault(_KIND.get(k, f"relkind {k}"), []).append(n)
+    for kind, names in sorted(by_kind.items()):
+        bad.append(f"{kind}s left: {', '.join(names[:10])}")
+    new_c = sorted(f"{t}.{c}" for t, c in s1["c"] - s0["c"] if t in rel0)
+    if new_c:
+        bad.append(f"columns left: {', '.join(new_c[:10])}")
+    new_f = sorted(f"{n}({a})" for n, a in s1["f"] - s0["f"])
+    if new_f:
+        bad.append(f"functions left: {', '.join(new_f[:10])}")
+    for t in sorted(set(s0["i"]) | set(s1["i"])):
+        left = s1["i"].get(t, set()) - s0["i"].get(t, set())
+        if left:
+            ids = ", ".join(map(str, sorted(left)[:10]))
+            bad.append(f"{len(left)} {t} row(s) left (ids {ids})")
     return bad
+
+
+# Module tests are re-run by a harness script the gate supplies: the result class is defined
+# after the module is imported, and it writes a JUnit-style report to a random directory mounted
+# only for that run. The verdict counts that report against the test methods found in the
+# module's source, and the stock run's log line must agree.
+_HARNESS = r"""
+import threading, unittest, xml.sax.saxutils
+import odoo
+from odoo.tests import loader
+M, P = {module!r}, {path!r}
+class Res(unittest.TestResult):
+    def __init__(self):
+        super().__init__()
+        self.rows = []
+    def _row(self, t, k):
+        i = t.id() if hasattr(t, 'id') else str(t)
+        self.rows.append((str(i), k))
+    def addSuccess(self, t): self._row(t, 'ok')
+    def addFailure(self, t, e): self._row(t, 'failure')
+    def addError(self, t, e): self._row(t, 'error')
+    def addSkip(self, t, r): self._row(t, 'skipped')
+    def addExpectedFailure(self, t, e): self._row(t, 'failure')
+    def addUnexpectedSuccess(self, t): self._row(t, 'failure')
+    def addSubTest(self, t, s, e):
+        if e is not None:
+            self._row(t, 'failure')
+res = Res()
+threading.current_thread().testing = True
+odoo.modules.module.current_test = M
+for pos in ('at_install', 'post_install'):
+    loader.make_suite([M], pos).run(res)
+odoo.modules.module.current_test = None
+with open(P, 'w') as f:
+    f.write('<testsuite>')
+    for i, k in res.rows:
+        f.write('<testcase name=%s result=%s/>' % (
+            xml.sax.saxutils.quoteattr(i), xml.sax.saxutils.quoteattr(k)))
+    f.write('</testsuite>')
+"""
+
+
+def harness_script(module: str, path: str) -> str:
+    assert MODULE_RE.fullmatch(module) and re.fullmatch(
+        r"/var/tmp/r[0-9a-f]{16}/[0-9a-f]{16}\.xml", path
+    )
+    return _HARNESS.format(module=module, path=path)
+
+
+def read_harness(raw: bytes | None, every: set[str], module: str = "") -> tuple[bool, str]:
+    """Count the harness report independently: every test method in the source ran and passed,
+    nothing failed, errored or was skipped."""
+    if raw is None:
+        return False, "no harness report"
+    if len(raw) > 2_000_000:
+        return False, "harness report too large"
+    try:
+        root = ca._parse_xml(raw)
+    except Exception:  # noqa: BLE001 - fail closed
+        return False, "harness report unreadable"
+    if root.tag != "testsuite":
+        return False, "harness report malformed"
+    ok, bad = set(), []
+    n = 0
+    for tc in root.iter("testcase"):
+        n += 1
+        name, kind = tc.get("name") or "", tc.get("result") or ""
+        meth = name.rsplit(".", 1)[-1]
+        if module and f".addons.{module}." not in name:
+            bad.append(f"{name[:60]}: not this module's test")
+        elif kind == "ok":
+            ok.add(meth)
+        else:
+            bad.append(f"{meth}: {kind or '?'}")
+    if bad:
+        return False, f"harness: {len(bad)} not passed ({'; '.join(bad[:5])})"
+    missing = sorted(every - ok)
+    if missing:
+        return False, f"harness: {len(missing)} test(s) did not run ({', '.join(missing[:5])})"
+    return True, f"harness: {n} passed"
 
 
 # ---------------------------------------------------------------- gate
@@ -676,11 +865,14 @@ class _Sandbox:
 
         self.r, self.v, self.mod, self.timeout = runner, version, module, step_timeout
         self.tag = tag = uuid.uuid4().hex[:12]
-        self.net, self.pg = f"ingate-{tag}-net", f"ingate-{tag}-pg"
+        self.net, self.pg = f"ws-{tag}-net", f"ws-{tag}-pg"
         nonce = secrets.token_hex(8)  # per-run database names, unknown before the run
-        self.db_main, self.db_upg = f"gate_{nonce}", f"gateu_{nonce}"
-        self.work = tempfile.mkdtemp(prefix="ingate-", dir=tmp_root)
+        self.db_main, self.db_upg = f"db_{nonce}", f"dbu_{nonce}"
+        self.pw = secrets.token_hex(16)  # app role password, never printed
+        self.res_dir, self.res_file = f"r{secrets.token_hex(8)}", f"{secrets.token_hex(8)}.xml"
+        self.work = tempfile.mkdtemp(prefix="ws-", dir=tmp_root)
         self.up = False
+        self.tainted = ""  # set when a read finds database/role settings (search_path, ...)
         self.n = 0
         self.started: list[str] = []
 
@@ -692,7 +884,15 @@ class _Sandbox:
             dst.write_bytes(b)
         return str(root)
 
+    def result_mount(self) -> tuple[str, str]:
+        d = Path(self.work) / self.res_dir
+        d.mkdir(mode=0o777, exist_ok=True)
+        d.chmod(0o777)  # the container user writes here; the dir exists for one run only
+        return str(d), f"/var/tmp/{self.res_dir}/{self.res_file}"
+
     def start(self) -> None:
+        import secrets
+
         r = self.r.run(["docker", "network", "create", "--internal", self.net], timeout=60)
         if r.rc != 0:
             raise GateError("sandbox network failed")
@@ -709,9 +909,9 @@ class _Sandbox:
                 self.net,
                 *PG_HARDEN,
                 "-e",
-                "POSTGRES_USER=odoo",
+                f"POSTGRES_USER={PG_ADMIN}",
                 "-e",
-                "POSTGRES_PASSWORD=odoo",
+                f"POSTGRES_PASSWORD={secrets.token_hex(16)}",
                 PG_IMAGE,
             ],
             timeout=120,
@@ -721,20 +921,61 @@ class _Sandbox:
         import time
 
         for _ in range(60):
-            if (
-                self.r.run(["docker", "exec", self.pg, "pg_isready", "-U", "odoo"], timeout=10).rc
-                == 0
-            ):
-                return
+            ready = ["docker", "exec", self.pg, "pg_isready", "-U", PG_ADMIN]
+            if self.r.run(ready, timeout=10).rc == 0:
+                break
             time.sleep(1)
-        raise GateError("sandbox database not ready")
+        else:
+            raise GateError("sandbox database not ready")
+        lim = "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+        setup = (
+            f"CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{self.pw}' {lim};\n"
+            f"CREATE ROLE {READ_ROLE} LOGIN {lim};\n"
+            f"GRANT pg_read_all_data TO {READ_ROLE};\n"
+            + "".join(
+                f"CREATE DATABASE {d} OWNER {APP_ROLE} TEMPLATE template0 ENCODING 'UTF8';\n"
+                for d in (self.db_main, self.db_upg)
+            )
+        )
+        r = self.r.run(
+            [
+                "docker",
+                "exec",
+                "-i",
+                self.pg,
+                "psql",
+                "-U",
+                PG_ADMIN,
+                "-d",
+                "postgres",
+                *_PSQL_TAIL,
+            ],
+            stdin=setup,
+            timeout=120,
+        )
+        if r.rc != 0:
+            raise GateError("sandbox roles failed")
+        rows = self.psql(
+            self.db_main,
+            "SELECT rolsuper::int + rolcreatedb::int + rolcreaterole::int + rolreplication::int"
+            f" + rolbypassrls::int FROM pg_catalog.pg_roles WHERE rolname = '{APP_ROLE}';\n",
+        )
+        if rows != [["0"]]:
+            raise GateError("odoo role is privileged")
 
     def odoo(
-        self, addons: str, db: str, sub: str, *args: str, stdin: str | None = None
+        self,
+        addons: str,
+        db: str,
+        sub: str,
+        *args: str,
+        stdin: str | None = None,
+        result_dir: str | None = None,
     ) -> RunResult:
         self.n += 1
-        name = f"ingate-{self.tag}-o{self.n}"
+        name = f"ws-{self.tag}-o{self.n}"
         self.started.append(name)
+        res = ["-v", f"{result_dir}:/var/tmp/{self.res_dir}:rw"] if result_dir else []
         argv = [
             "docker",
             "run",
@@ -748,13 +989,12 @@ class _Sandbox:
             "-e",
             f"HOST={self.pg}",
             "-e",
-            "USER=odoo",
+            f"USER={APP_ROLE}",
             "-e",
-            "PASSWORD=odoo",
-            "-e",
-            f"GATE_MODULE={self.mod}",
+            f"PASSWORD={self.pw}",
             "-v",
             f"{addons}:/mnt/extra-addons:ro",
+            *res,
             IMAGES[self.v],
             "odoo",
             *([sub] if sub else []),
@@ -762,25 +1002,37 @@ class _Sandbox:
             db,
             *args,
         ]
-        res = self.r.run(argv, stdin=stdin, timeout=self.timeout)
-        if res.rc == -1:  # runner timeout/error: the docker CLI died, the container may not
+        res_ = self.r.run(argv, stdin=stdin, timeout=self.timeout)
+        if res_.rc == -1:  # runner timeout/error: the docker CLI died, the container may not
             self.r.run(["docker", "rm", "-f", name], timeout=60)
-        return res
+        return res_
 
-    def psql(self, db: str, sql: str) -> list[list[str]] | None:
-        """Independent read: psql in the postgres container (no module code on any path)."""
+    def psql(self, db: str, sql: str, fields: int = 0) -> list[list[str]] | None:
+        """Independent read as the read-only role: psql in the postgres container (no module
+        code on any path), search_path pinned, and refused when any database or role setting
+        exists (a module could otherwise redirect unqualified names)."""
         r = self.r.run(
-            ["docker", "exec", "-i", self.pg, "psql", "-U", "odoo", "-d", db, *_PSQL_TAIL],
-            stdin=sql,
+            ["docker", "exec", "-i", self.pg, "psql", "-U", READ_ROLE, "-d", db, *_PSQL_TAIL],
+            stdin=_READ_PREFIX + sql,
             timeout=120,
         )
         if r.rc != 0:
             return None
-        return [ln.split("|") for ln in r.output.splitlines() if ln.strip()]
+        lines = [ln for ln in r.output.splitlines() if ln.strip()]
+        if not lines or lines[0] != "k0|0":
+            self.tainted = "database or role settings present (e.g. search_path)"
+            return None
+        return [ln.split("|", fields - 1) if fields else ln.split("|") for ln in lines[1:]]
 
     def state(self, db: str) -> str | None:
         rows = self.psql(db, sql_state(self.mod))
         return rows[0][0] if rows and len(rows) == 1 and len(rows[0]) == 1 else None
+
+    def snapshot(self, db: str):
+        tabs = self.psql(db, SQL_TABLES)
+        if tabs is None or any(len(t) != 1 for t in tabs):
+            return None
+        return _snapshot(self.psql(db, sql_schema([t[0] for t in tabs]), fields=3))
 
     def close(self) -> None:
         if self.up:
@@ -813,9 +1065,11 @@ def run_gate(
     sandbox: Any = SANDBOX,
     tmp_root: str = "/tmp",
     step_timeout: int = STEP_TIMEOUT,
+    role_spec: Mapping[str, Any] | None = None,
 ) -> GateReport:
     """Run all checks. Refuses (GateError) on invalid input or a non-sandbox endpoint; every
-    other failure is recorded in the report, which then cannot pass."""
+    other failure is recorded in the report, which then cannot pass. ``role_spec`` is the
+    req2mod role spec (see role_spec_from); without it the access check cannot pass."""
     if sandbox != SANDBOX:
         raise GateError(
             f"sandbox endpoint must be {SANDBOX!r}; client and production hosts are refused"
@@ -849,13 +1103,17 @@ def run_gate(
         try:
             sb = _Sandbox(runner, version, module, tmp_root, step_timeout)
             sb.start()
-            _sandbox_checks(sb, files, old, version, checks)
+            _sandbox_checks(sb, files, old, version, checks, role_spec)
         except Exception as e:  # noqa: BLE001 - fail closed
             msg = str(e) if isinstance(e, GateError) else type(e).__name__
             for c in CHECKS[1:]:
                 checks.setdefault(c, Check(UNVERIFIED, f"sandbox error: {msg}"))
         finally:
             if sb is not None:
+                if sb.tainted:
+                    for c in CHECKS[1:]:
+                        prev = checks.get(c)
+                        checks[c] = Check(FAIL, sb.tainted, prev.log if prev else "")
                 sb.close()
     for c in CHECKS:
         checks.setdefault(c, Check(UNVERIFIED, "not run"))
@@ -933,11 +1191,44 @@ def _odoo_ok(res: RunResult, sb: _Sandbox | None = None, db: str = "") -> tuple[
     return True, ""
 
 
-def _sandbox_checks(sb: _Sandbox, files, old, version, checks: dict[str, Check]) -> None:
+def _harness(sb: _Sandbox, new_dir: str, db: str, files, every: set[str]) -> tuple[bool, str, set]:
+    """Second, independent test run: harness-owned result class, report at a random path."""
+    marks = (sb.res_dir.encode(), sb.res_file.encode())
+    if any(m in b for b in files.values() for m in marks):
+        return False, "module references the harness result path", set()
+    host_dir, path = sb.result_mount()
+    sb.odoo(
+        new_dir,
+        db,
+        "shell",
+        "--no-http",
+        "--test-enable",
+        "--test-tags",
+        f"/{sb.mod}",  # registry load must not run (and commit) other modules' tests
+        stdin=harness_script(sb.mod, path),
+        result_dir=host_dir,
+    )
+    f = Path(host_dir) / sb.res_file
+    raw = f.read_bytes() if f.is_file() and not f.is_symlink() else None
+    shutil.rmtree(host_dir, ignore_errors=True)
+    ok, why = read_harness(raw, every, sb.mod)
+    passed = set()
+    if ok and raw is not None:
+        passed = {
+            (tc.get("name") or "").rsplit(".", 1)[-1]
+            for tc in ca._parse_xml(raw).iter("testcase")
+            if tc.get("result") == "ok"
+        }
+    return ok, why, passed
+
+
+def _sandbox_checks(
+    sb: _Sandbox, files, old, version, checks: dict[str, Check], role_spec=None
+) -> None:
     mod, db = sb.mod, sb.db_main
     new_dir = sb.addons("new", files)
     deps = _depends(files)
-    # (1) baseline database with only base + declared depends, then a schema snapshot
+    # (1) baseline database with only base + declared depends, then a full snapshot
     res = sb.odoo(
         new_dir,
         db,
@@ -947,7 +1238,7 @@ def _sandbox_checks(sb: _Sandbox, files, old, version, checks: dict[str, Check])
         "--stop-after-init",
         "--without-demo=all",
     )
-    s0 = _snapshot(sb.psql(db, SQL_SCHEMA)) if res.rc == 0 else None
+    s0 = sb.snapshot(db) if res.rc == 0 else None
     if s0 is None:
         for c in ("install", "tests", "access", "uninstall"):
             checks[c] = Check(UNVERIFIED, "baseline database failed", _tail(res.output))
@@ -966,7 +1257,7 @@ def _sandbox_checks(sb: _Sandbox, files, old, version, checks: dict[str, Check])
         for c in ("tests", "access", "uninstall"):
             checks[c] = Check(SKIPPED, "install failed")
     elif s0 is not None:
-        # (3) the module's own tests
+        # (3) the module's own tests: stock run (log line) AND harness run (own report)
         every, access = _test_methods(files)
         res = sb.odoo(
             new_dir,
@@ -984,6 +1275,9 @@ def _sandbox_checks(sb: _Sandbox, files, old, version, checks: dict[str, Check])
         errors = sum(s[1] for s in stats)
         ran = sum(s[2] for s in stats)
         ok3, why3 = _odoo_ok(res, sb, db)
+        h_ok, h_why, h_passed = (False, "not run", set())
+        if every and stats and not (failed or errors or not ok3 or ran < len(every)):
+            h_ok, h_why, h_passed = _harness(sb, new_dir, db, files, every)
         if not every:
             checks["tests"] = Check(FAIL, "module has no tests")
         elif not stats:
@@ -1000,42 +1294,48 @@ def _sandbox_checks(sb: _Sandbox, files, old, version, checks: dict[str, Check])
                 _tail(res.output),
                 _classify(res.output, version),
             )
+        elif not h_ok:
+            checks["tests"] = Check(FAIL, h_why, _tail(res.output))
         else:
-            checks["tests"] = Check(PASS, f"0 failed, 0 error(s) of {ran} tests", _tail(res.output))
-        # (5) role access: module's access tests AND live rows compared with the role spec
-        roles = _declared_roles(files, mod)
-        spec = declared_access(files, mod)
-        if roles < 0 or spec is None:
-            checks["access"] = Check(FAIL, "access file unreadable")
-        elif roles == 0:
-            checks["access"] = Check(FAIL, "no declared role access rows to verify")
+            checks["tests"] = Check(
+                PASS, f"0 failed, 0 error(s) of {ran} tests; {h_why}", _tail(res.output)
+            )
+        # (5) role access: access tests passed in the harness AND live rows match the req2mod spec
+        if role_spec is None:
+            checks["access"] = Check(UNVERIFIED, "no req2mod role spec supplied")
+        elif not (role_spec.get("access") or {}):
+            checks["access"] = Check(FAIL, "role spec has no access rows to verify")
         elif not access:
-            checks["access"] = Check(FAIL, f"{roles} role access row(s) but no access tests")
+            checks["access"] = Check(
+                FAIL, "role spec has access rows but the module has no access tests"
+            )
         elif checks["tests"].status != PASS:
             checks["access"] = Check(
                 checks["tests"].status if checks["tests"].status != FAIL else FAIL,
                 "access tests did not pass",
             )
         else:
-            missing = sorted(a for a in access if a not in res.output)
-            rows = sb.psql(db, sql_access(mod))
-            bad = access_diff(spec, rows) if rows is not None else None
+            missing = sorted(a for a in access if a not in h_passed)
+            after = {t: max(s0["i"].get(t) or {0}) for t in ("ir_model_access", "ir_rule")}
+            rows = sb.psql(db, sql_access(mod, after), fields=8)
+            bad = access_diff(role_spec, rows) if rows is not None else None
             if bad is None:
                 checks["access"] = Check(UNVERIFIED, "live access rows unreadable")
             elif bad:
                 checks["access"] = Check(FAIL, "; ".join(bad[:10]))
             elif missing:
-                checks["access"] = Check(UNVERIFIED, f"not seen in log: {', '.join(missing[:10])}")
+                checks["access"] = Check(FAIL, f"not passed in harness: {', '.join(missing[:10])}")
             else:
                 checks["access"] = Check(
                     PASS,
                     f"{len(access)} access test(s) passed; {len(rows)} live row(s) match the "
-                    f"spec ({len(spec)} declared)",
+                    f"role spec ({len(role_spec['access'])} access, "
+                    f"{len(role_spec.get('rules') or {})} rule(s))",
                 )
-        # (6) uninstall leaves nothing behind: state and schema read from the database
-        res = sb.odoo(new_dir, db, "shell", "--no-http", stdin=_UNINSTALL_SCRIPT)
+        # (6) uninstall leaves nothing behind: state and full snapshot read from the database
+        res = sb.odoo(new_dir, db, "shell", "--no-http", stdin=uninstall_script(mod))
         st = sb.state(db)
-        s1 = _snapshot(sb.psql(db, SQL_SCHEMA))
+        s1 = sb.snapshot(db)
         bad = []
         if res.rc != 0:
             bad.append(f"uninstall run exited {res.rc}")
@@ -1048,7 +1348,8 @@ def _sandbox_checks(sb: _Sandbox, files, old, version, checks: dict[str, Check])
                 bad += snapshot_diff(s0, s1)
             checks["uninstall"] = Check(
                 FAIL if bad else PASS,
-                "; ".join(bad) or "clean: no tables, columns or records left (database diff)",
+                "; ".join(bad)
+                or "clean: nothing left (schemas, relations, columns, functions, row ids)",
                 _tail(res.output) if bad else "",
                 _classify(res.output, version) if bad else [],
             )
@@ -1089,6 +1390,7 @@ __all__ = [
     "Runner",
     "gate_passed",
     "module_hash",
+    "role_spec_from",
     "run_gate",
     "validate_argv",
 ]

@@ -163,8 +163,15 @@ def restore_generated(ctx: Mapping[str, Any]) -> list[oc.Edit] | None:
     return edits or None
 
 
-def _run_gate(files, module, version, runner, tmp_root):
-    return gate.run_gate(files, module=module, version=version, runner=runner, tmp_root=tmp_root)
+def _run_gate(files, module, version, runner, tmp_root, role_spec):
+    return gate.run_gate(
+        files,
+        module=module,
+        version=version,
+        runner=runner,
+        tmp_root=tmp_root,
+        role_spec=role_spec,
+    )
 
 
 # ---------------------------------------------------------------- entry point
@@ -255,6 +262,7 @@ def _author(
     res.stage = "build"
     try:
         generated = _files_of(build_module_zip(built.spec, odoo_major=version))
+        rs = gate.role_spec_from(built.spec, name)  # the access check compares against this
         files = dict(generated)
         if seed is not None:
             files = dict(seed(dict(files)))
@@ -264,7 +272,7 @@ def _author(
     res.stage = "gate"
     try:
         aud = ca.audit(oc._zip(name, files), version=version, owned_names={name})
-        rep = _run_gate(files, name, version, runner, tmp_root)
+        rep = _run_gate(files, name, version, runner, tmp_root, rs)
     except gate.GateError as e:
         res.error = f"gate refused: {e}"
         return res
@@ -311,7 +319,7 @@ def _author(
             break
         att.change_set_id = cs.id
         aud2 = ca.audit(oc._zip(name, new_files), version=version, owned_names={name})
-        rep2 = _run_gate(new_files, name, version, runner, tmp_root)
+        rep2 = _run_gate(new_files, name, version, runner, tmp_root, rs)
         att.score, att.failing = _score(rep2, aud2), _failing(rep2)
         passed = gate.gate_passed(rep2, gate.module_hash(new_files), version=version, module=name)
         if not passed and _key(rep2, aud2) in seen:
