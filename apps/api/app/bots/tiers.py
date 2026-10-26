@@ -39,6 +39,11 @@ _CAPABILITIES = MappingProxyType(
         "module-test-gate": False,
     }
 )
+# Human review switch for module authoring. A reviewer flips this literal to True in a reviewed
+# commit after verifying module_authoring.REVIEW_CHECKLIST and the gate's T3 preconditions.
+# Nothing reads it from input or the environment; module_authoring.derived_capability() shows
+# how 'module-authoring' would be derived. It does not change _CAPABILITIES or REQUIRED.
+MODULE_AUTHORING_REVIEWED = False
 REQUIRED = MappingProxyType(
     {
         T1: ("data-settings",),
