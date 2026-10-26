@@ -2,12 +2,12 @@
 
 ID: REG-NP-BL
 Title: Re-verify the baseline
-Status: todo
+Status: done
 Phase: 0
 Priority: P2
 Type: regression
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: S (caps in budget.json). Stop at 80%.
-Ledger IDs: NP-BL-01;NP-BL-02;NP-BL-03;NP-BL-04;NP-BL-05;NP-BL-06
+Ledger IDs: NP-BL-02;NP-BL-03;NP-BL-04;NP-BL-05;NP-BL-06
 Depends on: B0-INV
 Routing: Worker: L1 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L1 separate session · Score: 1 (C0 U0 F1 K0 V0 I0)
 Context pack:
@@ -24,7 +24,7 @@ Steps:
 5. If the behaviour is already broken, stop: report the failing assertion; the Orchestrator opens a fix card.
 6. STOP-AND-ASK: a needed file is outside the allow-list; an AC is ambiguous or contradicts another; a live check would need a non-`ingenium_` DB, a forbidden port, a git write or a new dependency; an oracle test looks wrong.
 Acceptance criteria:
-- AC1: Re-verify the baseline (pressure 3) (source: ledger NP-BL-01, next-phase cards/BL_BASELINE.md)
+- AC1: Split to REG-NP-BLb on 2026-10-22. This card does not pin it. Re-verify writes `docs/plans/next-phase/03_BASELINE.md`, outside this allow-list. Do not freeze router, test-file, or alembic counts here.
 - AC2: Request-id middleware (pressure 6) (source: ledger NP-BL-02, next-phase cards/BL_BASELINE.md)
 - AC3: JSON log formatter (pressure 3) (source: ledger NP-BL-03, next-phase cards/BL_BASELINE.md)
 - AC4: Lint and type slots (pressure 4) (source: ledger NP-BL-04, next-phase cards/BL_BASELINE.md)
@@ -38,6 +38,7 @@ Worked example:
 - Example AC4: `apps/api/scripts/lint_new_modules.sh` names `app/request_id.py` and `app/logging_config.py`. `apps/web/package.json` script `typecheck` is `tsc --noEmit`.
 - Example AC5: `docs/adr/ADR-01.md` through `docs/adr/ADR-14.md` exist (14 files).
 - Example AC6: `docs/verified-facts.md` and `docs/recon.md` exist. A fact with code evidence is tagged `[verified]` (request-id middleware). A fact with no command or URL stays `[unverified]` (production header rewriting).
+Suspects, not pins (2026-10-22): `docs/verified-facts.md` §4 says no `docker-compose.odoo20.yml` exists, and that file is in `docker/`. `docs/adr/ADR-02.md` is accepted while `docs/recon.md` still tags D8 as open.
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_reg_np_bl.py` → pass
 - `cd apps/api && uv run pytest -q tests/test_reg_np_bl.py` in reverse/random order → pass

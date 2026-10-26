@@ -1,10 +1,14 @@
-"""Pin the REG-NP-UI worked examples that the product already does.
+"""Pin REG-NP-UI behaviour the product already shows.
 
-AC2 and AC3 have no input/output in the card's worked examples, so they
-are not asserted here. Keyboard focus opens a tooltip immediately, so
-the "not before 125 ms" sentence is not asserted. A single text
-``asChild`` child throws ``Button: asChild expects a single React element
-child.`` Zero or several children still fail ``React.Children.only``.
+AC3 split: the screen spec names no route marked "can be empty", so that
+set is not asserted. Loading routes expose an sr-only name and do not
+render the kit Skeleton; the Skeleton sentence is not asserted.
+Keyboard focus opens a tooltip immediately, so the "not before 125 ms"
+sentence is not asserted. Hover stays hidden at 124 ms and is shown by
+200 ms. Escape removes the tooltip.
+A single text ``asChild`` child throws
+``Button: asChild expects a single React element child.``
+Zero or several children still fail ``React.Children.only``.
 """
 
 from __future__ import annotations
@@ -94,6 +98,20 @@ import {
   type BulkRunResult,
   type PerRecordResult,
 } from "@/components/ui/BulkResultTable";
+import RootLoading from "@/app/loading";
+import RootError from "@/app/error";
+import RootNotFound from "@/app/not-found";
+import ConnectionLoading from "@/app/connections/[id]/loading";
+import ConnectionError from "@/app/connections/[id]/error";
+import ConnectionNotFound from "@/app/connections/[id]/not-found";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 
 afterEach(() => {
   cleanup();
@@ -190,6 +208,72 @@ function TotpHarness({ onComplete }: { onComplete?: (value: string) => void }) {
 }
 
 describe("REG-NP-UI", () => {
+  it("ac2-root-loading", () => {
+    render(<RootLoading />);
+    expect(screen.getByText("Loading page")).toBeInTheDocument();
+  });
+
+  it("ac2-root-error", () => {
+    const reset = vi.fn();
+    render(<RootError error={new Error("render failed")} reset={reset} />);
+    expect(screen.getByRole("heading", { name: "Load this page failed" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The app hit an error while rendering. Try again, or return home if the problem continues.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Go home" })).toBeInTheDocument();
+  });
+
+  it("ac2-root-not-found", () => {
+    render(<RootNotFound />);
+    expect(screen.getByRole("heading", { name: "This page isn't here" })).toBeInTheDocument();
+    expect(screen.getByText(/The link may be old or mistyped/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
+  });
+
+  it("ac2-connection-loading", () => {
+    render(<ConnectionLoading />);
+    expect(screen.getByText("Loading connection")).toBeInTheDocument();
+  });
+
+  it("ac2-connection-error", () => {
+    const reset = vi.fn();
+    render(<ConnectionError error={new Error("render failed")} reset={reset} />);
+    expect(
+      screen.getByRole("heading", { name: "Load this connection failed" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Something blocked this connection view from rendering. Try again, or pick another connection from the list.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "View connections" })).toHaveAttribute(
+      "href",
+      "/connections",
+    );
+  });
+
+  it("ac2-connection-not-found", () => {
+    render(<ConnectionNotFound />);
+    expect(
+      screen.getByRole("heading", { name: "Find this connection failed" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No connection matches this id, or it was removed. Open the connections list and choose an active instance.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View connections" })).toHaveAttribute(
+      "href",
+      "/connections",
+    );
+  });
+
   it("ac4-arrow-right", async () => {
     render(<Tabs items={tabItems} defaultValue="one" />);
     const tabs = screen.getAllByRole("tab");
@@ -434,6 +518,32 @@ def _require(title: str) -> None:
         messages = case.get("failureMessages") or []
         detail = "\n".join(str(item) for item in messages)[:2000]
         raise AssertionError(f"{title} {case.get('status')}\n{detail}")
+
+
+def test_ac2_root_loading_names_the_page() -> None:
+    _require("ac2-root-loading")
+
+
+def test_ac2_root_error_what_why_next() -> None:
+    text = (_WEB / "src/app/error.tsx").read_text(encoding="utf-8")
+    assert 'window.location.assign("/")' in text
+    _require("ac2-root-error")
+
+
+def test_ac2_root_not_found_what_why_next() -> None:
+    _require("ac2-root-not-found")
+
+
+def test_ac2_connection_loading_names_the_connection() -> None:
+    _require("ac2-connection-loading")
+
+
+def test_ac2_connection_error_what_why_next() -> None:
+    _require("ac2-connection-error")
+
+
+def test_ac2_connection_not_found_what_why_next() -> None:
+    _require("ac2-connection-not-found")
 
 
 def test_ac1_dark_mode_alert_tokens() -> None:

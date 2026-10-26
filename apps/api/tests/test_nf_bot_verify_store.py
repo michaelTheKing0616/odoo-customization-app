@@ -27,7 +27,10 @@ from app.scans.contract import ScanScope
 from app.workspace_auth import require_app_auth
 
 API = Path(__file__).resolve().parents[1]
-HOST = "127.0.0.1:54329"
+_PG_PORT = os.environ.get("INGENIUM_TEST_PG_PORT", "").strip() or "54329"
+if not _PG_PORT.isdigit() or not 1 <= int(_PG_PORT) <= 65535:
+    raise RuntimeError("INGENIUM_TEST_PG_PORT must be a TCP port")
+HOST = f"127.0.0.1:{_PG_PORT}"
 ADMIN = f"postgresql://ingenium:ingenium@{HOST}/ingenium_wt_admin"
 DB = f"ingenium_wt_bvstore_{uuid.uuid4().hex[:12]}"
 URL = f"postgresql+psycopg://ingenium:ingenium@{HOST}/{DB}"

@@ -25,7 +25,7 @@ Type gate covers compound labels («Vehicle Type», «Request Category», …) �
 bare Type/Category/Kind/Class.
 
 Flash-on: proposals may suggest invents; honor/apply gates still drop uncued
-fields (same floor as AI_INTENT_LLM=off).
+fields (same floor as AI_INTENT_LLM=off). Date family stays kept (REG-NP-T1).
 """
 
 from __future__ import annotations
@@ -629,10 +629,11 @@ def should_skip_generic_notes_pad(
 
 
 def honor_stated_brief_cues(draft: dict[str, Any], *, prompt: str = "") -> list[str]:
-    """Materialize stated states, stock menu parent, no-invent Selection families, one notes surface.
+    """Materialize stated states, stock menu parent, and one notes surface.
 
     Invent families: Type / Priority / Rate / Severity / Channel / Stage.
     Flash-on proposals may suggest invents; this gate still drops uncued fields.
+    Date family stays kept (REG-NP-T1).
     """
     notes: list[str] = []
     text = prompt or str(draft.get("_user_prompt") or "")
@@ -1259,6 +1260,9 @@ def _drop_uncued_stage_fields(draft: dict[str, Any], text: str) -> list[str]:
     )
 
 
+# Date family stays off this list (REG-NP-T1): Due date, Date, Start date,
+# End date, Deadline. Type, Priority, Rate/Unit, Severity, Channel, and Stage
+# drop when the brief has no cue (origin 38008ed1).
 _INVENT_LABEL_DROP_RES: tuple[tuple[str, object, object], ...] = (
     (
         "Type",
@@ -1292,13 +1296,6 @@ _INVENT_LABEL_DROP_RES: tuple[tuple[str, object, object], ...] = (
         "Stage",
         brief_has_stage_cue,
         re.compile(r"(?i)^(?:[\w/&-]+\s+)*stage$"),
-    ),
-    (
-        "Date",
-        brief_has_date_cue,
-        re.compile(
-            r"(?i)^(?:[\w/&-]+\s+)*(?:date|due\s+date|start\s+date|end\s+date|deadline)$"
-        ),
     ),
 )
 

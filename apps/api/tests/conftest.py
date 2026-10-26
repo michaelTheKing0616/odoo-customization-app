@@ -9,13 +9,27 @@ import tempfile
 import uuid
 from pathlib import Path
 
+
+def _test_pg_port() -> int:
+    """Loopback Postgres port. Default 54329. ``INGENIUM_TEST_PG_PORT`` overrides it.
+
+    Inputs: none. Output: a TCP port. Empty env is the default.
+    Side effects: none. A non-numeric value raises before any socket opens.
+    """
+    raw = os.environ.get("INGENIUM_TEST_PG_PORT", "").strip() or "54329"
+    if not raw.isdigit() or not 1 <= int(raw) <= 65535:
+        raise RuntimeError("INGENIUM_TEST_PG_PORT must be a TCP port")
+    return int(raw)
+
+
 # B0-ISO: throwaway App DB before any import of app.settings.
 # Loopback host, name starts with ingenium_. Assignment does not open a socket.
 # A second exec of this module (pytest's assertion rewriter) must keep the name.
 if "_B0_ISO_SESSION_READY" not in globals():
+    _B0_ISO_PG_PORT = _test_pg_port()
     _B0_ISO_DB_NAME = f"ingenium_b0_iso_{uuid.uuid4().hex}"
     _B0_ISO_DATABASE_URL = (
-        f"postgresql+psycopg://ingenium:ingenium@127.0.0.1:54329/{_B0_ISO_DB_NAME}"
+        f"postgresql+psycopg://ingenium:ingenium@127.0.0.1:{_B0_ISO_PG_PORT}/{_B0_ISO_DB_NAME}"
     )
     os.environ["DATABASE_URL"] = _B0_ISO_DATABASE_URL
     # Unwrapped psycopg connect, saved when the guard installs, so session
@@ -28,7 +42,7 @@ def _session_maintenance_connect():
     """Open the loopback catalog so this process can create its own database.
 
     Inputs: none. Output: an autocommit connection.
-    Side effects: one socket to 127.0.0.1:54329. Callers may run only
+    Side effects: one socket to 127.0.0.1 on the session port. Callers may run only
     CREATE DATABASE or DROP DATABASE for ``_B0_ISO_DB_NAME``. The session
     ``DATABASE_URL`` stays on that ingenium_ name.
     """
@@ -54,7 +68,7 @@ def _session_maintenance_connect():
         psycopg.Connection,
         "",
         host=parsed.hostname,
-        port=parsed.port or 54329,
+        port=parsed.port or _B0_ISO_PG_PORT,
         user=parsed.username or "",
         password=parsed.password or "",
         dbname="postgres",

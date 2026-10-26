@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.ai_conversation.clarify import apply_clarification_answer, build_clarification
 from app.ai_conversation.intent_gate import assess_intent, should_block_generation
 from app.ai_domain_coherence import should_apply_domain_pack
@@ -195,6 +197,7 @@ def test_full_app_brief_skips_pack_ambiguity_noise() -> None:
         assert build_clarification(assessment, prompt=prompt) is None
 
 
+@pytest.mark.no_app_db
 def test_pack_ambiguity_copy_is_plain_language() -> None:
     from app.ai_conversation.intent_gate import IntentAssessment
 
@@ -206,12 +209,16 @@ def test_pack_ambiguity_copy_is_plain_language() -> None:
     )
     clarify = build_clarification(assessment, prompt="track our work this quarter")
     assert clarify is not None
+    assert clarify["question"] == "Where should this live in Odoo?"
+    assert str(clarify["options"][0]["label"]).startswith("Add it to a form you already use")
     blob = " ".join(
         [str(clarify.get("question") or ""), str(clarify.get("help") or "")]
         + [str(opt.get("label") or "") for opt in (clarify.get("options") or [])]
     ).lower()
     assert "which domain" not in blob
     assert "vertical pack" not in blob
+    assert "modulespec" not in blob
+    assert "option a module" not in blob
     assert "helpdesk" not in blob
     ids = [opt["id"] for opt in (clarify.get("options") or [])]
     assert ids[0] == "on_existing_form"

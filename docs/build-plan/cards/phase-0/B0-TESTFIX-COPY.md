@@ -2,7 +2,7 @@
 
 ID: B0-TESTFIX-COPY
 Title: API pytest 0 failures or each xfail has reason + P-item + Tope yes
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -47,6 +47,7 @@ Decision:
 | string the test expects in owner-facing copy | result |
 | `ModuleSpec`, `Option A module`, `vertical pack`, `which domain` | old jargon: point the test at the plain string, or `xfail(strict=True, reason="P0-2-CL3: <nodeid>")` with a P-item and Tope's yes |
 | `custom-code module`, `form people already use`, and no `vertical pack` | pass |
+2026-10-24 closed. API 2 passed, then `-p randomly` 2 passed. Web 23 passed. Loop 2 adds `expertHonestyLegend()` contains `Completeness is hygiene on drafts, not a shippable score.` Reviewer APPROVE. `P0-2-CL3` is done. Shared `P0-2-AC1` stays Open.
 
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_b0_testfix_copy.py tests/test_ai_conversation_intent_gate.py::test_pack_ambiguity_copy_is_plain_language` → all pass

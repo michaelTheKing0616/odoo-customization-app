@@ -2,7 +2,7 @@
 
 ID: B0-TESTFIX-AIOFF
 Title: API pytest 0 failures or each xfail has reason + P-item + Tope yes
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -45,6 +45,7 @@ Decision:
 | `0 failed` | met |
 | every failure is `xfail` with a reason, a linked P-item, and Tope's yes | met |
 | any other failure | not met |
+2026-10-24 closed on the named pin. `tests/test_b0_testfix_aioff.py` 3 passed, then `-p randomly` 3 passed. Reviewer APPROVE. `P0-2-CL6` is done. Shared `P0-2-AC1` stays Open. No xfail added.
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_b0_testfix_aioff.py` → all pass
 - live: L2-HARNESS runner `--card B0-TESTFIX-AIOFF --matrix 17,18,19,20` on disposable `ingenium_*` DBs → pass per major (Phase 2 on)

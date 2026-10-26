@@ -2,7 +2,7 @@
 
 ID: B0-TESTFIX-MASTERY
 Title: API pytest 0 failures or each xfail has reason + P-item + Tope yes
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -43,6 +43,7 @@ Decision:
 | `hosting_operator_message("online", edition="community")` | equal to `ONLINE_REFUSE_EXACT` |
 | `hosting_operator_message("online", edition="enterprise")` | starts with `ONLINE_REFUSE_EXACT` and contains `Enterprise edition detected` and `Studio` |
 | any battery failure left over | `xfail(strict=True, reason="P0-2-CL4: <nodeid>")` with a P-item and Tope's yes, or AC1 fails |
+2026-10-24 closed. `tests/test_b0_testfix_mastery.py` plus the battery: 14 passed in 2.37s, then `-p randomly` 14 passed in 2.05s. `hosting.py` unchanged. Reviewer APPROVE. `P0-2-CL4` is done. Shared `P0-2-AC1` stays Open.
 
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_b0_testfix_mastery.py tests/test_mastery_regression_battery.py` → all pass

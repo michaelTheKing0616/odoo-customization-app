@@ -2,12 +2,12 @@
 
 ID: REG-NP-T1
 Title: Pre-flight PF-1 to PF-6
-Status: todo
+Status: done
 Phase: 0
 Priority: P2
 Type: regression
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: S (caps in budget.json). Stop at 80%.
-Ledger IDs: NP-T1-PF;NP-T1-F0;NP-T1-INST;NP-T1-A1;NP-T1-A2;NP-T1-A3;NP-T1-A4;NP-T1-B1;NP-T1-B2;NP-T1-B3;NP-T1-C1;NP-T1-C2;NP-T1-D1;NP-T1-D2;NP-T1-D3;NP-T1-E1;NP-T1-E2;NP-T1-F1;NP-T1-F2;NP-T1-F3;NP-T1-RET;NP-T1-GATE
+Ledger IDs: NP-T1-PF;NP-T1-F0;NP-T1-INST;NP-T1-A1;NP-T1-A2;NP-T1-A3;NP-T1-A4;NP-T1-B1;NP-T1-B2;NP-T1-B3;NP-T1-C1;NP-T1-C2;NP-T1-D1;NP-T1-D2;NP-T1-D3;NP-T1-E1;NP-T1-E2;NP-T1-F1;NP-T1-F2;NP-T1-GATE
 Depends on: B0-INV
 Routing: Worker: L2 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L2 separate session · Score: 5 (C2 U0 F1 K0 V1 I1)
 Context pack:
@@ -20,6 +20,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 File allow-list:
 - apps/api/tests/test_reg_np_t1.py (new)
+- apps/api/app/ai_brief_cues.py (AC21 only: stop dropping the Date family. Tope, 2026-10-22)
 Goal: Pin the already-fixed behaviour behind `REG-NP-T1` with a test that fails if it regresses; no product change.
 Steps:
 1. Read the context pack. State the fixed behaviour this regression pins, as input → expected output, one per AC.
@@ -48,8 +49,8 @@ Acceptance criteria:
 - AC17: D2 encoded (pressure 3) (source: ledger NP-T1-E2, next-phase cards/T1_SCHEMA_GROUNDING.md)
 - AC18: Maintenance golden (PR-F) (pressure 8) (source: ledger NP-T1-F1, next-phase cards/T1_SCHEMA_GROUNDING.md)
 - AC19: Service-cards golden (pressure 8) (source: ledger NP-T1-F2, next-phase cards/T1_SCHEMA_GROUNDING.md)
-- AC20: One Option A module reaches install_ready on a real sandbox (pressure 8) (source: ledger NP-T1-F3, next-phase cards/T1_SCHEMA_GROUNDING.md)
-- AC21: Retire scrub (pressure 9) (source: ledger NP-T1-RET, next-phase cards/T1_SCHEMA_GROUNDING.md)
+- AC20: Split to REG-NP-T1b on 2026-10-22. This card does not pin it. The isolated sandbox stack was not running.
+- AC21: Date family is kept (Tope, 2026-10-22). The rest of Retire scrub is split to REG-NP-T1c. This card does not pin the full no-op, `approved_craft`, or the battery runs.
 - AC22: Gates that stay even if the code already exists (pressure 4) (source: ledger NP-T1-GATE, next-phase cards/T1_SCHEMA_GROUNDING.md)
 Worked examples for the ACs whose behaviour is already in code. The other ACs stay as written.
 - Pin AC2: `studio_generate_offline_finish`'s source contains `_finish_seed_draft` and `_apply_locked_craft_and_surface`. Its docstring contains `Goldens must call` and `_finish_seed_draft`. A node invented after `stamp_generate_ir` fails the count invariant.
@@ -67,6 +68,19 @@ Worked examples for the ACs whose behaviour is already in code. The other ACs st
 | False | success | `pending` | False |
 | True | success | `proved` | True |
 | True | fails 3 times | `failed` | False |
+
+captured 2026-10-22 from current behaviour
+- Pin AC1: `build_ir({})` returns a `GenerateIR` with `models == []`, `fields_by_model == {}`, and `approved_craft == {}`. `schema_client_for_draft(None)` is a `DenySchemaClient` whose `reason` is `no_draft` and whose `model_exists("res.partner")` is False. `schema_client_for_draft({}, client=<object>)` is a `LiveSchemaClient`. A catalog loaded now with `available_models: ["res.partner"]` is a `CatalogSchemaClient`; `model_exists("res.partner")` is True and `model_exists("x_invent_nowhere")` is False. `build_test_enable_argv("x_demo_app", odoo_major=19)` contains `--test-enable`, `--stop-after-init`, and `-u x_demo_app`; the argv's `--http-port` value is `8070` (this capture did not bind that port). `parse_odoo_test_output` of `FAIL: test_ingenium_smoke.test_always_false` plus `1 failed, 0 error(s)` returns those two rows, the second prefixed `SUMMARY: `. `_run_module_tests("x_failing_mod")` with compose mocked to that stderr returns `ok is False` and the same FAIL row. `execute_kw_to_json2_body("fields_get", [], {})` is `{}`. `execute_kw_to_json2_body("search_read", [[]], {"fields": ["name"], "limit": 1})` is `{"domain": [], "fields": ["name"], "limit": 1}`. SEEDED rows in the named slice are T1-F0, T1-A1, T1-A2, T1-A3, T1-B1, T1-B2, T1-B3, T1-C1, T1-D1, T1-D2, T1-E2, T1-F1, T1-F2.
+- Pin AC3: Maintenance brief plus the trace script's `FakeSchemaClient`, then `studio_generate_offline_finish`, returns models `x_maintenance_tickets`, `x_maintenance_tickets_checklist_line`, `x_maintenance_tickets_parts_line`. `_generate_ir_closure` is `ok True`, `violations []`, `scrub_hits []`, notes `generate_ir: purged unadmitted seed/generic models x_maintenance_tickets_line`. Dump stamp `20261022T133206` under `.cache/ai_ir_trace/`.
+- Pin AC8: `merge_proposals` on a `priority` brief with `x_name` (no cue), `x_priority` (cue `priority`), `partner_id` on `sale.order` (no cue, fake schema lists that stock field), and `x_qqqz_marker` (no cue). Admitted reasons: `x_name` `structural_default`, `x_priority` `cue_match`, `partner_id` `schema_verified_reuse`. Rejected: `x_qqqz_marker` `no_cue_or_craft`.
+- Pin AC9: Rate Line `x_rate_line_ids` on the maintenance brief with empty `o2ms` is rejected `uncued_line_invent` and does not add `x_maintenance_tickets_line`. `x_partner_id` to `res.partner` with `source_cue=None` on `Thin tickets Draft→Done only` is rejected `no_cue_or_craft`.
+- Pin AC11: `default_approved_craft()` is `company_scoping`, `money_slots`, `date_slots`, `purchase_link`, `partner_links`, `datetime_over_date`, and `depth_seeds`, each False.
+- Pin AC12: Checklist rows in `ClarifyInterstitial.tsx` are company field, currency field, purchase order link, contact link, date and time, and extra supporting records. Each help string says what that row adds.
+- Pin AC15: `verbatim_sandbox_error_text(message="Module install failed", log_tail=<traceback ending ValidationError: bad field x_markup plus password=reg-np-t1-secret>)` keeps the ValidationError line, drops the secret, and contains `[redacted]`.
+- Pin AC16: `validate_draft_module_spec` on model `book` raises `ValueError` `models[0].model must match x_[a-z0-9_]+ (got 'book')`. Workflow job `api-unit` does not `needs:` the job `api-sandbox-prove-slow`, which runs `pytest -q -m "sandbox and slow"`. `test_sandbox_prove_slow.py` is marked `sandbox` and `slow`.
+- Pin AC22: A catalog `loaded_at` older than `SCHEMA_CATALOG_TTL_S` by 10 seconds yields `DenySchemaClient` reason `stale_or_missing_catalog_ts` and `model_exists("res.partner")` is False. `ai_generate_ir*.py` and `ai_surface_invariants.py` have no `if display_name == "…"` denylist hit.
+- Suspect AC8, not a pin: `build_ir` on a draft whose only field is `x_qqqz_marker` admits `(x_qqqz_marker, seed_snapshot)` and `(x_ticket, seed_snapshot)`. The merge pin still rejects that name.
+- Pin AC21 (2026-10-22): `scrub_uncued_invent_must_do_rows(["Due date"], prompt="tickets")` returns `["Due date"]`. `["Name"]` returns `["Name"]`. `Date`, `Start date`, `End date`, and `Deadline` are kept. `Type`, `Priority`, `Unit`, `Severity`, `Channel`, and `Stage` still drop. The Date family is gone from `_INVENT_LABEL_DROP_RES`.
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_reg_np_t1.py` → pass
 - `cd apps/api && uv run pytest -q tests/test_reg_np_t1.py` in reverse/random order → pass

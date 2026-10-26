@@ -25,6 +25,8 @@ from app.ai_generate_ir import (  # noqa: E402
     STRUCTURAL_ALLOWLIST,
     Proposal,
     admit_and_apply,
+    build_ir,
+    merge_proposals,
 )
 from app.ai_repair_loop import DEFAULT_MAX_REPAIR  # noqa: E402
 from app.ai_schema_client import (  # noqa: E402
@@ -575,7 +577,6 @@ def test_ac11_approved_craft_defaults_off_and_toggle_changes_xml() -> None:
     from module_generator import render_module_files
 
     from app.ai_conversation.understand import (
-        APPROVED_CRAFT_KEYS,
         Understanding,
         coerce_approved_craft,
         default_approved_craft,
@@ -585,7 +586,15 @@ def test_ac11_approved_craft_defaults_off_and_toggle_changes_xml() -> None:
     from app.ai_generate_ir import build_ir, stamp_generate_ir
     from app.module_spec_codec import draft_dict_to_module_spec
 
-    expected = {key: False for key in APPROVED_CRAFT_KEYS}
+    expected = {
+        "company_scoping": False,
+        "money_slots": False,
+        "date_slots": False,
+        "purchase_link": False,
+        "partner_links": False,
+        "datetime_over_date": False,
+        "depth_seeds": False,
+    }
     assert default_approved_craft() == expected
     assert coerce_approved_craft(None) == expected
     assert coerce_approved_craft({}) == expected
@@ -808,3 +817,288 @@ def test_ac22_gates_hold_without_display_name_denylist() -> None:
     assert isinstance(client, DenySchemaClient)
     assert client.reason == "stale_or_missing_catalog_ts"
     assert client.model_exists("res.partner") is False
+
+
+def _seeded_ids_in_grounding_slice(text: str) -> set[str]:
+    """Card ids whose Status token is SEEDED. Later body mentions do not count."""
+    found: set[str] = set()
+    card_id: str | None = None
+    for line in text.splitlines():
+        if line.startswith("### "):
+            card_id = line[4:].split(None, 1)[0]
+            continue
+        if card_id is None or not line.startswith("- **Status:**"):
+            continue
+        raw = line.split("**Status:**", 1)[1].strip()
+        token = raw.split(None, 1)[0].rstrip(".,;:(") if raw else ""
+        if token == "SEEDED":
+            found.add(card_id)
+        card_id = None
+    return found
+
+
+def test_ac1_preflight_functions() -> None:
+    """Captured 2026-10-22. Does not bind port 8070; that value is only an argv slot."""
+    from unittest.mock import MagicMock, patch
+
+    from odoo_client.transport.execute_kw_map import execute_kw_to_json2_body
+
+    from app.sandbox import _run_module_tests, build_test_enable_argv, parse_odoo_test_output
+
+    empty = build_ir({})
+    assert type(empty).__name__ == "GenerateIR"
+    assert empty.models == []
+    assert empty.fields_by_model == {}
+    assert empty.approved_craft == {}
+
+    class _Rpc:
+        pass
+
+    live = schema_client_for_draft({}, client=_Rpc())
+    assert isinstance(live, LiveSchemaClient)
+    nodraft = schema_client_for_draft(None)
+    assert isinstance(nodraft, DenySchemaClient)
+    assert nodraft.reason == "no_draft"
+    assert nodraft.model_exists("res.partner") is False
+    now = time.time()
+    fresh = schema_client_for_draft(
+        {"_connection_catalog": {"available_models": ["res.partner"], "loaded_at": now}},
+        now=now,
+    )
+    assert isinstance(fresh, CatalogSchemaClient)
+    assert fresh.model_exists("res.partner") is True
+    assert fresh.model_exists("x_invent_nowhere") is False
+
+    argv = build_test_enable_argv("x_demo_app", odoo_major=19)
+    assert "--test-enable" in argv
+    assert "--stop-after-init" in argv
+    assert argv[argv.index("-u") + 1] == "x_demo_app"
+    assert argv[argv.index("--http-port") + 1] == "8070"
+    parsed = parse_odoo_test_output(
+        "FAIL: test_ingenium_smoke.test_always_false\n1 failed, 0 error(s)\n"
+    )
+    assert parsed == [
+        "FAIL: test_ingenium_smoke.test_always_false",
+        "SUMMARY: 1 failed, 0 error(s)",
+    ]
+
+    def fake_compose(
+        *_args: Any, check: bool = True, odoo_major: int = 19, job_id: Any = None
+    ) -> Any:
+        del check, odoo_major, job_id
+        return MagicMock(
+            returncode=1,
+            stdout="",
+            stderr="FAIL: test_ingenium_smoke.test_always_false\n1 failed, 0 error(s)\n",
+        )
+
+    with patch("app.sandbox._compose", side_effect=fake_compose):
+        ok, log, failures = _run_module_tests("x_failing_mod", odoo_major=19)
+    assert ok is False
+    assert failures == parsed
+    assert "FAIL: test_ingenium_smoke.test_always_false" in log
+
+    assert execute_kw_to_json2_body("fields_get", [], {}) == {}
+    assert execute_kw_to_json2_body(
+        "search_read", [[]], {"fields": ["name"], "limit": 1}
+    ) == {"domain": [], "fields": ["name"], "limit": 1}
+
+    grounding = (_REPO / "docs/plans/next-phase/cards/T1_SCHEMA_GROUNDING.md").read_text(
+        encoding="utf-8"
+    )
+    # Named slice: sed -n '27,212p' (the pin's source window).
+    named_slice = "\n".join(grounding.splitlines()[26:212])
+    assert _seeded_ids_in_grounding_slice(named_slice) == {
+        "T1-F0",
+        "T1-A1",
+        "T1-A2",
+        "T1-A3",
+        "T1-B1",
+        "T1-B2",
+        "T1-B3",
+        "T1-C1",
+        "T1-D1",
+        "T1-D2",
+        "T1-E2",
+        "T1-F1",
+        "T1-F2",
+    }
+
+
+def test_ac3_maintenance_trace_closure() -> None:
+    from app.ai_depth import apply_deterministic_depth
+    from app.ai_draft_jobs import studio_generate_offline_finish
+    from app.ai_pipeline import seed_studio_draft
+
+    fake = FakeSchemaClient(
+        models={"res.partner", "product.product", "hr.employee", "purchase.order"},
+        fields={
+            "res.partner": {"name": {"ttype": "char"}},
+            "product.product": {"name": {"ttype": "char"}},
+            "hr.employee": {"name": {"ttype": "char"}},
+            "purchase.order": {"name": {"ttype": "char"}},
+        },
+    )
+    draft = seed_studio_draft(_MAINTENANCE_BRIEF)
+    draft["_schema_client"] = fake
+    apply_deterministic_depth(draft, user_prompt=_MAINTENANCE_BRIEF)
+    out = studio_generate_offline_finish(_MAINTENANCE_BRIEF, draft, warnings=[])
+    assert [
+        model.get("model") for model in (out.get("models") or []) if isinstance(model, dict)
+    ] == [
+        "x_maintenance_tickets",
+        "x_maintenance_tickets_checklist_line",
+        "x_maintenance_tickets_parts_line",
+    ]
+    assert out.get("_generate_ir_closure") == {
+        "ok": True,
+        "violations": [],
+        "scrub_hits": [],
+        "notes": [
+            "generate_ir: purged unadmitted seed/generic models x_maintenance_tickets_line"
+        ],
+    }
+
+
+def test_ac8_merge_gate_three_admit_paths() -> None:
+    fake = FakeSchemaClient(
+        models={"res.partner", "sale.order", "x_ticket"},
+        fields={
+            "sale.order": {
+                "partner_id": {
+                    "type": "many2one",
+                    "ttype": "many2one",
+                    "relation": "res.partner",
+                    "readonly": False,
+                }
+            },
+            "x_ticket": {},
+        },
+    )
+    draft: dict[str, Any] = {
+        "_user_prompt": "priority",
+        "_schema_client": fake,
+        "models": [
+            {"model": "x_ticket", "mode": "new", "fields": []},
+            {"model": "sale.order", "mode": "inherit", "fields": []},
+        ],
+    }
+    merged = merge_proposals(
+        build_ir(draft),
+        [
+            Proposal(
+                kind="field",
+                name="x_name",
+                payload={"model": "x_ticket", "ttype": "char"},
+                source_cue=None,
+                proposer="cap",
+            ),
+            Proposal(
+                kind="field",
+                name="x_priority",
+                payload={"model": "x_ticket", "ttype": "selection"},
+                source_cue="priority",
+                proposer="cap",
+            ),
+            Proposal(
+                kind="m2o",
+                name="partner_id",
+                payload={
+                    "model": "sale.order",
+                    "ttype": "many2one",
+                    "relation": "res.partner",
+                },
+                source_cue=None,
+                proposer="cap",
+            ),
+            Proposal(
+                kind="field",
+                name="x_qqqz_marker",
+                payload={"model": "x_ticket", "ttype": "char"},
+                source_cue=None,
+                proposer="cap",
+            ),
+        ],
+        draft=draft,
+        schema_client=fake,
+    )
+    admitted = {row.get("name"): row.get("admit_reason") for row in merged.admitted}
+    assert admitted["x_name"] == "structural_default"
+    assert admitted["x_priority"] == "cue_match"
+    assert admitted["partner_id"] == "schema_verified_reuse"
+    rejected = {row.get("name"): row.get("reject_reason") for row in merged.rejected_proposals}
+    assert rejected["x_qqqz_marker"] == "no_cue_or_craft"
+
+
+def test_ac12_checklist_rows_say_what_they_add() -> None:
+    web = (_REPO / "apps/web/src/components/studio/ClarifyInterstitial.tsx").read_text(
+        encoding="utf-8"
+    )
+    rows = {
+        "company_scoping": (
+            "Adds a company field on transactional models so each record can belong to one company."
+        ),
+        "money_slots": (
+            "Adds a currency field when the draft has money amounts but no currency field yet."
+        ),
+        "purchase_link": "Adds a purchase order link field on the record.",
+        "partner_links": (
+            "Adds a contact link on the record beyond links your brief already named."
+        ),
+        "datetime_over_date": (
+            "Uses date-and-time fields instead of date-only when adding schedule-style slots."
+        ),
+        "depth_seeds": (
+            "Your brief is short, so App Studio can suggest a few supporting records. "
+            "They are extras, not things you asked for."
+        ),
+    }
+    for key, help_text in rows.items():
+        assert f'key: "{key}"' in web
+        assert help_text in web
+
+
+def test_ac15_smallest_traceback_is_kept_and_secret_redacted() -> None:
+    from app.sandbox import verbatim_sandbox_error_text
+
+    raw = (
+        "Traceback (most recent call last):\n"
+        '  File "x.py", line 1, in <module>\n'
+        '    raise ValidationError("bad field x_markup")\n'
+        "ValidationError: bad field x_markup\n"
+        "password=reg-np-t1-secret\n"
+    )
+    stored = verbatim_sandbox_error_text(message="Module install failed", log_tail=raw)
+    assert "ValidationError: bad field x_markup" in stored
+    assert "reg-np-t1-secret" not in stored
+    assert "[redacted]" in stored
+
+
+def test_ac16_invalid_model_name_message() -> None:
+    from app.ai_ollama import validate_draft_module_spec
+
+    with pytest.raises(ValueError) as exc_info:
+        validate_draft_module_spec(
+            {
+                "technical_name": "ok_mod",
+                "display_name": "Ok",
+                "models": [{"model": "book", "fields": [{"name": "x_name"}]}],
+            }
+        )
+    assert str(exc_info.value) == "models[0].model must match x_[a-z0-9_]+ (got 'book')"
+
+
+def test_ac21_uncued_date_family_is_kept() -> None:
+    """AC21: a brief with no date cue still keeps Date-family Must-do labels.
+
+    Putting the Date tuple back on ``_INVENT_LABEL_DROP_RES`` fails this test.
+    Type, Priority, Rate/Unit, Severity, Channel, and Stage still drop (origin 38008ed1).
+    """
+    from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+
+    assert scrub_uncued_invent_must_do_rows(["Due date"], prompt="tickets") == ["Due date"]
+    assert scrub_uncued_invent_must_do_rows(["Name"], prompt="tickets") == ["Name"]
+    for label in ("Date", "Start date", "End date", "Deadline"):
+        assert scrub_uncued_invent_must_do_rows([label], prompt="tickets") == [label]
+    for label in ("Type", "Priority", "Unit", "Severity", "Channel", "Stage"):
+        assert scrub_uncued_invent_must_do_rows([label], prompt="tickets") == []

@@ -321,12 +321,15 @@ def test_purge_owns_uncued_spray_removal() -> None:
     assert "x_partner_id" not in names
 
 
-def test_scrub_uncued_must_do_asserts_on_uncued_date() -> None:
-    """T1-RET negative — uncued Date Must-do must not reach assert-only scrub."""
-    from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+def test_scrub_uncued_must_do_keeps_uncued_date() -> None:
+    """Date family stays. The no-op assert sees an empty removed list."""
+    from app.ai_brief_cues import (
+        _scrub_uncued_invent_must_do_partition,
+        scrub_uncued_invent_must_do_rows,
+    )
 
-    with pytest.raises(AssertionError):
-        scrub_uncued_invent_must_do_rows(
-            ["Date"],
-            prompt="Build tickets with name only",
-        )
+    prompt = "Build tickets with name only"
+    kept, removed = _scrub_uncued_invent_must_do_partition(["Date"], prompt=prompt)
+    assert kept == ["Date"]
+    assert removed == []
+    assert scrub_uncued_invent_must_do_rows(["Date"], prompt=prompt) == ["Date"]
