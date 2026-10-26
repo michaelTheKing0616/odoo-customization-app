@@ -35,7 +35,13 @@ from typing import Any, Literal, Protocol
 from app.bot_verify.targets import is_disposable
 from app.bots.clone import neutralize as nz
 from app.bots.clone.fingerprint import Identity, IdentityError, Rpc, fingerprint, read_identity
-from app.bots.clone.rpc_copy import FORBIDDEN_PORTS, CopyReport, attach_proof, verify_copy
+from app.bots.clone.rpc_copy import (
+    FORBIDDEN_PORTS,
+    CopyReport,
+    attach_proof,
+    rpc_write,
+    verify_copy,
+)
 from app.bots.guard import RunReport, RunSpec, WriteGate, diff_hash, plan_hash
 from app.bots.risk.rules import Refusal
 from app.database_backup import _normalize_hosting, request_database_backup
@@ -395,7 +401,7 @@ def rehearse(
         neutralized=dict(target.neutralized),
     )
     try:
-        target.rpc(model, "write", [ids, values], None)
+        rpc_write(target.rpc, model, "write", [ids, values])
         rec.readback_ok = _readback(target.rpc, model, ids, values)
         rec.walkthrough_ok = walkthrough(target.rpc) is True
     except Exception:  # noqa: BLE001 - a failed rehearsal is recorded as failed

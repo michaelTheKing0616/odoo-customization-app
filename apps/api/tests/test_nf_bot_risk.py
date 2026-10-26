@@ -23,6 +23,12 @@ pytestmark = [pytest.mark.no_app_db]
 CSV = Path.home() / ".ingenium_nf/taxonomy/catalogue.csv"
 
 
+def check(d, g, proofs=None):
+    """Test verifier: proof-backed controls named in g.proven stand for proofs that a real
+    RouteA / snapshot.Verified confirmed (the snapshot suite exercises the real ones)."""
+    return cl.check(d, g, proofs or (lambda c: c in g.proven))
+
+
 class MemAuditStore:
     def __init__(self) -> None:
         self.rows: list[dict[str, Any]] = []
@@ -348,15 +354,13 @@ def full(d: cl.Decision, **kw: Any) -> ru.GateCtx:
 
 def test_ac4_caps() -> None:
     d = ok("m:res.partner.category:mass-write")
-    assert isinstance(cl.check(d, full(d)), ru.Allowed)
-    r = cl.check(d, full(d, batch_size=51))
+    assert isinstance(check(d, full(d)), ru.Allowed)
+    r = check(d, full(d, batch_size=51))
     assert r.missing == "size-cap" and "51 > 50" in r.reason
-    r = cl.check(d, full(d, run_size=501, approval=2))
+    r = check(d, full(d, run_size=501, approval=2))
     assert r.missing == "size-cap" and "without L3" in r.reason
-    assert isinstance(cl.check(d, full(d, run_size=501)), ru.Allowed)
-    assert (
-        cl.check(d, full(d, run_size=501, typed_confirmation=None)).missing == "typed-confirmation"
-    )
+    assert isinstance(check(d, full(d, run_size=501)), ru.Allowed)
+    assert check(d, full(d, run_size=501, typed_confirmation=None)).missing == "typed-confirmation"
 
 
 def test_ac4_tiers_and_override() -> None:
@@ -371,7 +375,7 @@ def test_ac4_tiers_and_override() -> None:
     p = ru.apply_override(ru.DEFAULT_POLICY, {"batch_cap": 20, "tiers": {"R1": 2}}, approval=1)
     assert isinstance(p, ru.Policy) and p.batch_cap == 20
     d = ok("m:res.partner.category:mass-write")
-    assert cl.check(d, full(d, batch_size=21, policy=p)).missing == "size-cap"
+    assert check(d, full(d, batch_size=21, policy=p)).missing == "size-cap"
     for loose in ({"batch_cap": 100}, {"run_cap": 1000}, {"tiers": {"R3": 1}}):
         r = ru.apply_override(ru.DEFAULT_POLICY, loose, approval=2)
         assert isinstance(r, ru.Refusal) and r.missing == "human-approve-L3", loose
@@ -433,13 +437,13 @@ def test_ac5_missing_control_named(
     task: str, route: str, control: str, store: MemAuditStore
 ) -> None:
     d = ok(task, route=route)
-    assert isinstance(cl.check(d, full(d)), ru.Allowed)  # complete ctx passes
+    assert isinstance(check(d, full(d)), ru.Allowed)  # complete ctx passes
     if control in _FACT:
         g = full(d, **_FACT[control])
     else:
         drop = {control} | ({"batch1-undo-proof"} if control == "copy-rehearsal" else set())
         g = full(d, proven=full(d).proven - drop)
-    r = cl.check(d, g)
+    r = check(d, g)
     assert isinstance(r, ru.Refusal) and r.missing == control, (r, control)
     assert r.rule in (f"RF-{d.cls}", "RF-ANY")
     assert store.rows[-1]["reason"].startswith(r.rule) and control in store.rows[-1]["reason"]
@@ -447,19 +451,19 @@ def test_ac5_missing_control_named(
 
 def test_rf_any_and_class_facts() -> None:
     d = ok("m:res.partner.category:mass-write")
-    assert cl.check(d, full(d, kill_switch=True)).reason == "kill switch is on"
-    assert cl.check(d, full(d, fingerprint_ok=False)).missing == "fingerprint"
-    assert cl.check(d, full(d, version=19)).missing == "fingerprint"
+    assert check(d, full(d, kill_switch=True)).reason == "kill switch is on"
+    assert check(d, full(d, fingerprint_ok=False)).missing == "fingerprint"
+    assert check(d, full(d, version=19)).missing == "fingerprint"
     p = ok("b:account.move:action_post")
-    assert "locked period" in cl.check(p, full(p, period_locked=True)).reason
-    assert cl.check(p, full(p, clone_age_h=25)).missing == "clone-rehearsal"
+    assert "locked period" in check(p, full(p, period_locked=True)).reason
+    assert check(p, full(p, clone_age_h=25)).missing == "clone-rehearsal"
     m = ok("cron:Digest Emails")
-    assert "11/min" in cl.check(m, full(m, rate_per_min=11)).reason
+    assert "11/min" in check(m, full(m, rate_per_min=11)).reason
     dl = ok("m:res.partner:delete")
-    assert "archive is possible" in cl.check(dl, full(dl, archive_possible=True)).reason
+    assert "archive is possible" in check(dl, full(dl, archive_possible=True)).reason
     s = ok("param:auth_signup.reset_password")
-    assert "no working admin" in cl.check(s, full(s, admins_after=0)).reason
-    assert "Bot's own" in cl.check(s, full(s, removes_bot_access=True)).reason
+    assert "no working admin" in check(s, full(s, admins_after=0)).reason
+    assert "Bot's own" in check(s, full(s, removes_bot_access=True)).reason
 
 
 # ---------------------------------------------------------------- AC6 versions
@@ -486,7 +490,7 @@ def test_ac6_v20_security_and_transport() -> None:
 def test_ac6_v20_fixture_stock_return_route() -> None:
     off = ok("b:stock.picking:button_validate", v=20)
     assert "not verified" in off.mitigation_refusal
-    assert cl.check(off, full(off)).missing == "counter-document"
+    assert check(off, full(off)).missing == "counter-document"
     p20 = FakePort(
         {
             ("stock.picking", None): form(
@@ -508,7 +512,7 @@ def test_ac6_v20_fixture_stock_return_route() -> None:
 def test_ac7_refusals_audited_and_fail_closed(store: MemAuditStore) -> None:
     cl.classify("nope:x", ctx())
     d = ok("m:res.partner.category:mass-write")
-    cl.check(d, full(d, batch_size=99))
+    check(d, full(d, batch_size=99))
     rows = [r for r in store.rows if r["connection_id"] == "c1"]
     assert [r["decision"] for r in rows] == ["refused", "refused"]
     assert rows[0]["reason"].startswith("RF-ANY") and rows[1]["reason"].startswith("RF-R3")
@@ -517,7 +521,7 @@ def test_ac7_refusals_audited_and_fail_closed(store: MemAuditStore) -> None:
         cl.classify("nope:x", ctx())
     tg.configure_audit_store(None)
     with pytest.raises(cl.RiskAuditUnavailable):
-        cl.check(d, full(d, batch_size=99))
+        check(d, full(d, batch_size=99))
 
 
 # ---------------------------------------------------------------- AC8 routes
@@ -542,18 +546,30 @@ def test_ac8_route_controls(cls: str, task: str) -> None:
         assert {"typed-confirmation", "stated-limit"} <= set(a.controls) and a.tier == 3
     # hosted / RPC-only is never a refusal reason by itself
     if not a.mitigation_refusal:
-        assert isinstance(cl.check(a, full(a)), ru.Allowed)
+        assert isinstance(check(a, full(a)), ru.Allowed)
 
 
 def test_ac8_reversible_on_a_accepts_batch1_undo_without_copy() -> None:
     d = ok("m:res.partner.category:mass-write", route="A")
     assert not d.strict_copy
-    assert isinstance(cl.check(d, full(d, proven=full(d).proven - {"copy-rehearsal"})), ru.Allowed)
+    pr = full(d).proven - {"copy-rehearsal"}
+    assert isinstance(check(d, full(d, proven=pr | {"full-image-proof"})), ru.Allowed)
+    # batch-1 proof without a full-image proof (side effects / unrestorable): rehearsal stays
+    assert check(d, full(d, proven=pr)).missing == "copy-rehearsal"
     s = ok("param:auth_signup.reset_password", route="A")
     assert s.strict_copy and "bot-apikey-kept" in s.controls
-    assert (
-        cl.check(s, full(s, proven=full(s).proven - {"copy-rehearsal"})).missing == "copy-rehearsal"
-    )
+    assert check(s, full(s, proven=full(s).proven - {"copy-rehearsal"})).missing == "copy-rehearsal"
+
+
+def test_name_only_proofs_refused() -> None:
+    d = ok("m:res.partner.category:mass-write", route="A")
+    b = ok("m:res.partner.category:mass-write", route="B")
+    for x in (d, b):
+        g = full(x)
+        assert g.proven & ru.PROOF_CONTROLS
+        r = cl.check(x, g)  # names only, no verifier
+        assert isinstance(r, ru.Refusal) and r.missing in ru.PROOF_CONTROLS
+        assert isinstance(cl.check(x, g, lambda c, g=g: c in g.proven), ru.Allowed)
 
 
 def test_ac8_mitigations() -> None:
@@ -568,20 +584,20 @@ def test_ac8_mitigations() -> None:
     u = ok("mod:crm:uninstall", route="A")
     assert "base.module.uninstall" in u.mitigation["preview"] and "uninstall-preview" in u.controls
     dl = ok("m:res.partner:delete", route="A")
-    assert "dependents" in cl.check(dl, full(dl, has_dependents=None)).reason
+    assert "dependents" in check(dl, full(dl, has_dependents=None)).reason
     sq = ok(_first("seq:"), route="A")
-    r = cl.check(sq, full(sq, transactions_exist=True))
+    r = check(sq, full(sq, transactions_exist=True))
     assert r.missing == "data-impact-report"
     assert isinstance(
-        cl.check(sq, full(sq, transactions_exist=True, data_impact_report=True)), ru.Allowed
+        check(sq, full(sq, transactions_exist=True, data_impact_report=True)), ru.Allowed
     )
 
 
 def test_r4_reset_draft_and_failsafe_refused() -> None:
     assert bt.method_effect("account.move", "button_draft").subkind == "reset-draft"
     d = replace(ok("b:account.move:action_post"), subkind="reset-draft")
-    assert "never reset" in cl.check(d, full(d)).reason
-    assert isinstance(cl.check(d, full(d, is_prod=False)), ru.Allowed)
+    assert "never reset" in check(d, full(d)).reason
+    assert isinstance(check(d, full(d, is_prod=False)), ru.Allowed)
     fs = cl.mitigation("R4", "fail-safe", 17, None)
     assert fs[1].startswith("no documented counter-document")
 
@@ -814,3 +830,15 @@ def test_live_return_flow(bv: Any, v: int) -> None:
     r = a("stock.picking", "button_validate", ([rid],))
     assert a("stock.picking", "read", ([rid],), {"fields": ["state"]})[0]["state"] == "done", r
     LIVE_TABLE.append(f"v{v} return flow -> return picking {rid} qty 3 done")
+
+
+def test_outside_plan_changes_need_l2_review() -> None:
+    import dataclasses
+
+    d = ok("m:res.partner.category:mass-write", route="A")
+    g = full(d, proven=full(d).proven | {"full-image-proof"})
+    side = frozenset({"street"})
+    low = dataclasses.replace(g, approval=1, outside_plan_fields=side)
+    assert check(d, low).missing == "outside-plan-review"
+    hi = dataclasses.replace(g, approval=max(2, g.approval), outside_plan_fields=side)
+    assert getattr(check(d, hi), "missing", "") != "outside-plan-review"

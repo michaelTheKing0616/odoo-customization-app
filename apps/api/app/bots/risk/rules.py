@@ -8,7 +8,7 @@ Unknown or unchecked state always refuses (fail-closed).
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -904,6 +904,7 @@ class GateCtx:
     kill_switch: bool | None = None
     fingerprint_ok: bool = False
     proven: frozenset[str] = frozenset()
+    outside_plan_fields: frozenset[str] = frozenset()  # RouteA.outside_plan (rule OPR)
     approval: int = 0
     typed_confirmation: str | None = None
     stated_limit_ack: bool = False
@@ -932,8 +933,9 @@ def _looser(p: Policy) -> bool:
     )
 
 
-def gate(decision: Any, ctx: GateCtx) -> Allowed | Refusal:
-    """Evaluate every RF rule for a classified Decision. First failing rule wins."""
+def _evaluate(decision: Any, ctx: GateCtx) -> Allowed | Refusal:
+    """Evaluate every RF rule for a classified Decision. First failing rule wins. Private:
+    callers use ``gate_with_proofs`` (proof-backed controls need a verifier, never a name)."""
     cls, sub = decision.cls, decision.subkind
     rf = f"RF-{cls}" if cls in IRRECOVERABLE else "RF-CTRL"
     # RF-ANY
@@ -989,13 +991,22 @@ def gate(decision: Any, ctx: GateCtx) -> Allowed | Refusal:
             return Refusal("RF-R8C", "transaction-existence-check", "transactions not checked")
         if ctx.transactions_exist and not (ctx.approval >= 3 and ctx.data_impact_report):
             return Refusal("RF-R8C", "data-impact-report", "transactions exist; needs L3 + report")
+    # Rule OPR (outside-plan review): an apply that changed stored fields outside the planned
+    # set (write overrides, stored computes) stays fully undoable but needs a human at L2+.
+    if ctx.outside_plan_fields and ctx.approval < 2:
+        fs = ", ".join(sorted(ctx.outside_plan_fields)[:5])
+        return Refusal(rf, "outside-plan-review", f"apply changed fields outside plan: {fs}")
     if "idempotency-key" in decision.controls and not ctx.idempotency_key:
         return Refusal(rf, "idempotency-key", "no idempotency key")
     # Proven controls
     for c in decision.controls:
         if c in POST_CONTROLS or c in POLICY_CONTROLS:
             continue
-        if c == "copy-rehearsal" and not decision.strict_copy and "batch1-undo-proof" in ctx.proven:
+        if (
+            c == "copy-rehearsal"
+            and not decision.strict_copy
+            and {"batch1-undo-proof", "full-image-proof"} <= ctx.proven
+        ):  # only a full-image proof (nothing outside the plan, all restorable) stands in
             continue
         if c not in ctx.proven:
             return Refusal(rf, c, f"control {c} not proven")
@@ -1025,3 +1036,27 @@ def gate(decision: Any, ctx: GateCtx) -> Allowed | Refusal:
     if "stated-limit" in decision.controls and not ctx.stated_limit_ack:
         return Refusal(rf, "stated-limit", "irreversibility limit not acknowledged")
     return Allowed(decision.task_id, tier)
+
+
+# Controls that need a verifiable proof object, not just a name in ``ctx.proven``.
+PROOF_CONTROLS = frozenset(
+    {"before-image", "batch1-undo-proof", "full-image-proof", "snapshot-proof"}
+)
+
+
+def gate_with_proofs(
+    decision: Any, ctx: GateCtx, check: Callable[[str], bool] | None
+) -> Allowed | Refusal:
+    """The only RF gate: a proof-backed control counts only if ``check`` (a
+    before_image.RouteA / snapshot verifier bound to this plan) confirms it. No check = none."""
+    keep = frozenset(
+        c for c in ctx.proven if c not in PROOF_CONTROLS or (check is not None and _ok(check, c))
+    )
+    return _evaluate(decision, replace(ctx, proven=keep))
+
+
+def _ok(check: Callable[[str], bool], c: str) -> bool:
+    try:
+        return check(c) is True
+    except Exception:  # noqa: BLE001 - unverifiable proof = not proven
+        return False

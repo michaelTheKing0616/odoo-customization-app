@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -93,8 +94,12 @@ def audit_refusal(cid: str | None, db_name: str, r: Refusal) -> Refusal:
     return r
 
 
-def check(decision: Decision, ctx: rules.GateCtx) -> Allowed | Refusal:
-    res = rules.gate(decision, ctx)
+def check(
+    decision: Decision, ctx: rules.GateCtx, proofs: Callable[[str], bool] | None = None
+) -> Allowed | Refusal:
+    """``proofs`` verifies proof-backed controls (before_image.RouteA.check /
+    snapshot.Verified); without it they are refused even when named in ``ctx.proven``."""
+    res = rules.gate_with_proofs(decision, ctx, proofs)
     if isinstance(res, Refusal):
         audit_refusal(ctx.connection_id, ctx.db_name, res)
     return res

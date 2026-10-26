@@ -75,3 +75,11 @@ def request_database_backup(
         "called_db_service": False,
         "message": message,
     }
+
+
+def pg_dump_argv(db: str, *, user: str = "odoo") -> list[str]:
+    """Host-side dump (Route B, direct-database targets): custom-format pg_dump to stdout.
+    Run on the database host/container by the snapshot flow; never /web/database or dump_db."""
+    if not db or db.startswith("-") or any(c in db for c in " ;|&$`'\"\\"):
+        raise ValueError("bad database name")
+    return ["pg_dump", "-U", user, "-Fc", "--no-owner", db]

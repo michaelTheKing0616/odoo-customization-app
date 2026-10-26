@@ -129,6 +129,19 @@ class JsonRpc:
         )
 
 
+WRITE_METHODS = frozenset({"write", "create", "unlink"})
+
+
+def rpc_write(
+    rpc: Rpc, model: str, method: str, args: Sequence[Any], kw: dict | None = None
+) -> Any:
+    """The single entry point for clone/copy writes under app/bots/clone. A JsonRpc target
+    routes through _guarded_execute_kw, so the verified copy proof is required."""
+    if method not in WRITE_METHODS:
+        raise RpcError(f"rpc_write: {method!r} is not a write method")
+    return rpc(model, method, list(args), kw)
+
+
 READ_METHODS = frozenset({"search", "search_read", "search_count", "read", "fields_get"})
 # Process-held key: only attach_proof() below can mint a proof the wrapper accepts.
 _PROOF_KEY = secrets.token_bytes(32)

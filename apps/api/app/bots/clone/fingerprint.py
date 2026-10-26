@@ -75,14 +75,16 @@ def get_param(rpc: Rpc, key: str) -> str | None:
 
 
 def set_param(rpc: Rpc, key: str, value: str | None) -> None:
+    from app.bots.clone.rpc_copy import rpc_write  # lazy: rpc_copy imports this module
+
     ids = rpc("ir.config_parameter", "search", [[("key", "=", key)]], None)
     if value is None:
         if ids:
-            rpc("ir.config_parameter", "unlink", [ids], None)
+            rpc_write(rpc, "ir.config_parameter", "unlink", [ids])
     elif ids:
-        rpc("ir.config_parameter", "write", [ids, {"value": value}], None)
+        rpc_write(rpc, "ir.config_parameter", "write", [ids, {"value": value}])
     else:
-        rpc("ir.config_parameter", "create", [{"key": key, "value": value}], None)
+        rpc_write(rpc, "ir.config_parameter", "create", [{"key": key, "value": value}])
 
 
 def read_identity(rpc: Rpc, url: str, db_name: str, major: int) -> Identity:

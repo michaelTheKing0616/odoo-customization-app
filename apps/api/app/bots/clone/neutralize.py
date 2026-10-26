@@ -152,9 +152,15 @@ def _trap_ids(rpc: Rpc) -> list[int]:
     return _ids(rpc, "ir.mail_server", dom)
 
 
+def _w(rpc: Rpc, model: str, method: str, args: list) -> Any:
+    from app.bots.clone.rpc_copy import rpc_write  # lazy: rpc_copy imports this module
+
+    return rpc_write(rpc, model, method, args)
+
+
 def _off(rpc: Rpc, model: str, dom: list, vals: dict) -> None:
     if ids := _ids(rpc, model, dom):
-        rpc(model, "write", [ids, vals], None)
+        _w(rpc, model, "write", [ids, vals])
 
 
 def _apply(rpc: Rpc, r: Rule) -> None:
@@ -162,10 +168,10 @@ def _apply(rpc: Rpc, r: Rule) -> None:
         return
     if r.value is UNLINK:
         if ids := _ids(rpc, r.model, []):
-            rpc(r.model, "unlink", [ids], None)
+            _w(rpc, r.model, "unlink", [ids])
         return
     if bad := [x["id"] for x in _rows(rpc, r) if not r.ok(x.get(r.field))]:
-        rpc(r.model, "write", [bad, {r.field: r.value}], None)
+        _w(rpc, r.model, "write", [bad, {r.field: r.value}])
 
 
 def neutralize(rpc: Rpc) -> None:
@@ -199,8 +205,8 @@ def _mail(rpc: Rpc) -> None:
             "sequence": 0,
             "active": True,
         }
-        trap = [rpc("ir.mail_server", "create", [vals], None)]
-    rpc("ir.mail_server", "write", [trap, {"active": True, "sequence": 0}], None)
+        trap = [_w(rpc, "ir.mail_server", "create", [vals])]
+    _w(rpc, "ir.mail_server", "write", [trap, {"active": True, "sequence": 0}])
     if _has(rpc, "mail.template"):
         dom = [("mail_server_id", "!=", False), ("mail_server_id", "not in", trap)]
         _off(rpc, "mail.template", dom, {"mail_server_id": False})

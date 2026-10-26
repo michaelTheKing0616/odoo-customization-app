@@ -209,7 +209,7 @@ def test_p27_raw_policy_bypass():
         run_size=10**6,
         policy=ru.Policy(batch_cap=10**9, run_cap=10**9, tiers={"R4": 1}),
     )
-    assert isinstance(ru.gate(d, g), Refusal)
+    assert isinstance(ru.gate_with_proofs(d, g, None), Refusal)
 
 
 # ---------------------------------------------------------------- floor regressions
@@ -484,7 +484,9 @@ def test_chart_settings_irreversible_and_refused_on_rpc_only() -> None:
     for t in ("s:account_fiscal_country_id",):
         d = C(t)
         assert ru.a_kind(d.cls, d.subkind) == "irr" and ru.hard_floor(d.cls, d.subkind, "A") == 3
-        g = ru.gate(d, ru.GateCtx(route="A", version=17, kill_switch=False, fingerprint_ok=True))
+        g = ru.gate_with_proofs(
+            d, ru.GateCtx(route="A", version=17, kill_switch=False, fingerprint_ok=True), None
+        )
         assert isinstance(g, Refusal) and g.missing == "duplicate-db-route"
 
 

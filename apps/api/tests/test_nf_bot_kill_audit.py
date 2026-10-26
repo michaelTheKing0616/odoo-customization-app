@@ -3,6 +3,7 @@ Own throwaway ingenium_wt_* DB on test PG, alembic-built."""
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -582,6 +583,11 @@ def test_rpc_copy_execute_kw_pinned_to_guarded_wrapper() -> None:
         t = ast.parse(p.read_text())
         mods = [m.module or "" for m in ast.walk(t) if isinstance(m, ast.ImportFrom)]
         mods += [a.name for m in ast.walk(t) if isinstance(m, ast.Import) for a in m.names]
+        if p in (bots / "clone" / "fingerprint.py", bots / "clone" / "neutralize.py"):
+            imp = [m for m in ast.walk(t) if isinstance(m, ast.ImportFrom)]
+            imp = [m for m in imp if "rpc_copy" in (m.module or "")]
+            assert imp and all([a.name for a in m.names] == ["rpc_write"] for m in imp), p
+            mods = [m for m in mods if "rpc_copy" not in m]
         assert not [m for m in mods if "rpc_copy" in m], p
         used = {getattr(n, "attr", getattr(n, "id", "")) for n in ast.walk(t)}
         assert not used & {WRAPPER, "JsonRpc", "_PROOF_KEY", "_mac", "_require_proof"}, p
@@ -589,16 +595,88 @@ def test_rpc_copy_execute_kw_pinned_to_guarded_wrapper() -> None:
             assert "execute_kw" not in used and "execute_kw" not in p.read_text(), p
 
 
+BEFORE_IMAGE = API / "app" / "bots" / "before_image.py"
+_RPC_WRITES = frozenset({"write", "create", "unlink"})
+
+
+def rpc_write_calls(src: str) -> list[int]:
+    """Lines of Odoo RPC writes: execute_kw, or a call passing write/create/unlink as the method
+    (2nd positional or method=), i.e. rpc(model, "write", ...). Path.unlink() is not RPC."""
+    out = []
+    for n in ast.walk(ast.parse(src)):
+        if not isinstance(n, ast.Call):
+            continue
+        attr = n.func.attr if isinstance(n.func, ast.Attribute) else ""
+        args = [*n.args[1:2], *(k.value for k in n.keywords if k.arg == "method")]
+        if attr == "execute_kw" or any(
+            isinstance(a, ast.Constant) and a.value in _RPC_WRITES for a in args
+        ):
+            out.append(n.lineno)
+    return out
+
+
 def test_no_raw_rpc_writes_in_bots() -> None:
     bots = API / "app" / "bots"
-    hits = [
-        p
-        for p in bots.rglob("*.py")
-        if p.name != "guard.py"
-        and p != RPC_COPY  # pinned below: one guarded execute_kw wrapper
-        and re.search(r"execute_kw|(?<!os)\.write\(|\.create\(|\.unlink\(", p.read_text())
-    ]
+    exempt = {bots / "guard.py", RPC_COPY, BEFORE_IMAGE}  # each pinned separately
+    hits = [p for p in bots.rglob("*.py") if p not in exempt and rpc_write_calls(p.read_text())]
     assert hits == []
+
+
+def test_rpc_write_detector_regression(tmp_path) -> None:
+    assert rpc_write_calls("from pathlib import Path\nPath('x').unlink(missing_ok=True)") == []
+    assert rpc_write_calls("open('f','w').write('x')") == []
+    assert rpc_write_calls("rpc('res.partner', 'unlink', [[1]])") == [1]
+    assert rpc_write_calls("x.execute_kw(db, 1, 'pw', 'm', 'read', [])") == [1]
+    assert rpc_write_calls("self.write(self.model, 'write', [[1], {}], None)") == [1]
+    assert rpc_write_calls("c(model=m, method='create', args=[{}])") == [1]
+    bad = API / "app" / "bots" / "zz_regression_probe.py"
+    try:
+        bad.write_text("def f(rpc):\n    rpc('res.partner', 'unlink', [[1]])\n")
+        with pytest.raises(AssertionError):
+            test_no_raw_rpc_writes_in_bots()
+    finally:
+        bad.unlink()
+    assert rpc_write_calls((API / "app" / "bots" / "snapshot.py").read_text()) == []
+
+
+def test_before_image_writes_pinned_behind_gate_and_kill_switch() -> None:
+    tree = ast.parse(BEFORE_IMAGE.read_text())
+    fns = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    owner = {}
+    for name, fn in fns.items():
+        for line in rpc_write_calls(ast.unparse(fn)):
+            owner.setdefault(name, []).append(line)
+    assert set(owner) == {"_write_one"} and len(owner["_write_one"]) == 1
+    body = [b for b in fns["_write_one"].body if not isinstance(b, ast.Expr)]
+    first = body[0]
+    assert isinstance(first, ast.If) and "self._halted(" in ast.unparse(first.test)
+
+    def callers(target: str) -> dict[str, list[ast.AST]]:
+        out: dict[str, list[ast.AST]] = {}
+        for name, fn in fns.items():
+            for n in ast.walk(fn):
+                if isinstance(n, ast.Attribute) and n.attr == target and name != target:
+                    out.setdefault(name, []).append(n)
+        return out
+
+    w = callers("_write_one")
+    assert set(w) == {"_prove", "_undo_result"}
+    for name in w:  # per record: every call sits inside a for loop
+        loops = [n for n in ast.walk(fns[name]) if isinstance(n, ast.For)]
+        inside = {id(x) for lp in loops for x in ast.walk(lp)}
+        assert all(id(c) in inside for c in w[name])
+    assert set(callers("_prove")) == {"readback"}
+    assert set(callers("_undo_result")) == {"undo", "_prove"}
+    hooks = ast.unparse(fns["hooks"])
+    assert "self.readback" in hooks and "self.undo" in hooks
+    bots = API / "app" / "bots"
+    for p in (API / "app").rglob("*.py"):
+        if p in (BEFORE_IMAGE, bots / "guard.py"):
+            continue
+        used = {n.attr for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.Attribute)}
+        assert not used & {"_write_one", "_prove", "_undo_result"}, p
+        if bots in p.parents:  # hooks reach guard only via hooks(); routers have unrelated .undo
+            assert not used & {"readback", "undo"}, p
 
 
 # --------------------------------------------------------------------------- AC7
