@@ -100,7 +100,7 @@ def test_ac1_xmlid_replace_and_file_kinds(tmp_path):
         Edit("README.md", "add_file", "# Demo\n"),
     )
     assert cs.base["README.md"] is None and '<field name="code"/>' in cs.diff
-    out = oc.apply_change_set(raw(), cs)
+    out = oc.apply_change_set(raw(), cs, approved_id=cs.id)
     assert out["README.md"] == b"# Demo\n" and b'name="code"' in out["views/views.xml"]
 
 
@@ -190,8 +190,8 @@ def test_ac3_symlink_in_tree_refused(tmp_path):
 
 def test_ac4_idempotent(tmp_path):
     cs = build(tmp_path, Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"))
-    once = oc.apply_change_set(raw(), cs)
-    assert oc.apply_change_set(once, cs) == once
+    once = oc.apply_change_set(raw(), cs, approved_id=cs.id)
+    assert oc.apply_change_set(once, cs, approved_id=cs.id) == once
 
 
 def test_ac5_round_trip_byte_exact(tmp_path):
@@ -212,9 +212,11 @@ def test_ac5_round_trip_byte_exact(tmp_path):
         owned_names=OWNED,
     )
     base = raw(files)
-    fwd = oc.apply_change_set(base, cs)
-    assert oc.apply_change_set(fwd, cs, reverse=True) == base
-    assert oc.apply_change_set(base, cs, reverse=True) == base  # reverse idempotent
+    fwd = oc.apply_change_set(base, cs, approved_id=cs.id)
+    assert oc.apply_change_set(fwd, cs, approved_id=cs.id, reverse=True) == base
+    assert (
+        oc.apply_change_set(base, cs, approved_id=cs.id, reverse=True) == base
+    )  # reverse idempotent
     assert "\\ No newline at end of file" in cs.diff
 
 
@@ -226,8 +228,9 @@ def test_ac5_delete_round_trip(tmp_path):
         version=17,
         owned_names=OWNED,
     )
-    fwd = oc.apply_change_set(raw(files), cs)
-    assert "README.md" not in fwd and oc.apply_change_set(fwd, cs, reverse=True) == raw(files)
+    fwd = oc.apply_change_set(raw(files), cs, approved_id=cs.id)
+    back = oc.apply_change_set(fwd, cs, approved_id=cs.id, reverse=True)
+    assert "README.md" not in fwd and back == raw(files)
 
 
 def test_ac6_stale_base_refused(tmp_path):
@@ -235,11 +238,17 @@ def test_ac6_stale_base_refused(tmp_path):
     drift = raw()
     drift["models/demo.py"] += b"# drift\n"
     with pytest.raises(ChangeError) as e:
-        oc.apply_change_set(drift, cs)
+        oc.apply_change_set(drift, cs, approved_id=cs.id)
     assert e.value.code == "stale-base"
+    approved = cs.id
     cs.patches["models/demo.py"] = cs.patches["models/demo.py"].replace("upper", "lower")
+    with pytest.raises(ChangeError) as e:
+        oc.apply_change_set(raw(), cs, approved_id=approved)  # edited after approval
+    assert e.value.code == "not-approved"
     with pytest.raises(ChangeError):
-        oc.apply_change_set(raw(), cs)  # tampered patch cannot reach the pinned hash
+        oc.apply_change_set(
+            raw(), cs, approved_id=cs.id
+        )  # tampered patch cannot reach the pinned hash
 
 
 def test_ac7_bounds(tmp_path):
@@ -307,7 +316,7 @@ def test_ac9_request_text_never_interpolated(tmp_path):
         tmp_path, Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"), reason=reason
     )
     assert "__import__" not in cs.diff and "__import__" not in cs.inverse_diff
-    out = oc.apply_change_set(raw(), cs)
+    out = oc.apply_change_set(raw(), cs, approved_id=cs.id)
     assert all(b"__import__" not in b for b in out.values())
 
 
@@ -317,3 +326,108 @@ def test_ac10_pure_read_only_and_t3_unchanged(tmp_path):
     build(tmp_path, Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"))
     assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
     assert tiers.tier_ready(tiers.T3) is False
+
+
+# ---------------------------------------------------------------- review round 2
+
+
+def _label_cs(tmp_path):
+    return build(tmp_path, Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"))
+
+
+def test_r2_c1_module_dir_spoof_refused(tmp_path):
+    files = dict(FILES, **{".module_dir": MOD})
+    with pytest.raises(ChangeError) as e:
+        oc.build_change_set(
+            tree(tmp_path, files, name="other"),
+            ChangeRequest(MOD, (Edit("README.md", "add_file", "x\n"),)),
+            version=17,
+            owned_names=OWNED,
+        )
+    assert e.value.code == "source-unsafe"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for p, b in files.items():
+            z.writestr(f"other/{p}", b)
+    with pytest.raises(ChangeError) as e:
+        oc.build_change_set(
+            buf.getvalue(),
+            ChangeRequest(MOD, (Edit("README.md", "add_file", "x\n"),)),
+            version=17,
+            owned_names=OWNED,
+        )
+    assert e.value.code == "source-unsafe"
+
+
+def test_r2_c2_apply_requires_matching_approved_id(tmp_path):
+    cs = _label_cs(tmp_path)
+    for bad in ("", "0" * 64, None):
+        with pytest.raises(ChangeError) as e:
+            oc.apply_change_set(raw(), cs, approved_id=bad)
+        assert e.value.code == "not-approved"
+    approved = cs.id
+    cs.inverse["models/demo.py"] = cs.inverse["models/demo.py"].replace("upper", "title")
+    with pytest.raises(ChangeError) as e:
+        oc.apply_change_set(raw(), cs, approved_id=approved)  # inverse is hashed too
+    assert e.value.code == "not-approved"
+    with pytest.raises(TypeError):
+        oc.apply_change_set(raw(), cs)  # approved_id is mandatory
+
+
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        ("__init__.py", "import os\nos.system('id')\nfrom . import models\n"),
+        ("__init__.py", "x = getattr(__builtins__, 'ev' + 'al')\nfrom . import models\n"),
+        ("__init__.py", "import importlib\nimportlib.import_module('os')\nfrom . import models\n"),
+        ("__init__.py", "__import__('subprocess')\nfrom . import models\n"),
+        ("__manifest__.py", MANIFEST.replace("'security/ir.model.access.csv', ", "")),
+    ],
+)
+def test_r2_c3_gate_bypasses_blocked(tmp_path, path, body):
+    with pytest.raises(ChangeError) as e:
+        build(tmp_path, Edit(path, "replace_file", body))
+    assert e.value.code == "audit-regression"
+
+
+def test_r2_c4_non_utf8_is_encoding_error(tmp_path):
+    root = tree(tmp_path)
+    (root / "models/demo.py").write_bytes(MODELS.encode() + b"# \xff\xfe\n")
+    with pytest.raises(ChangeError) as e:
+        oc.build_change_set(
+            root,
+            ChangeRequest(
+                MOD, (Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"),)
+            ),
+            version=17,
+            owned_names=OWNED,
+        )
+    assert e.value.code == "encoding"
+    with pytest.raises(ChangeError) as e:
+        oc.make_patch("x.txt", b"\xff", b"a")
+    assert e.value.code == "encoding"
+
+
+@pytest.mark.parametrize("sep", ["\x0c", "\x1c", "\u2028", "\x85", "\r"])
+def test_r2_c5_split_on_newline_only(sep):
+    old = f"a{sep}b\nc\n".encode()
+    new = f"a{sep}b\nd\n".encode()
+    p = oc.make_patch("f.txt", old, new)
+    assert (
+        oc.apply_patch(old, p) == new
+        and oc.apply_patch(new, oc.make_patch("f.txt", new, old)) == old
+    )
+
+
+def test_r2_c6_bom_python_accepted(tmp_path):
+    body = "\ufeff" + MODELS.replace('return self.name or ""', 'return (self.name or "").upper()')
+    cs = build(tmp_path, Edit("models/demo.py", "replace_file", body))
+    assert cs.after["models/demo.py"] == oc.sha(body.encode("utf-8"))
+
+
+def test_r2_c7_patch_keys_must_match(tmp_path):
+    cs = _label_cs(tmp_path)
+    cs.patches["README.md"] = oc.make_patch("README.md", None, b"x\n")
+    with pytest.raises(ChangeError) as e:
+        oc.apply_change_set(raw(), cs, approved_id=cs.id)
+    assert e.value.code == "patch-invalid"

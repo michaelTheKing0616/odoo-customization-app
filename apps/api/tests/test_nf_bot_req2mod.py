@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import dataclasses
 import io
 import zipfile
 from pathlib import Path
@@ -410,7 +411,10 @@ def test_many2many_link_table_name_capped():
     )
     q["roles"][0]["access"][long_key] = "r"
     r = mk(req=q, tech="x_assets")
-    assert not r.ok and any("63" in e for e in r.errors)
+    assert r.ok, r.errors  # explicit per-field tables, hash-shortened, never over 63
+    tables = [f.relation_table for m in r.spec.models for f in m.fields if f.ttype == "many2many"]
+    assert len(tables) == 2 and len(set(tables)) == 2
+    assert all(len(t) <= rm.PG_NAME_MAX and t.startswith("x_") for t in tables)
     q["entities"][1]["key"] = "tag"
     q["entities"][1]["fields"][-1]["relation"] = "x_tag"
     q["entities"][0]["fields"][-1]["relation"] = "x_tag"
@@ -467,3 +471,56 @@ def test_hostile_free_text_renders_parseable(v, slot, p):
                 ast.parse(body)
             elif n.endswith(".xml"):
                 ET.fromstring(body)
+
+
+# ---------------------------------------------------------------- review round 2
+
+
+@pytest.mark.parametrize("bad", ["a\\b", "trail\\", "\\u0041", "x\\n"])
+def test_r2_r1_backslash_label_refused(bad):
+    q = copy.deepcopy(ASSETS)
+    q["name"] = bad
+    assert not mk(req=q, tech="x_assets").ok
+    q = copy.deepcopy(ASSETS)
+    q["entities"][0]["label"] = bad
+    assert not mk(req=q, tech="x_assets").ok
+
+
+@pytest.mark.parametrize("name", ["a\\b", 'q"q', "x\ny", "\\", "Ünï ✓"])
+def test_r2_r1_manifest_values_are_safe_literals(name):
+    r = mk(tech="x_assets")
+    spec = dataclasses.replace(r.spec, display_name=name, author=name)
+    raw = build_module_zip(spec)
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        man = next(n for n in z.namelist() if n.endswith("__manifest__.py"))
+        d = ast.literal_eval(z.read(man).decode())
+    assert d["name"] == name and d["author"] == name
+
+
+def test_r2_r2_two_many2many_to_same_target_get_own_tables():
+    q = copy.deepcopy(ASSETS)
+    q["entities"][0]["fields"] += [
+        {"key": "tags_a", "type": "many2many", "relation": "x_tag"},
+        {"key": "tags_b", "type": "many2many", "relation": "x_tag"},
+    ]
+    q["entities"].append({"key": "tag", "label": "Tag", "fields": [{"key": "c", "type": "char"}]})
+    q["roles"][0]["access"] = {"asset": "rwcd", "tag": "r"}
+    r = mk(req=q, tech="x_assets")
+    assert r.ok, r.errors
+    m2m = [f for m in r.spec.models for f in m.fields if f.ttype == "many2many"]
+    tables = [f.relation_table for f in m2m]
+    assert len(tables) == len(set(tables)) >= 2 and all(tables)
+    src = "".join(
+        zipfile.ZipFile(io.BytesIO(build_module_zip(r.spec))).read(n).decode()
+        for n in zipfile.ZipFile(io.BytesIO(build_module_zip(r.spec))).namelist()
+        if n.endswith(".py")
+    )
+    for t in tables:
+        assert f"relation={t!r}, column1='x_src_id', column2='x_dst_id'" in src
+
+
+def test_r2_r2_table_name_hash_shortened_stable():
+    long = rm.m2m_table("x_" + "a" * 60, "x_" + "b" * 38)
+    assert len(long) <= rm.PG_NAME_MAX and long == rm.m2m_table("x_" + "a" * 60, "x_" + "b" * 38)
+    assert long != rm.m2m_table("x_" + "a" * 60, "x_" + "b" * 37 + "c")
+    assert rm.m2m_table("x_asset", "x_tags") == "x_x_asset_x_tags_rel"

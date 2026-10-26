@@ -85,6 +85,7 @@ class ChangeSet:
             "base": self.base,
             "after": self.after,
             "patches": self.patches,
+            "inverse": self.inverse,
         }
         raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(raw.encode()).hexdigest()
@@ -111,8 +112,20 @@ def sha(b: bytes | None) -> str | None:
 # ---------------------------------------------------------------- unified diff (byte exact)
 
 
+def _text(b: bytes) -> str:
+    try:
+        return b.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ChangeError("encoding", "file is not UTF-8") from e
+
+
+def _split(s: str) -> list[str]:
+    """Split after '\n' only; '\r', form feed and U+2028 stay inside their line."""
+    return [x for x in re.split(r"(?<=\n)", s) if x]
+
+
 def _lines(b: bytes) -> list[str]:
-    return b.decode("utf-8").splitlines(keepends=True)
+    return _split(_text(b))
 
 
 def _emit(prefix: str, line: str) -> str:
@@ -139,7 +152,7 @@ def make_patch(path: str, old: bytes | None, new: bytes | None) -> str:
 
 
 def apply_patch(old: bytes | None, patch: str) -> bytes | None:
-    rows = patch.splitlines(keepends=True)
+    rows = _split(patch)
     if len(rows) < 3 or not rows[0].startswith("--- ") or not rows[2].startswith("@@ "):
         raise ChangeError("patch-invalid", "malformed patch")
     a, b = [], []
@@ -217,7 +230,7 @@ def _xml_span(src: str, target: str) -> tuple[int, int]:
 def _check_syntax(path: str, body: bytes) -> None:
     try:
         if path.endswith(".py"):
-            ast.parse(body.decode("utf-8"))
+            ast.parse(body)
         elif path.endswith(".xml"):
             ca._parse_xml(body)
     except Exception as e:  # noqa: BLE001 - fail closed
@@ -238,12 +251,14 @@ def _apply_edit(cur: bytes | None, e: Edit) -> bytes | None:
         if e.path == "__manifest__.py":
             raise ChangeError("protected", "manifest cannot be deleted")
         return None
-    src = cur.decode("utf-8")
+    src = _text(cur)
     if e.kind == "replace_symbol":
         if not e.path.endswith(".py") or not _SYM.fullmatch(e.target):
             raise ChangeError("target-invalid", e.target)
+        if re.search(r"\r(?!\n)", src):
+            raise ChangeError("encoding", "bare carriage return; line numbers would be ambiguous")
         s, end = _py_span(src, e.target)
-        lines = src.splitlines(keepends=True)
+        lines = _split(src)
         repl = e.content if e.content.endswith("\n") else e.content + "\n"
         return "".join(lines[: s - 1] + [repl] + lines[end:]).encode()
     if not e.path.endswith(".xml") or not _ID.fullmatch(e.target):
@@ -310,10 +325,10 @@ def build_change_set(
     if not isinstance(req, ChangeRequest) or req.module not in owned:
         raise ChangeError("foreign", "module is not in the owned registry; audit only")
     try:
-        files = ca.load_source(src)
+        files, top = ca.load_tree(src)
     except ca.SourceError as e:
         raise ChangeError("source-unsafe", str(e)) from e
-    top = files.pop(".module_dir", b"").decode() or (src.name if isinstance(src, Path) else "")
+    top = top or (src.name if isinstance(src, Path) else "")
     if top != req.module:
         raise ChangeError("outside-module", "source tree is not the named module")
     _validate(req, files)
@@ -324,7 +339,9 @@ def build_change_set(
     for e in req.edits:
         try:
             work[e.path] = _apply_edit(work.get(e.path), e)
-        except (UnicodeDecodeError, SyntaxError) as x:
+        except UnicodeDecodeError as x:
+            raise ChangeError("encoding", f"{e.path} is not UTF-8") from x
+        except SyntaxError as x:
             raise ChangeError("syntax-invalid", f"{e.path} unreadable") from x
     touched = sorted({e.path for e in req.edits})
     changed = [p for p in touched if work.get(p) != files.get(p)]
@@ -369,9 +386,18 @@ def build_change_set(
 
 
 def apply_change_set(
-    files: Mapping[str, bytes], cs: ChangeSet, *, reverse: bool = False
+    files: Mapping[str, bytes], cs: ChangeSet, *, approved_id: str, reverse: bool = False
 ) -> dict[str, bytes]:
-    """Pure apply for the spine: base -> after; already-after is a no-op; anything else refused."""
+    """Pure apply for the spine: base -> after; already-after is a no-op; anything else refused.
+
+    The id is recomputed from content here, so a set edited after approval never applies."""
+    if not isinstance(cs, ChangeSet) or not isinstance(approved_id, str) or not approved_id:
+        raise ChangeError("not-approved", "an approved change set id is required")
+    if cs.id != approved_id:
+        raise ChangeError("not-approved", "change set differs from the approved one")
+    keys = set(cs.base)
+    if not (keys == set(cs.after) == set(cs.patches) == set(cs.inverse)) or not keys:
+        raise ChangeError("patch-invalid", "patch files differ from base/after files")
     want_from, want_to = (cs.after, cs.base) if reverse else (cs.base, cs.after)
     patches = cs.inverse if reverse else cs.patches
     cur = {p: sha(files.get(p)) for p in want_from}

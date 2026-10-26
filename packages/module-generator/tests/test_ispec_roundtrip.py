@@ -103,6 +103,7 @@ def _saturated() -> ModuleSpec:
         readonly=True,
         relation="x_rental",
         relation_field="x_line_ids",
+        relation_table="x_sat_link_rel",
         selection="[('a', 'A'), ('b', 'B')]",
         help="line1\n```\n## models 0\n",
         related="x_vehicle_id.x_name",

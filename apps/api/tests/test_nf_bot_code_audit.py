@@ -19,7 +19,8 @@ from app.bots import req2mod as rm
 from app.bots import tiers as tt
 
 MANIFEST = (
-    "{'name': 'Demo', 'version': '17.0.1.0.0', 'depends': ['base', 'mail'], 'license': 'LGPL-3'}"
+    "{'name': 'Demo', 'version': '17.0.1.0.0', 'depends': ['base', 'mail'], 'license': 'LGPL-3',"
+    " 'data': ['security/ir.model.access.csv', 'views/views.xml']}"
 )
 MODELS = """
 from odoo import fields, models
@@ -298,3 +299,178 @@ def test_req2mod_output_has_no_high_findings(v):
     a = ca.audit(build_module_zip(r.spec, odoo_major=v), version=v, owned_names={"x_requests_app"})
     assert a.ok and a.owned, a.error
     assert [f for f in a.findings if f.severity == "high"] == []
+
+
+# ---------------------------------------------------------------- review round 2
+
+
+def _tree(**over):
+    return {k: v for k, v in dict(TREE, **over).items() if v is not None}
+
+
+def test_r2_b1_module_dir_never_in_files_and_refused(tmp_path):
+    files, top = ca.load_tree(zbytes(TREE))
+    assert top == "demo" and ".module_dir" not in files
+    for z in (
+        zbytes(_tree(**{".module_dir": "base"}), root="evil"),
+        zbytes({".module_dir": "x"}, root=""),
+    ):
+        r = ca.audit(z, version=17)
+        assert not r.ok and ".module_dir" in r.error
+    root = tmp_path / "evil"
+    root.mkdir()
+    (root / ".module_dir").write_text("base")
+    assert not ca.audit(root, version=17).ok
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "import os\nos.system('id')\n",
+        "import subprocess\nsubprocess.run(['id'])\n",
+        "x = getattr(__builtins__, 'ev' + 'al')\n",
+        "import builtins\nbuiltins.eval('1')\n",
+        "import importlib\nimportlib.import_module('os')\n",
+        "__import__('os')\n",
+        "import os\nos.popen('id')\n",
+    ],
+)
+def test_r2_b2_dangerous_python_calls(code):
+    r = ca.audit(zbytes(_tree(**{"__init__.py": "from . import models\n" + code})), version=17)
+    assert any(f.code == "dangerous-call" and f.severity == "high" for f in r.findings), code
+
+
+def test_r2_b2_open_and_imports_flagged():
+    r = ca.audit(
+        zbytes(_tree(**{"__init__.py": "import pickle\nopen('/etc/passwd')\n"})), version=17
+    )
+    assert {"file-access", "dangerous-import"} <= codes(r)
+
+
+def test_r2_b2_access_file_not_in_manifest_data():
+    man = MANIFEST.replace("'security/ir.model.access.csv', ", "")
+    r = ca.audit(zbytes(_tree(**{"__manifest__.py": man})), version=17)
+    miss = [f.message for f in r.findings if f.code == "access-missing"]
+    assert any("x.thing" in m for m in miss)
+
+
+def test_r2_b3_inherits_and_nested_and_auto_xmlid():
+    model = (
+        "from odoo import fields, models\n\n\nclass Doc(models.Model):\n"
+        "    _name = 'x.doc'\n    _description = 'd'\n"
+        "    _inherits = {'ir.attachment': 'ir_attachment_id'}\n"
+        "    ir_attachment_id = fields.Many2one('ir.attachment', required=True)\n"
+        "    line_ids = fields.One2many('x.thing', 'id')\n"
+    )
+    view = (
+        "<odoo><record id='v_doc' model='ir.ui.view'><field name='model'>x.doc</field>"
+        "<field name='arch' type='xml'><form><field name='mimetype'/>"
+        "<field name='line_ids'><tree><field name='only_on_comodel'/></tree></field>"
+        "</form></field></record>"
+        "<record id='a' model='ir.actions.act_window'><field name='res_model'>x.doc</field>"
+        "<field name='binding_model_id' ref='model_x_doc'/></record></odoo>"
+    )
+    r = ca.audit(zbytes(_tree(**{"models/doc.py": model, "views/doc.xml": view})), version=17)
+    bad = [f for f in r.findings if f.severity == "high" and f.file == "views/doc.xml"]
+    assert bad == [], bad
+
+
+def test_r2_b3_unresolvable_parent_downgraded():
+    model = (
+        "from odoo import models\n\n\nclass D(models.Model):\n"
+        "    _name = 'x.d'\n    _inherit = ['zz.unknown.mixin']\n"
+    )
+    view = (
+        "<odoo><record id='v_d' model='ir.ui.view'><field name='model'>x.d</field>"
+        "<field name='arch' type='xml'><form><field name='nope'/></form></field></record></odoo>"
+    )
+    r = ca.audit(zbytes(_tree(**{"models/d.py": model, "views/d.xml": view})), version=17)
+    fu = [f for f in r.findings if f.code == "field-undefined" and "x.d" in f.message]
+    assert fu and all(f.severity == "low" for f in fu)
+
+
+def test_r2_b3_abstract_no_access_needed():
+    model = (
+        "from odoo import models\n\n\nclass R(models.AbstractModel):\n"
+        "    _name = 'report.x.r'\n    _description = 'r'\n"
+    )
+    r = ca.audit(zbytes(_tree(**{"models/r.py": model})), version=17)
+    assert not any("report.x.r" in f.message for f in r.findings if f.code == "access-missing")
+
+
+def test_r2_b3_missing_index_capped_and_deduped():
+    fields_ = "".join(f"    f{i} = fields.Char()\n" for i in range(40))
+    search = "".join(
+        f"        self.search([('f{i}', '=', 1)])\n        self.search([('f{i}', '=', 2)])\n"
+        for i in range(40)
+    )
+    model = (
+        "from odoo import fields, models\n\n\nclass B(models.Model):\n    _name = 'x.big'\n"
+        f"    _description = 'b'\n{fields_}\n    def go(self):\n{search}"
+    )
+    r = ca.audit(zbytes(_tree(**{"models/big.py": model})), version=17)
+    idx = [(f.message) for f in r.findings if f.code == "missing-index"]
+    assert 0 < len(idx) <= ca.MAX_INDEX_FINDINGS and len(idx) == len(set(idx))
+
+
+@pytest.mark.parametrize(
+    "q,high",
+    [
+        ("self._cr.execute('SELECT 1 FROM %s' % self._table)", False),
+        ("self._cr.execute('SELECT * FROM t WHERE id = %s', (x,))", False),
+        ("self._cr.execute(f'SELECT {self._table}.id FROM {self._table}')", False),
+        ("self._cr.execute('SELECT ' + col + ' FROM t')", True),
+        ("self._cr.execute(f'SELECT * FROM t WHERE n = {name}')", True),
+        ("self._cr.execute('SELECT %s FROM t' % col, (x,))", True),
+        ("self._cr.execute('SELECT {} FROM t'.format(col))", True),
+    ],
+)
+def test_r2_b3_sql_injection_only_variable_built(q, high):
+    model = (
+        "from odoo import models\n\n\nclass S(models.Model):\n    _inherit = 'res.partner'\n\n"
+        f"    def go(self, x, col, name):\n        {q}\n"
+    )
+    r = ca.audit(zbytes(_tree(**{"models/s.py": model})), version=17)
+    got = any(
+        f.code == "sql-injection" and f.severity == "high" and f.file == "models/s.py"
+        for f in r.findings
+    )
+    assert got is high
+
+
+def test_r2_b3_tests_dir_capped_low_and_static_skipped():
+    files = _tree(
+        **{
+            "tests/test_x.py": "def t(cr, c):\n    cr.execute('SELECT ' + c)\n",
+            "static/src/big.js": "x" * 3_000_000,
+            "static/src/x.xml": "<t t-name='a'><div attrs=\"{'a': 1}\"/></t>",
+            "i18n/fr.po": "y" * 3_000_000,
+        }
+    )
+    r = ca.audit(zbytes(files), version=17)
+    assert r.ok, r.error
+    assert all(f.severity == "low" for f in r.findings if f.file.startswith("tests/"))
+    assert not any(f.file.startswith(("static/", "i18n/")) for f in r.findings)
+
+
+@pytest.mark.parametrize("v", [17.0, "17", True, 17.5, None])
+def test_r2_b4_version_exact_int(v):
+    r = ca.audit(zbytes(TREE), version=v)
+    assert not r.ok and "version" in r.error
+
+
+def test_r2_b5_memory_and_recursion_per_file(monkeypatch):
+    real = ca._audit_py
+
+    def boom(c, path, body):
+        if path == "models/thing.py":
+            raise MemoryError
+        if path == "__init__.py":
+            raise RecursionError
+        return real(c, path, body)
+
+    monkeypatch.setattr(ca, "_audit_py", boom)
+    r = ca.audit(zbytes(TREE), version=17)
+    assert r.ok
+    pe = {f.file for f in r.findings if f.code == "parse-error"}
+    assert {"models/thing.py", "__init__.py"} <= pe

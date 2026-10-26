@@ -13,6 +13,7 @@ note), never from requirement text.
 
 from __future__ import annotations
 
+import hashlib
 import keyword
 import re
 from dataclasses import dataclass, field
@@ -41,6 +42,17 @@ VERSIONS = (17, 18, 19, 20)
 KEY_RE = re.compile(r"[a-z][a-z0-9_]{0,39}")
 TECH_RE = re.compile(r"x_[a-z0-9_]{1,38}")
 PG_NAME_MAX = 63
+
+
+def m2m_table(model: str, field_name: str) -> str:
+    """x_<model>_<field>_rel, unique per field; shortened with a stable hash past 63 chars."""
+    name = f"x_{model.replace('.', '_')}_{field_name}_rel"
+    if len(name) <= PG_NAME_MAX:
+        return name
+    digest = hashlib.sha256(name.encode()).hexdigest()[:10]
+    return f"{name[: PG_NAME_MAX - 16]}_{digest}_rel"
+
+
 SCALAR_TYPES = frozenset(
     {"char", "text", "html", "integer", "float", "monetary", "boolean", "date", "datetime"}
 )
@@ -103,7 +115,7 @@ def _label(v: Any, where: str, errs: list[str]) -> str:
         not isinstance(v, str)
         or not v.strip()
         or len(v) > 80
-        or any(c in v for c in "<>\"'")
+        or any(c in v for c in "<>\"'\\")
         or any(ord(c) < 0x20 or ord(c) == 0x7F for c in v)
     ):
         errs.append(f"{where}: label must be plain text, 1-80 characters")
@@ -183,14 +195,9 @@ class _Builder:
             if t == "many2many":
                 # Odoo default: "<a>_<b>_rel" from sorted table names; Postgres caps names at 63.
                 me = where.split(".", 1)[0]
-                tables = sorted([self.model_of.get(me, ""), rel])
-                tables = [x.replace(".", "_") for x in tables]
-                if len(f"{tables[0]}_{tables[1]}_rel") > PG_NAME_MAX:
-                    self.errs.append(
-                        f"{where}: link table name would exceed {PG_NAME_MAX} characters; "
-                        "use shorter record type keys"
-                    )
-                    return None
+                # Two links between the same pair would share Odoo's default table, so every
+                # link gets its own explicit table, hash-shortened to fit Postgres' limit.
+                kw["relation_table"] = m2m_table(self.model_of.get(me, me), f"x_{k}")
             if t == "many2one":
                 kw["on_delete"] = "restrict" if kw["required"] else "set null"
         elif "options" in f or "relation" in f:
