@@ -1,0 +1,510 @@
+[
+ {
+  "about": "create a contact",
+  "expect": "ok",
+  "id": "b40-01",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:res.partner:create"
+ },
+ {
+  "about": "archive old contacts",
+  "expect": "ok",
+  "id": "b40-03",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:res.partner:archive"
+ },
+ {
+  "about": "create a quotation",
+  "expect": "ok",
+  "id": "b40-05",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:sale.order:create"
+ },
+ {
+  "about": "confirm a quotation",
+  "expect": "ok",
+  "id": "b40-06",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "b:sale.order:action_confirm"
+ },
+ {
+  "about": "create a purchase order",
+  "expect": "ok",
+  "id": "b40-07",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:purchase.order:create"
+ },
+ {
+  "about": "draft an invoice",
+  "expect": "ok",
+  "id": "b40-09",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:account.move:create"
+ },
+ {
+  "about": "create a task",
+  "expect": "ok",
+  "id": "b40-10",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:project.task:create"
+ },
+ {
+  "about": "add an employee",
+  "expect": "ok",
+  "id": "b40-11",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:hr.employee:create"
+ },
+ {
+  "about": "reassign leads",
+  "expect": "ok",
+  "id": "b40-12",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:crm.lead:mass-write"
+ },
+ {
+  "about": "schedule a meeting",
+  "expect": "ok",
+  "id": "b40-13",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:calendar.event:create"
+ },
+ {
+  "about": "change the quotation numbering",
+  "expect": "ok",
+  "id": "b40-15",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "seq:sale.order"
+ },
+ {
+  "about": "add a field to contacts",
+  "expect": "ok",
+  "id": "b40-18",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "c:res.partner:customize-field"
+ },
+ {
+  "about": "notify on large orders",
+  "expect": "ok",
+  "id": "b40-19",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "c:sale.order:automation"
+ },
+ {
+  "about": "rearrange the task form",
+  "expect": "ok",
+  "id": "b40-21",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "c:project.task:customize-view"
+ },
+ {
+  "about": "change the invoice layout",
+  "expect": "ok",
+  "id": "b40-22",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "c:account.move:report"
+ },
+ {
+  "about": "add a column to products",
+  "expect": "ok",
+  "id": "b40-23",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "v:product.template:tree"
+ },
+ {
+  "about": "add a field to employees",
+  "expect": "ok",
+  "id": "b40-24",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "c:hr.employee:customize-field"
+ },
+ {
+  "about": "add, show and fill a contact field",
+  "expect": "ok",
+  "id": "b40-27",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "parts": [
+   "v:res.partner:form",
+   "c:res.partner:customize-field",
+   "m:res.partner:mass-write"
+  ]
+ },
+ {
+  "about": "export contacts",
+  "expect": "ok",
+  "id": "b40-28",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:res.partner:export"
+ },
+ {
+  "about": "archive done tasks",
+  "expect": "ok",
+  "id": "b40-30",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:project.task:archive"
+ },
+ {
+  "about": "remove the sales app",
+  "expect": "approval-required",
+  "id": "b40-33",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "mod:sale:uninstall"
+ },
+ {
+  "about": "create a manufacturing order",
+  "expect": "needs-step",
+  "id": "b40-35",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:mrp.production:create"
+ },
+ {
+  "about": "an unrecognised kind of task",
+  "expect": "unknown",
+  "id": "b40-39",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "zz:do:anything"
+ },
+ {
+  "about": "run a scheduled action",
+  "expect": "unknown",
+  "id": "b40-40",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "cron:Daily cleanup"
+ }
+]

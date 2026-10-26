@@ -1,0 +1,359 @@
+[
+ {
+  "about": "set a field on many contacts",
+  "expect": "ok",
+  "id": "b40-02",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:res.partner:mass-write"
+ },
+ {
+  "about": "import a product list",
+  "expect": "ok",
+  "id": "b40-04",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:product.template:import"
+ },
+ {
+  "about": "create a transfer",
+  "expect": "ok",
+  "id": "b40-08",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:stock.picking:create"
+ },
+ {
+  "about": "turn on units of measure",
+  "expect": "ok",
+  "id": "b40-14",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "s:group_uom"
+ },
+ {
+  "about": "upgrade an installed app",
+  "expect": "ok",
+  "id": "b40-16",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "mod:project:upgrade"
+ },
+ {
+  "about": "install manufacturing",
+  "expect": "ok",
+  "id": "b40-17",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "mod:mrp:install"
+ },
+ {
+  "about": "move a field on the quotation form",
+  "expect": "ok",
+  "id": "b40-20",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "v:sale.order:form"
+ },
+ {
+  "about": "send a portal invite",
+  "expect": "needs-step",
+  "id": "b40-25",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "t:Portal: User Invite:portal.wizard.user:send"
+ },
+ {
+  "about": "add a field to leads and fill it",
+  "expect": "ok",
+  "id": "b40-26",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "parts": [
+   "c:crm.lead:customize-field",
+   "m:crm.lead:mass-write"
+  ]
+ },
+ {
+  "about": "delete draft transfers",
+  "expect": "ok",
+  "id": "b40-29",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:stock.picking:delete"
+ },
+ {
+  "about": "write a migration script",
+  "expect": "not-built-yet",
+  "id": "b40-31",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "code:040:migrate",
+  "until_capability": 3
+ },
+ {
+  "about": "add a field and speed up its compute in code",
+  "expect": "not-built-yet",
+  "id": "b40-32",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "parts": [
+   "c:sale.order:customize-field",
+   "code:061:performance"
+  ],
+  "until_capability": 3
+ },
+ {
+  "about": "remove the project app",
+  "expect": "approval-required",
+  "id": "b40-34",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "mod:project:uninstall"
+ },
+ {
+  "about": "log a support ticket",
+  "expect": "needs-edition",
+  "id": "b40-36",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "module_hint": "helpdesk",
+  "task": "m:helpdesk.ticket:create"
+ },
+ {
+  "about": "fill a contact field from another version",
+  "expect": {
+   "17": "needs-step",
+   "19": "not-in-version",
+   "20": "not-in-version"
+  },
+  "fields": [
+   "additional_info"
+  ],
+  "id": "b40-37",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "m:res.partner:mass-write",
+  "versions": [
+   17,
+   19,
+   20
+  ]
+ },
+ {
+  "about": "print invoices",
+  "expect": "unknown",
+  "id": "b40-38",
+  "installed": [
+   "base",
+   "web",
+   "contacts",
+   "mail",
+   "product",
+   "sale",
+   "purchase",
+   "stock",
+   "account",
+   "project",
+   "hr",
+   "crm",
+   "calendar"
+  ],
+  "task": "r:account.report_invoice"
+ }
+]

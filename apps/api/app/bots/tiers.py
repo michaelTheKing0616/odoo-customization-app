@@ -161,6 +161,8 @@ def assess(
     version: Any,
     edition: str = "community",
     installed_modules: Iterable[str] | None = None,
+    fields: Iterable[str] = (),
+    module_hint: str | None = None,
 ) -> Assessment:
     tid = task_id if isinstance(task_id, str) else repr(task_id)
     tier = tier_of(task_id)
@@ -225,7 +227,9 @@ def assess(
             floor=floor,
         )
     try:
-        v = caps.availability(version, edition, installed_modules, model)
+        v = caps.availability(
+            version, edition, installed_modules, model, tuple(fields), module_hint
+        )
     except Exception:  # noqa: BLE001 - fail closed
         return _unknown(tid, tier, "The version check failed, so nothing runs.", floor=floor)
     status = getattr(v, "status", None)
