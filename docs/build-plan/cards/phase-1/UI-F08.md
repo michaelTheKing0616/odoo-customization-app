@@ -3,7 +3,7 @@
 
 ID: UI-F08
 Title: Sonner everywhere
-Status: todo
+Status: done
 Phase: 1
 Priority: P1
 Type: ui-build
@@ -59,3 +59,8 @@ Gate: B (Tope reviews the contact sheet before close). Narrowest named test gree
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+
+## Merge note
+
+- AC6 GATE-B contact sheets not captured.
+- UI-SHELL-BUILD skipped (needs UI-SHELL-SPEC and UI-REF-STUDY).
