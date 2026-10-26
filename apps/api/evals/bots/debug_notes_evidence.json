@@ -1,0 +1,637 @@
+{
+ "access-denied": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 2067,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 28,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 27,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_access.py",
+   "line": 49,
+   "ok": true
+  }
+ },
+ "composed-field": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 2934,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 3124,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 3470,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 3529,
+   "ok": true
+  }
+ },
+ "cron-action-failed": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 402,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 580,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 508,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 511,
+   "ok": true
+  }
+ },
+ "cron-running": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 434,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 605,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 702,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_cron.py",
+   "line": 717,
+   "ok": true
+  }
+ },
+ "field-in-views": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 933,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 982,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 971,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 1084,
+   "ok": true
+  }
+ },
+ "fk-delete-blocked": {
+  "17": {
+   "file": "odoo/service/model.py",
+   "line": 107,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/service/model.py",
+   "line": 111,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/models.py",
+   "line": 3316,
+   "ok": true
+  }
+ },
+ "import-no-match": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_fields.py",
+   "line": 492,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_fields.py",
+   "line": 591,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_fields.py",
+   "line": 578,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_fields.py",
+   "line": 580,
+   "ok": true
+  }
+ },
+ "invalid-field": {
+  "17": {
+   "file": "odoo/models.py",
+   "line": 4388,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/models.py",
+   "line": 4747,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/models.py",
+   "line": 4405,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/models.py",
+   "line": 4153,
+   "ok": true
+  }
+ },
+ "invalid-leaf": {
+  "17": {
+   "file": "odoo/osv/expression.py",
+   "line": 752,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/osv/expression.py",
+   "line": 751,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/osv/expression.py",
+   "line": 412,
+   "ok": true
+  }
+ },
+ "invalid-operator": {
+  "17": {
+   "file": "odoo/osv/expression.py",
+   "line": 1490,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/models.py",
+   "line": 3152,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/domains.py",
+   "line": 823,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/domains.py",
+   "line": 865,
+   "ok": true
+  }
+ },
+ "invalid-view-definition": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 410,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 403,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 511,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 524,
+   "ok": true
+  }
+ },
+ "mandatory-not-set": {
+  "17": {
+   "file": "odoo/service/model.py",
+   "line": 106,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/service/model.py",
+   "line": 110,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/models.py",
+   "line": 3315,
+   "ok": true
+  }
+ },
+ "missing-record": {
+  "17": {
+   "file": "odoo/fields.py",
+   "line": 1187,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/fields.py",
+   "line": 1279,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/fields.py",
+   "line": 1711,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/fields.py",
+   "line": 1887,
+   "ok": true
+  }
+ },
+ "missing-required": {
+  "17": {
+   "file": "odoo/models.py",
+   "line": 7250,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/models.py",
+   "line": 7559,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/models.py",
+   "line": 3313,
+   "ok": true
+  }
+ },
+ "module-load-failed": {
+  "17": {
+   "file": "odoo/modules/module.py",
+   "line": 434,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/modules/module.py",
+   "line": 394,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/modules/module.py",
+   "line": 516,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/modules/module.py",
+   "line": 551,
+   "ok": true
+  }
+ },
+ "modules-inconsistent": {
+  "17": {
+   "file": "odoo/modules/loading.py",
+   "line": 525,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/modules/loading.py",
+   "line": 529,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/modules/loading.py",
+   "line": 507,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/modules/loading.py",
+   "line": 492,
+   "ok": true
+  }
+ },
+ "modules-not-loaded": {
+  "17": {
+   "file": "odoo/modules/loading.py",
+   "line": 514,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/modules/loading.py",
+   "line": 518,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/modules/loading.py",
+   "line": 495,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/modules/loading.py",
+   "line": 480,
+   "ok": true
+  }
+ },
+ "qweb-render-error": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_qweb.py",
+   "line": 788,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_qweb.py",
+   "line": 791,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_qweb.py",
+   "line": 536,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_qweb.py",
+   "line": 541,
+   "ok": true
+  }
+ },
+ "recursion": {
+  "17": {
+   "file": "odoo/models.py",
+   "line": 5001,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/models.py",
+   "line": 5378,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/models.py",
+   "line": 5030,
+   "ok": true
+  }
+ },
+ "registry-load-failed": {
+  "17": {
+   "file": "odoo/modules/registry.py",
+   "line": 101,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/modules/registry.py",
+   "line": 120,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/registry.py",
+   "line": 198,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/registry.py",
+   "line": 247,
+   "ok": true
+  }
+ },
+ "singleton": {
+  "17": {
+   "file": "odoo/models.py",
+   "line": 5901,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/models.py",
+   "line": 6277,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/models.py",
+   "line": 5942,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/models.py",
+   "line": 5419,
+   "ok": true
+  }
+ },
+ "smtp-failed": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_mail_server.py",
+   "line": 762,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_mail_server.py",
+   "line": 784,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_mail_server.py",
+   "line": 861,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_mail_server.py",
+   "line": 835,
+   "ok": true
+  }
+ },
+ "template-render-failed": {
+  "17": {
+   "file": "odoo/addons/mail/models/mail_render_mixin.py",
+   "line": 441,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/mail/models/mail_render_mixin.py",
+   "line": 483,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/mail/models/mail_render_mixin.py",
+   "line": 534,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/mail/models/mail_render_mixin.py",
+   "line": 566,
+   "ok": true
+  }
+ },
+ "unknown-comodel": {
+  "17": {
+   "file": "odoo/fields.py",
+   "line": 2945,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/fields.py",
+   "line": 3118,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/fields_relational.py",
+   "line": 94,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/fields_relational.py",
+   "line": 86,
+   "ok": true
+  }
+ },
+ "unknown-currency-field": {
+  "17": {
+   "file": "odoo/fields.py",
+   "line": 1604,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/fields.py",
+   "line": 1738,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/fields_numeric.py",
+   "line": 233,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/fields_numeric.py",
+   "line": 238,
+   "ok": true
+  }
+ },
+ "view-field-missing": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 1485,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 1625,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 1967,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 2012,
+   "ok": true
+  }
+ },
+ "view-validation": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 418,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 411,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 519,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_ui_view.py",
+   "line": 532,
+   "ok": true
+  }
+ },
+ "wrong-value": {
+  "17": {
+   "file": "odoo/fields.py",
+   "line": 2869,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/fields.py",
+   "line": 3044,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/orm/fields_selection.py",
+   "line": 235,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/orm/fields_selection.py",
+   "line": 232,
+   "ok": true
+  }
+ },
+ "xmlid-not-found": {
+  "17": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 2214,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 2298,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 2291,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/addons/base/models/ir_model.py",
+   "line": 2345,
+   "ok": true
+  }
+ },
+ "xpath-not-located": {
+  "17": {
+   "file": "odoo/tools/template_inheritance.py",
+   "line": 134,
+   "ok": true
+  },
+  "18": {
+   "file": "odoo/tools/template_inheritance.py",
+   "line": 145,
+   "ok": true
+  },
+  "19": {
+   "file": "odoo/tools/template_inheritance.py",
+   "line": 146,
+   "ok": true
+  },
+  "20": {
+   "file": "odoo/tools/template_inheritance.py",
+   "line": 146,
+   "ok": true
+  }
+ }
+}
