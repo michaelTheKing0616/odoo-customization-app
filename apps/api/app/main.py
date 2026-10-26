@@ -74,6 +74,7 @@ from app.routers import (
     fit_gap,
     l10n_ng,
     migrations,
+    bot_approvals,
     bot_verify,
     assist,
     views,
@@ -233,6 +234,7 @@ app.include_router(fit_gap.router, prefix="/api", dependencies=_protected)
 app.include_router(l10n_ng.router, prefix="/api", dependencies=_protected)
 app.include_router(migrations.router, prefix="/api", dependencies=_protected)
 app.include_router(bot_verify.router, prefix="/api", dependencies=_protected)
+app.include_router(bot_approvals.router, prefix="/api", dependencies=_protected)
 # HOWDO-01: own auth per route (integration key / short token), so not _protected.
 app.include_router(assist.router, prefix="/api", dependencies=[Depends(enforce_safety_gate)])
 app.include_router(suite_insights.playbooks, prefix="/api", dependencies=_protected + [Depends(require_feature("bulk_suite"))])
