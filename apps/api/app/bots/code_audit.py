@@ -39,7 +39,13 @@ _DANGER = re.compile(
     r"__import__|\beval\s*\(|\bexec\s*\(|\bos\.|\bsubprocess\b|\bopen\s*\(|\bsudo\s*\("
 )
 _DANGER_PY = re.compile(r"__import__|\beval\s*\(|\bexec\s*\(|\bos\.|\bsubprocess\b|\bopen\s*\(")
-_BAD_MODULES = frozenset({"subprocess", "ctypes", "pickle", "marshal", "pty", "shelve"})
+_BAD_MODULES = frozenset(
+    {"subprocess", "ctypes", "pickle", "marshal", "pty", "shelve", "socket", "dill", "runpy"}
+)
+_QWEB_ORM = re.compile(
+    r"\.sudo\s*\(|\.(?:write|create|unlink|search|search_read|search_count|browse|read_group"
+    r"|with_user|execute)\s*\(|\b(?:password|password_crypt|api_key|totp_secret|signup_token)\b"
+)
 _ASSET_EXT = (
     ".png",
     ".jpg",
@@ -115,10 +121,15 @@ def _safe_rel(name: str) -> str:
 
 
 def _is_asset(rel: str) -> bool:
+    """Skip only non-code assets: any .py is audited wherever it lives, and so are XML
+    templates under static/ (OWL)."""
+    low = rel.lower()
+    if low.endswith(".py"):
+        return False
     parts = rel.split("/")
-    return bool({"static", "i18n", "__pycache__"} & set(parts[:-1])) or rel.lower().endswith(
-        _ASSET_EXT
-    )
+    if "static" in parts[:-1] and low.endswith(".xml"):
+        return False
+    return bool({"static", "i18n", "__pycache__"} & set(parts[:-1])) or low.endswith(_ASSET_EXT)
 
 
 def _check_name(rel: str) -> None:
@@ -247,9 +258,10 @@ class _Ctx:
         self.rules: set[str] = set()
         self.view_fields: list[tuple[str, str, str, int]] = []  # model, field, file, line
         self.module = ""
+        self.prod_tests: set[str] = set()  # test-dir files production code imports or loads
 
     def add(self, sev, code, file, line, msg, fix):
-        if file.startswith("tests/") or "/tests/" in file:
+        if (file.startswith("tests/") or "/tests/" in file) and file not in self.prod_tests:
             sev = LOW if _SEV_RANK[sev] < _SEV_RANK[LOW] else sev  # test code never loads in prod
         if not self.owned:
             fix = f"{FOREIGN_HINT} Suggested fix: {fix}"
@@ -279,24 +291,122 @@ def _dotted(n: ast.AST) -> str:
     return ".".join(reversed(parts))
 
 
-def _py_danger(call: ast.Call) -> str:
-    d = _dotted(call.func)
-    if d in ("__import__", "os.system", "os.popen", "os.spawnl", "os.spawnv", "os.startfile"):
-        return f"{d}()"
-    if d.startswith(("os.exec", "subprocess.", "importlib.", "pty.", "ctypes.")):
-        return f"{d}()"
+_DANGER_EXACT = frozenset(
+    {
+        "__import__",
+        "os.system",
+        "os.popen",
+        "os.startfile",
+        "os.fork",
+        "os.forkpty",
+        "os.kill",
+        "os.killpg",
+        "os.remove",
+        "os.unlink",
+        "os.rmdir",
+        "os.removedirs",
+        "os.chmod",
+        "os.chown",
+        "os.putenv",
+        "pickle.load",
+        "pickle.loads",
+        "pickle.Unpickler",
+        "marshal.load",
+        "marshal.loads",
+        "shelve.open",
+        "yaml.load",
+        "yaml.load_all",
+        "yaml.unsafe_load",
+        "yaml.unsafe_load_all",
+        "yaml.full_load",
+        "dill.load",
+        "dill.loads",
+        "code.interact",
+        "builtins.eval",
+        "builtins.exec",
+        "builtins.compile",
+        "builtins.__import__",
+        "builtins.getattr",
+        "builtins.open",
+    }
+)
+_DANGER_PREFIX = (
+    "os.exec",
+    "os.spawn",
+    "os.posix_spawn",
+    "subprocess.",
+    "importlib.",
+    "pty.",
+    "ctypes.",
+    "shutil.",
+    "socket.",
+    "multiprocessing.",
+    "runpy.",
+)
+_ALIAS_ROOTS = frozenset(
+    {
+        "os",
+        "subprocess",
+        "importlib",
+        "builtins",
+        "shutil",
+        "socket",
+        "ctypes",
+        "pickle",
+        "marshal",
+        "yaml",
+        "pty",
+        "shelve",
+        "dill",
+        "code",
+        "multiprocessing",
+        "runpy",
+    }
+)
+
+
+def _aliases(tree: ast.AST) -> dict[str, str]:
+    """Local name -> dotted origin for imports of risky modules (import x as y, from x import y)."""
+    out: dict[str, str] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                root = a.name.split(".")[0]
+                if root in _ALIAS_ROOTS:
+                    out[a.asname or root] = a.name if a.asname else root
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            if n.module.split(".")[0] in _ALIAS_ROOTS:
+                for a in n.names:
+                    if a.name != "*":
+                        out[a.asname or a.name] = f"{n.module}.{a.name}"
+    return out
+
+
+def _resolve(d: str, aliases: dict[str, str]) -> str:
+    head, _, rest = d.partition(".")
+    if head in aliases:
+        return f"{aliases[head]}.{rest}" if rest else aliases[head]
+    return d
+
+
+def _py_danger(call: ast.Call, aliases: dict[str, str] | None = None) -> str:
+    raw = _dotted(call.func)
+    d = _resolve(raw, aliases or {})
+    shown = d if d == raw else f"{raw} ({d})"
+    if d in _DANGER_EXACT or d.startswith(_DANGER_PREFIX):
+        return f"{shown}()"
     if d == "getattr" and call.args:
-        first = _dotted(call.args[0])
+        first = _resolve(_dotted(call.args[0]), aliases or {})
         if first in ("__builtins__", "builtins") or (
             len(call.args) > 1
             and not isinstance(call.args[1], ast.Constant)
-            and first in ("os", "subprocess", "importlib")
+            and first.split(".")[0] in _ALIAS_ROOTS
         ):
             return f"getattr({first}, ...)"
     return ""
 
 
-def _sql_has_variable(n: ast.AST) -> bool:
+def _sql_has_variable(n: ast.AST, safe: frozenset[str] = frozenset()) -> bool:
     """True when a formatted query interpolates anything except literals or the model table."""
     if isinstance(n, ast.JoinedStr):
         parts = [v.value for v in n.values if isinstance(v, ast.FormattedValue)]
@@ -307,14 +417,16 @@ def _sql_has_variable(n: ast.AST) -> bool:
     else:
         return False
     for p in parts:
-        if isinstance(p, ast.Constant):
+        if isinstance(p, ast.Constant) or (isinstance(p, ast.Name) and p.id in safe):
             continue
         if isinstance(p, (ast.JoinedStr, ast.BinOp)):
-            if _sql_has_variable(p):
+            if _sql_has_variable(p, safe):
                 return True
             continue
         if isinstance(p, ast.Tuple) and all(
-            isinstance(e, ast.Constant) or (isinstance(e, ast.Attribute) and e.attr == "_table")
+            isinstance(e, ast.Constant)
+            or (isinstance(e, ast.Name) and e.id in safe)
+            or (isinstance(e, ast.Attribute) and e.attr == "_table")
             for e in p.elts
         ):
             continue
@@ -322,6 +434,65 @@ def _sql_has_variable(n: ast.AST) -> bool:
             continue
         return True
     return False
+
+
+def _literal(v: ast.AST) -> bool:
+    if isinstance(v, ast.Constant):
+        return True
+    return isinstance(v, ast.IfExp) and _literal(v.body) and _literal(v.orelse)
+
+
+def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[str]]]:
+    """execute(name) call id -> the expression assigned to ``name`` in the same scope, when that
+    name has exactly one plain assignment there. Augmented assignments with a non-literal value
+    resolve to the augmentation itself so ``q += name`` is still seen as dynamic."""
+    out: dict[int, ast.AST] = {}
+    safe_of: dict[int, frozenset[str]] = {}
+    scopes = [
+        tree,
+        *(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)),
+    ]
+    for scope in scopes:
+        plain: dict[str, list[ast.AST]] = {}
+        aug: dict[str, list[ast.AST]] = {}
+        for n in ast.walk(scope):
+            if (
+                isinstance(n, ast.Assign)
+                and len(n.targets) == 1
+                and isinstance(n.targets[0], ast.Name)
+            ):
+                plain.setdefault(n.targets[0].id, []).append(n.value)
+            elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.value:
+                plain.setdefault(n.target.id, []).append(n.value)
+            elif isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+                aug.setdefault(n.target.id, []).append(
+                    ast.BinOp(left=ast.Constant(""), op=n.op, right=n.value)
+                )
+        # names bound exactly once, to a literal (or a choice between literals)
+        safe = frozenset(
+            k for k, v in plain.items() if len(v) == 1 and _literal(v[0]) and k not in aug
+        )
+        for n in ast.walk(scope):
+            if (
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "execute"
+            ):
+                safe_of[id(n)] = safe
+            if (
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "execute"
+                and n.args
+                and isinstance(n.args[0], ast.Name)
+            ):
+                nm = n.args[0].id
+                dyn = [a for a in aug.get(nm, []) if _sql_has_variable(a, safe)]
+                if dyn:
+                    out[id(n)] = dyn[0]
+                elif len(plain.get(nm, [])) == 1:
+                    out[id(n)] = plain[nm][0]
+    return out, safe_of
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
@@ -413,13 +584,15 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
             if node is not lp and isinstance(node, ast.Call):
                 in_loop.add(id(node))
     searched: list[tuple[str, int]] = []
+    aliases = _aliases(tree)
+    local_sql, sql_safe = _local_sql(tree)
     for n in ast.walk(tree):
         if not isinstance(n, ast.Call):
             continue
         fn = n.func
         name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
         ln = getattr(n, "lineno", 0)
-        danger = _py_danger(n)
+        danger = _py_danger(n, aliases)
         if danger:
             c.add(
                 HIGH,
@@ -466,7 +639,8 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 "Limit to the smallest read needed and check the caller's rights first.",
             )
         elif name == "execute" and isinstance(fn, ast.Attribute) and n.args:
-            if _is_dynamic_str(n.args[0]) and _sql_has_variable(n.args[0]):
+            q = local_sql.get(id(n), n.args[0])
+            if _is_dynamic_str(q) and _sql_has_variable(q, sql_safe.get(id(n), frozenset())):
                 c.add(
                     HIGH,
                     "sql-injection",
@@ -593,6 +767,24 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
             if val and attr != "groups":
                 c.refs.append((val, path, _line_of(text, f'"{val}"')))
         for a, val in el.attrib.items():
+            if a.startswith("t-") and a != "t-name" and _QWEB_ORM.search(val):
+                c.add(
+                    MEDIUM,
+                    "qweb-orm-call",
+                    path,
+                    _line_of(text, val[:40]),
+                    f"Template expression in {a} calls sudo()/ORM methods or reads credentials.",
+                    "Compute values in Python with access checks; templates must only display.",
+                )
+            if path.startswith("static/") and re.search(r"\bmarkup\s*\(", val):
+                c.add(
+                    MEDIUM,
+                    "unsafe-markup",
+                    path,
+                    _line_of(text, val[:40]),
+                    f"OWL template wraps a value in markup() in {a} (no HTML escaping).",
+                    "Only mark trusted, already-escaped HTML; prefer plain t-out.",
+                )
             if a == "t-raw":
                 c.add(
                     HIGH,
@@ -602,7 +794,12 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     "t-raw renders unescaped HTML (and was removed from Odoo 15+).",
                     "Use t-out with a Markup value built from escaped parts.",
                 )
-            if a in ("attrs", "states") and el.tag not in ("record",) and c.v >= 17:
+            if (
+                a in ("attrs", "states")
+                and el.tag not in ("record",)
+                and c.v >= 17
+                and not path.startswith("static/")
+            ):
                 c.add(
                     HIGH,
                     "version-attrs",
@@ -652,7 +849,31 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     c.rules.add(f.get("ref").split(".")[-1])
         if el.tag == "record" and el.get("model") == "ir.ui.view":
             model = next((f.text for f in el.findall("field") if f.get("name") == "model"), None)
+            model = model.strip() if model else model
             arch = next((f for f in el.findall("field") if f.get("name") == "arch"), None)
+            parent = next(
+                (f.get("ref") for f in el.findall("field") if f.get("name") == "inherit_id"), None
+            )
+            if arch is not None and parent:
+                # Inheriting view: locator fields and everything placed by xpath/positioned
+                # fields belong to the parent view's model.
+                for sub in _top_fields(arch):
+                    if not (sub.tag == "xpath" or (sub.tag == "field" and sub.get("position"))):
+                        continue
+                    placed = [sub] if sub.tag == "field" else []
+                    placed += [
+                        x for x in _top_fields(sub) if x.tag == "field" and not x.get("position")
+                    ]
+                    for x in placed:
+                        if x.get("name"):
+                            c.view_fields.append(
+                                (
+                                    model or f"?{parent}",
+                                    x.get("name"),
+                                    path,
+                                    _line_of(text, f'name="{x.get("name")}"'),
+                                )
+                            )
             if model and arch is not None:
                 for sub in _top_fields(arch):
                     if sub.tag == "tree" and c.v >= 18:
@@ -682,7 +903,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                                 _line_of(text, f'name="{sub.get("name")}"'),
                             )
                         )
-    if root.tag not in ("odoo", "openerp", "templates", "data"):
+    if root.tag not in ("odoo", "openerp", "templates", "data") and not path.startswith("static/"):
         c.add(
             LOW,
             "xml-root",
@@ -847,6 +1068,38 @@ def _module_checks(c: _Ctx, manifest: dict[str, Any] | None) -> None:
     def _via_parent(model: str, fname: str) -> bool:
         return any(caps.field_info(c.v, p, fname) for p in c.parents.get(model, ()))
 
+    deps = [d for d in (manifest or {}).get("depends", []) or [] if isinstance(d, str)]
+    cat = caps.load(c.v)
+    foreign_dep = cat is None or any(
+        (caps.module_info(c.v, d) or {}).get("edition") != "community" for d in deps
+    )
+    closure: set[str] = {"base", c.module}
+    if cat is not None:
+        for d in deps:
+            closure |= caps._closure(cat, d)
+        grew = True
+        while grew:  # auto_install modules whose depends are all present get installed too
+            grew = False
+            for mname, info in cat.modules.items():
+                if (
+                    mname not in closure
+                    and info.get("auto_install")
+                    and set(info.get("depends", ())) <= closure
+                ):
+                    closure.add(mname)
+                    grew = True
+    unresolved_views: set[tuple[str, str]] = set()
+
+    def _in_subview(model: str, fname: str) -> bool:
+        """Inheriting views can place fields inside an x2many sub-view (locators such as a div
+        or a field of the comodel). Accept a field that exists on any x2many comodel."""
+        rows = ((cat.models.get(model) or {}).get("fields") or {}) if cat else {}
+        for row in rows.values():
+            if row[0] in ("one2many", "many2many") and row[1]:
+                if fname in known.get(row[1], ()) or caps.field_info(c.v, row[1], fname):
+                    return True
+        return False
+
     for model, fname, path, line in c.view_fields:
         if model in c.new_models:
             if (
@@ -864,27 +1117,54 @@ def _module_checks(c: _Ctx, manifest: dict[str, Any] | None) -> None:
                 )
             ):
                 c.add(
-                    LOW if model in unresolved else HIGH,
+                    MEDIUM if model in unresolved else HIGH,
                     "field-undefined",
                     path,
                     line,
                     f"View uses {model}.{fname}, which the module does not define.",
                     "Define the field or remove it from the view.",
                 )
-        elif fname not in known.get(model, set()):
-            info = caps.model_info(c.v, model)
-            if (
-                info is not None
-                and fname not in info.get("fields", {})
-                and caps.field_info(c.v, model, fname) is None
-            ):
+        elif fname in _MAGIC or fname in known.get(model, set()):
+            continue
+        elif model.startswith("?") or caps.model_info(c.v, model) is None:
+            # Never silently pass a field we cannot resolve: the model is unknown here.
+            if (model, path) not in unresolved_views:
+                unresolved_views.add((model, path))
                 c.add(
                     MEDIUM,
-                    "version-field",
+                    "field-unresolved",
                     path,
                     line,
-                    f"View uses {model}.{fname}, which is not a stock field in Odoo {c.v}.",
-                    "Check the field name for this version.",
+                    f"View fields on {model.lstrip('?')} cannot be checked: the model is not "
+                    f"defined here or in stock Odoo {c.v} (or the view does not name its model).",
+                    "Name the model on the view and depend on the module that defines it.",
+                )
+        else:
+            fi = caps.field_info(c.v, model, fname)
+            if fi is None and _in_subview(model, fname):
+                continue  # placed inside a one2many/many2many sub-view of the parent view
+            if fi is None:
+                elsewhere = caps._versions_with(model, fname, c.v)
+                code = "version-field" if elsewhere else "field-undefined"
+                c.add(
+                    MEDIUM if foreign_dep else HIGH,
+                    code,
+                    path,
+                    line,
+                    f"View uses {model}.{fname}, which is not defined by this module or any stock "
+                    f"Odoo {c.v} module"
+                    + (f" (exists in {list(elsewhere)})." if elsewhere else "."),
+                    "Fix the field name for this version, or define the field.",
+                )
+            elif fi["modules"] and not set(fi["modules"]) & closure:
+                c.add(
+                    MEDIUM,
+                    "field-missing-depend",
+                    path,
+                    line,
+                    f"View uses {model}.{fname}, defined by {fi['module']}, which is not in this "
+                    "module's dependencies.",
+                    f"Add {fi['module']} to depends.",
                 )
     for ref, path, line in c.refs:
         if "." in ref:
@@ -916,6 +1196,79 @@ def _module_checks(c: _Ctx, manifest: dict[str, Any] | None) -> None:
 # ---------------------------------------------------------------- entry point
 
 
+def _is_test(rel: str) -> bool:
+    return rel.startswith("tests/") or "/tests/" in rel
+
+
+def _py_imports(rel: str, body: bytes, module: str, files: dict[str, bytes]) -> set[str]:
+    """Module-local .py files imported by ``rel`` (relative or odoo.addons.<module> imports)."""
+    try:
+        tree = ast.parse(body.decode("utf-8-sig"))
+    except (SyntaxError, UnicodeDecodeError, ValueError, RecursionError, MemoryError):
+        return set()
+    here = rel.split("/")[:-1]
+    out: set[str] = set()
+
+    def add(parts: list[str]) -> None:
+        for cand in ("/".join(parts) + ".py", "/".join([*parts, "__init__.py"])):
+            if cand in files:
+                out.add(cand)
+
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom):
+            if n.level:
+                base = here[: len(here) - (n.level - 1)] if n.level > 1 else list(here)
+                if n.level - 1 > len(here):
+                    continue
+            elif n.module and n.module.startswith(f"odoo.addons.{module}"):
+                base, n_mod = [], n.module.split(".")[3:]
+                add(n_mod)
+                for a in n.names:
+                    add([*n_mod, a.name])
+                continue
+            else:
+                continue
+            mod = n.module.split(".") if n.module else []
+            add([*base, *mod])
+            for a in n.names:
+                add([*base, *mod, a.name])
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name.startswith(f"odoo.addons.{module}."):
+                    add(a.name.split(".")[3:])
+    return out
+
+
+def _prod_tests(files: dict[str, bytes], module: str, manifest: dict[str, Any] | None) -> set[str]:
+    """Test-directory files that production loads: imported (transitively) from non-test code,
+    or listed in the manifest data/assets. These are not capped at LOW."""
+    listed: set[str] = set()
+    if isinstance(manifest, dict):
+        for key in ("data", "demo", "qweb", "init_xml", "update_xml"):
+            v = manifest.get(key)
+            if isinstance(v, list):
+                listed |= {x for x in v if isinstance(x, str)}
+        assets = manifest.get("assets")
+        if isinstance(assets, dict):
+            for v in assets.values():
+                for x in v if isinstance(v, list) else []:
+                    vals = x if isinstance(x, (list, tuple)) else [x]
+                    listed |= {y.removeprefix(f"{module}/") for y in vals if isinstance(y, str)}
+    out = {f for f in listed if _is_test(f) and f in files}
+    stack = [f for f in files if f.endswith(".py") and not _is_test(f)] + sorted(out)
+    seen: set[str] = set()
+    while stack:
+        f = stack.pop()
+        if f in seen or not f.endswith(".py"):
+            continue
+        seen.add(f)
+        for g in _py_imports(f, files[f], module, files):
+            if _is_test(g):
+                out.add(g)
+            stack.append(g)
+    return out
+
+
 def audit(
     src: bytes | Path,
     *,
@@ -944,6 +1297,7 @@ def audit(
     c.module = name
     try:
         manifest = _audit_manifest(c)
+        c.prod_tests = _prod_tests(files, name, manifest)
         for path in sorted(files):
             body = files[path]
             try:

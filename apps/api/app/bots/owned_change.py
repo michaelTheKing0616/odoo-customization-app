@@ -86,6 +86,9 @@ class ChangeSet:
             "after": self.after,
             "patches": self.patches,
             "inverse": self.inverse,
+            "reason": self.reason,
+            "pre_counts": self.pre_counts,
+            "post_counts": self.post_counts,
         }
         raw = json.dumps(body, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(raw.encode()).hexdigest()

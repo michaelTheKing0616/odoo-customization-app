@@ -523,4 +523,42 @@ def test_r2_r2_table_name_hash_shortened_stable():
     long = rm.m2m_table("x_" + "a" * 60, "x_" + "b" * 38)
     assert len(long) <= rm.PG_NAME_MAX and long == rm.m2m_table("x_" + "a" * 60, "x_" + "b" * 38)
     assert long != rm.m2m_table("x_" + "a" * 60, "x_" + "b" * 37 + "c")
-    assert rm.m2m_table("x_asset", "x_tags") == "x_x_asset_x_tags_rel"
+    t = rm.m2m_table("x_asset", "x_tags")
+    assert t.startswith("x_x_asset__x_tags_") and t.endswith("_rel") and len(t) <= 63
+
+
+def _colliding_req():
+    q = copy.deepcopy(ASSETS)
+    q["entities"].append({"key": "tag", "label": "Tag", "fields": [{"key": "n", "type": "char"}]})
+    q["entities"].append(
+        {
+            "key": "a",
+            "label": "A",
+            "fields": [{"key": "b_x_c", "type": "many2many", "relation": "x_tag"}],
+        }
+    )
+    q["entities"].append(
+        {
+            "key": "a_x_b",
+            "label": "AXB",
+            "fields": [{"key": "c", "type": "many2many", "relation": "x_tag"}],
+        }
+    )
+    q["roles"][0]["access"] = {**q["roles"][0]["access"], "tag": "r", "a": "r", "a_x_b": "r"}
+    return q
+
+
+def test_r3_m2m_old_scheme_collision_pair_now_distinct():
+    old = lambda m, f: f"x_{m.replace('.', '_')}_{f}_rel"  # noqa: E731
+    assert old("x_a", "x_b_x_c") == old("x_a_x_b", "x_c")
+    assert rm.m2m_table("x_a", "x_b_x_c") != rm.m2m_table("x_a_x_b", "x_c")
+    r = mk(req=_colliding_req(), tech="x_assets")
+    assert r.ok, r.errors
+    tables = [f.relation_table for m in r.spec.models for f in m.fields if f.ttype == "many2many"]
+    assert len(tables) == len(set(tables)) == 2 and all(len(t) <= rm.PG_NAME_MAX for t in tables)
+
+
+def test_r3_m2m_duplicate_table_refused_at_build(monkeypatch):
+    monkeypatch.setattr(rm, "m2m_table", lambda m, f: "x_same_rel")
+    r = mk(req=_colliding_req(), tech="x_assets")
+    assert not r.ok and any("already used" in e for e in r.errors)

@@ -153,7 +153,10 @@ def test_upgrade_hazards(rep):
 
 # AC5 version compatibility (versioncaps + series-specific syntax)
 def test_version_findings(rep):
-    assert {"version-model", "version-field", "version-list", "version-attrs"} <= codes(rep)
+    assert {"version-model", "field-undefined", "version-list", "version-attrs"} <= codes(rep)
+    assert any(
+        f.severity == "high" and "res.partner.not_a_stock_field" in f.message for f in rep.findings
+    )
     r20 = ca.audit(zbytes(TREE), version=20)
     assert "version-manifest" in codes(r20) and "version-list" not in codes(r20)
     t = dict(
@@ -375,7 +378,7 @@ def test_r2_b3_inherits_and_nested_and_auto_xmlid():
     assert bad == [], bad
 
 
-def test_r2_b3_unresolvable_parent_downgraded():
+def test_r2_b3_unresolvable_parent_is_medium():
     model = (
         "from odoo import models\n\n\nclass D(models.Model):\n"
         "    _name = 'x.d'\n    _inherit = ['zz.unknown.mixin']\n"
@@ -386,7 +389,7 @@ def test_r2_b3_unresolvable_parent_downgraded():
     )
     r = ca.audit(zbytes(_tree(**{"models/d.py": model, "views/d.xml": view})), version=17)
     fu = [f for f in r.findings if f.code == "field-undefined" and "x.d" in f.message]
-    assert fu and all(f.severity == "low" for f in fu)
+    assert fu and all(f.severity == "medium" for f in fu)
 
 
 def test_r2_b3_abstract_no_access_needed():
@@ -474,3 +477,151 @@ def test_r2_b5_memory_and_recursion_per_file(monkeypatch):
     assert r.ok
     pe = {f.file for f in r.findings if f.code == "parse-error"}
     assert {"models/thing.py", "__init__.py"} <= pe
+
+
+# ---------------------------------------------------------------- round 3
+
+
+def _hi(r, code=None):
+    return [f for f in r.findings if f.severity == "high" and (code is None or f.code == code)]
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from os import system\nsystem(x)\n",
+        "import os as o\no.system(x)\n",
+        "from subprocess import run as r\nr(['id'])\n",
+        "import importlib as il\nil.import_module(x)\n",
+        "from builtins import eval as e\ne(x)\n",
+        "from shutil import rmtree\nrmtree(x)\n",
+        "import socket as s\ns.create_connection((h, 1))\n",
+        "from ctypes import CDLL\nCDLL(x)\n",
+        "from pickle import loads\nloads(x)\n",
+        "import marshal as m\nm.loads(x)\n",
+        "import yaml\nyaml.load(x)\n",
+        "from yaml import load\nload(x)\n",
+        "import os.path as p\nimport os as q\nq.popen(x)\n",
+        "from os import path\nimport os\ngetattr(os, name)(x)\n",
+    ],
+)
+def test_r3_alias_danger(src):
+    r = ca.audit(zbytes(_tree(**{"models/evil.py": src})), version=17)
+    assert _hi(r, "dangerous-call"), [f.code for f in r.findings]
+
+
+def test_r3_alias_no_false_positive():
+    src = "from os import path\nimport json\npath.join('a', 'b')\njson.loads(x)\n"
+    r = ca.audit(zbytes(_tree(**{"models/ok.py": src})), version=17)
+    assert not _hi(r, "dangerous-call")
+
+
+@pytest.mark.parametrize("p", ["static/src/x.py", "i18n/x.py", "static/lib/deep/y.py"])
+def test_r3_py_under_asset_dirs_audited(p):
+    r = ca.audit(zbytes(_tree(**{p: "import os\nos.system('id')\n"})), version=17)
+    assert any(f.file == p and f.code == "dangerous-call" for f in _hi(r))
+
+
+def test_r3_tests_imported_by_prod_not_capped():
+    evil = "import os\nos.system('id')\n"
+    base = {"tests/__init__.py": "", "tests/evil.py": evil}
+    capped = ca.audit(zbytes(_tree(**base)), version=17)
+    assert all(f.severity == "low" for f in capped.findings if f.file.startswith("tests/"))
+    for init in (
+        "from . import models\nfrom .tests import evil\n",
+        "from . import models\nfrom . import tests\n",
+        "from . import models\nfrom odoo.addons.demo.tests import evil\n",
+    ):
+        files = _tree(**{**base, "__init__.py": init, "tests/__init__.py": "from . import evil\n"})
+        r = ca.audit(zbytes(files), version=17, module_name="demo")
+        assert any(f.file == "tests/evil.py" for f in _hi(r)), init
+
+
+def test_r3_tests_listed_in_manifest_not_capped():
+    files = _tree(**{"tests/evil.xml": "<odoo><template id='t'><div t-raw='x'/></template></odoo>"})
+    m = files["__manifest__.py"]
+    files["__manifest__.py"] = m.replace("'data': [", "'data': ['tests/evil.xml', ")
+    assert files["__manifest__.py"] != m
+    r = ca.audit(zbytes(files), version=17)
+    assert any(f.file == "tests/evil.xml" for f in _hi(r))
+
+
+INHERIT_SALE = """<odoo><record id="v_so" model="ir.ui.view">
+<field name="name">so.x</field><field name="model">sale.order</field>
+<field name="inherit_id" ref="sale.view_order_form"/>
+<field name="arch" type="xml">
+<xpath expr="//field[@name='partner_id']" position="after"><field name="x_nonexistent_zz"/>
+<field name="partner_shipping_id"/></xpath>
+<field name="note" position="before"><field name="x_other_zz"/></field>
+</field></record></odoo>"""
+
+
+@pytest.mark.parametrize("v", [17, 18, 19, 20])
+def test_r3_field_undefined_in_inheriting_view(v):
+    files = _tree(**{"views/so.xml": INHERIT_SALE})
+    files["__manifest__.py"] = files["__manifest__.py"].replace(
+        "'depends': [", "'depends': ['sale', "
+    )
+    r = ca.audit(zbytes(files), version=v)
+    msgs = [f.message for f in _hi(r) if f.file == "views/so.xml"]
+    assert any("x_nonexistent_zz" in m for m in msgs) and any("x_other_zz" in m for m in msgs)
+    assert not any("partner_shipping_id" in m for m in msgs)
+
+
+def test_r3_unresolvable_model_is_medium():
+    view = INHERIT_SALE.replace("sale.order", "zz.unknown.model")
+    r = ca.audit(zbytes(_tree(**{"views/so.xml": view})), version=17)
+    fu = [f for f in r.findings if f.code == "field-unresolved"]
+    assert fu and all(f.severity == "medium" for f in fu)
+    nomodel = INHERIT_SALE.replace('<field name="model">sale.order</field>', "")
+    r = ca.audit(zbytes(_tree(**{"views/so.xml": nomodel})), version=17)
+    assert any(f.code == "field-unresolved" and f.severity == "medium" for f in r.findings)
+
+
+@pytest.mark.parametrize(
+    "attr",
+    [
+        "t-out=\"doc.sudo().write({'a': 1})\"",
+        "t-esc=\"doc.env['res.users'].sudo().search([]).password\"",
+        't-att-title="user.api_key"',
+    ],
+)
+def test_r3_qweb_orm_call(attr):
+    xml = f"<odoo><template id='t'><div {attr}/></template></odoo>"
+    r = ca.audit(zbytes(_tree(**{"views/t.xml": xml})), version=17)
+    assert any(f.code == "qweb-orm-call" and f.severity in ("medium", "high") for f in r.findings)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "q = 'SELECT * FROM t WHERE n = %s' % name\n        self.env.cr.execute(q)\n",
+        "q = f'SELECT * FROM t WHERE n = {name}'\n        self.env.cr.execute(q)\n",
+        "q = 'SELECT {}'.format(name)\n        self.env.cr.execute(q)\n",
+        "q = 'SELECT ' + name\n        self.env.cr.execute(q)\n",
+        "q = 'SELECT 1'\n        q += name\n        self.env.cr.execute(q)\n",
+    ],
+)
+def test_r3_sql_injection_via_local(body):
+    src = f"class X:\n    def m(self, name):\n        {body}"
+    r = ca.audit(zbytes(_tree(**{"models/sql.py": src})), version=17)
+    assert _hi(r, "sql-injection"), [f.code for f in r.findings]
+
+
+def test_r3_sql_local_safe_not_flagged():
+    src = (
+        "class X:\n    def m(self, name):\n"
+        "        q = 'SELECT * FROM t WHERE n = %s'\n        self.env.cr.execute(q, (name,))\n"
+    )
+    r = ca.audit(zbytes(_tree(**{"models/sql.py": src})), version=17)
+    assert not [f for f in _hi(r, "sql-injection") if f.file == "models/sql.py"]
+
+
+def test_r3_owl_templates_scanned():
+    xml = (
+        "<templates><t t-name='a'><div t-raw='props.html'/>"
+        "<span t-out='markup(props.x)'/></t></templates>"
+    )
+    r = ca.audit(zbytes(_tree(**{"static/src/a.xml": xml})), version=17)
+    codes_ = {f.code for f in r.findings if f.file == "static/src/a.xml"}
+    assert {"qweb-t-raw", "unsafe-markup"} <= codes_

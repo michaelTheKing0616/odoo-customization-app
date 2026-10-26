@@ -34,24 +34,46 @@ NOTE_FIELDS = frozenset(
 )
 NOTES_PATH = Path(__file__).resolve().parents[2] / "evals" / "bots" / "debug_notes_candidates.jsonl"
 
-_EXTRA_SECRETS = (
-    re.compile(
-        r"(?i)\b(password|passwd|pwd|secret|api[_-]?key|token|admin_passwd)\b(\s{0,3}[=:]\s{0,3})\S{1,200}"
-    ),
-    re.compile(r"(?i)\bauthorization:\s{0,3}(bearer|basic|token)\s{1,3}\S{1,500}"),
-    re.compile(r"(?i)\b([a-z][a-z0-9+.-]{1,20}://)[^\s:/@]{1,100}:[^\s@]{1,200}@"),
-    re.compile(r"\b(?:sk|pk|ghp|gho|xox[abp])[-_][A-Za-z0-9_-]{8,200}"),
-    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}"),
+_KEYWORD = (
+    r"[A-Za-z0-9_-]*?(?:password|passwd|pwd|passphrase|secret|api[_-]?key|apikey|token"
+    r"|session[_-]?id|sid|csrf[_-]?token|private[_-]?key|credential)[A-Za-z0-9_-]{0,20}"
 )
+_EXTRA_SECRETS = (
+    # whole header lines that carry session or credential material
+    re.compile(
+        r"(?im)\b(cookie|set-cookie|x-openerp-session-id|x-odoo-session-id|x-api-key|"
+        r"proxy-authorization|authorization)(\s{0,3}[:=]\s{0,3})[^\r\n]{1,4000}"
+    ),
+    # scheme://user:password@host (db URIs, smtp, redis, ...)
+    re.compile(r"(?i)([a-z][a-z0-9+.-]{0,30}://)[^\s/?#]{0,500}@"),
+    # key=value / key: value / 'key': 'value' / "key": "value" / --key value
+    re.compile(
+        r"""(?i)(["']?)(""" + _KEYWORD + r""")\1"""
+        r"""(\s{0,3}(?:[=:]|=>)\s{0,3}|\s{1,3}(?=["']))"""
+        r"""(?:"[^"\r\n]{0,1000}"|'[^'\r\n]{0,1000}'|[^\s,;&}\])"'<>]{1,1000})"""
+    ),
+    re.compile(r"(?i)\b(bearer|basic)\s{1,3}[A-Za-z0-9._~+/=-]{6,2000}"),
+    re.compile(r"\b(?:sk|pk|rk|ghp|gho|ghs|github_pat|xox[abprs]|AKIA)[-_]?[A-Za-z0-9_-]{8,200}"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}"),
+    re.compile(
+        r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]{1,63}(?:\.[A-Za-z0-9-]{1,63})*\.[A-Za-z]{2,24}"
+    ),
+)
+_LINE_CTRL = re.compile(r"[\x00-\x1f\x7f\u2028\u2029\x85]")
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
 def redact(text: str) -> str:
-    text = _EXTRA_SECRETS[0].sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
-    text = _EXTRA_SECRETS[1].sub("Authorization: [REDACTED]", text)
-    text = _EXTRA_SECRETS[2].sub(lambda m: f"{m.group(1)}[REDACTED]@", text)
-    for p in _EXTRA_SECRETS[3:]:
+    """Remove credentials, session material and email addresses. Apply to whole text before
+    any slicing so a cut can never separate a secret from the keyword that identifies it."""
+    hdr, uri, kv, bearer, tok, jwt, email = _EXTRA_SECRETS
+    text = hdr.sub(lambda m: f"{m.group(1)}{m.group(2)}[REDACTED]", text)
+    text = uri.sub(lambda m: f"{m.group(1)}[REDACTED]@", text)
+    text = kv.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(1)}{m.group(3)}[REDACTED]", text)
+    text = bearer.sub(lambda m: f"{m.group(1)} [REDACTED]", text)
+    for p in (tok, jwt):
         text = p.sub("[REDACTED]", text)
+    text = email.sub("[EMAIL]", text)
     return _audit_redact(text)
 
 
@@ -416,9 +438,13 @@ CATALOGUE: tuple[Signature, ...] = (
         _all("Cannot rename/delete fields that are still present in views", _BASE + "ir_model.py"),
         "A field removal/rename (often during upgrade) is blocked by views still using it.",
         ["Read the field and view names.", "Remove the field from those views first."],
-        tt.T2,
-        "update the views, then remove the field",
-        [_NO_DB, _NO_FORCE],
+        tt.T3,
+        "update the views, then remove the field in module code (drops the column and its data)",
+        [
+            _NO_DB,
+            _NO_FORCE,
+            "Back up first: removing a field drops its column and data irreversibly.",
+        ],
     ),
     _sig(
         "template-render-failed",
@@ -432,7 +458,10 @@ CATALOGUE: tuple[Signature, ...] = (
         ],
         tt.T2,
         "fix the template expression",
-        ["Do not delete the template; reset it to the module version instead."],
+        [
+            "Do not delete the template.",
+            "Do not reset it to the module version without saving a copy: reset discards local edits.",
+        ],
     ),
     _sig(
         "qweb-render-error",
@@ -617,10 +646,11 @@ def match(text: Any, *, version: Any = None) -> Result:
         rx = _COMPILED[sig.id]
         ev = []
         for i, ln in enumerate(lines, 1):
-            m = rx.search(ln)
-            if m:
-                lo = max(0, m.start() - 40)
-                ev.append({"line": i, "span": redact(ln[lo : m.end() + 40])[:MAX_SPAN]})
+            if rx.search(ln):
+                red = redact(ln)  # redact the whole line first, then cut the span
+                m = rx.search(red)
+                lo, hi = (max(0, m.start() - 40), m.end() + 40) if m else (0, MAX_SPAN)
+                ev.append({"line": i, "span": red[lo:hi][:MAX_SPAN]})
                 if len(ev) >= 3:
                     break
         if ev:
@@ -670,9 +700,15 @@ def check_note(note: Any) -> dict[str, Any]:
     for k, n in (("title", 120), ("sample", 4000), ("cause", 1000), ("source", 200)):
         if not _str(note.get(k), n):
             raise ValueError(f"{k} must be text, 1-{n} characters")
+        if k != "sample" and _LINE_CTRL.search(note[k]):
+            raise ValueError(f"{k} must be a single line without control characters")
     for k in ("diagnosis", "dont"):
         v = note.get(k, [])
-        if not isinstance(v, list) or len(v) > 10 or not all(_str(x, 300) for x in v):
+        if (
+            not isinstance(v, list)
+            or len(v) > 10
+            or not all(_str(x, 300) and not _LINE_CTRL.search(x) for x in v)
+        ):
             raise ValueError(f"{k} must be a list of up to 10 short texts")
     if (
         note.get("fix_tier") not in (None, tt.T1, tt.T2, tt.T3)

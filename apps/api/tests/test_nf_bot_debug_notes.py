@@ -276,3 +276,82 @@ def test_module_is_read_only_and_t3_off():
     for bad in ("subprocess", "requests", "execute(", "os.system", "eval(", "exec("):
         assert bad not in src
     assert tt.tier_ready(tt.T3) is False
+
+
+# ---------------------------------------------------------------- round 3
+
+SECRET = "Zq9SecretVal7x"
+_ERR = "Invalid field 'x_zz' on model 'sale.order'"
+SHAPES = [
+    "password=" + SECRET,
+    "db_password = " + SECRET,
+    "'password': '" + SECRET + "'",
+    '"password": "' + SECRET + '"',
+    '{"api_key":"' + SECRET + '"}',
+    "{'admin_passwd': '" + SECRET + "'}",
+    "session_id=" + SECRET,
+    "Cookie: session_id=" + SECRET + "; frontend_lang=en_US",
+    "X-Openerp-Session-Id: " + SECRET,
+    "PGPASSWORD=" + SECRET,
+    "PG_PASSWORD=" + SECRET,
+    "export PGPASSWORD='" + SECRET + "'",
+    "Authorization: Bearer " + SECRET,
+    "sent Bearer " + SECRET + " upstream",
+    "postgresql://odoo:" + SECRET + "@db:5432/prod",
+    "smtp://user@x.io:" + SECRET + "@mail:25",
+    "token: " + SECRET,
+    "X-API-Key: " + SECRET,
+    "--db_password " + "'" + SECRET + "'",
+]
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_r3_redact_shapes(shape):
+    assert SECRET not in dn.redact(shape)
+
+
+def test_r3_redact_email():
+    assert "jane.doe@example.com" not in dn.redact("mail to jane.doe@example.com failed")
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("pad", [0, 1, 7, 25, 39, 40, 41, 60, 120])
+def test_r3_fuzz_secret_never_in_match_output(shape, pad):
+    # secret before and after the error, at offsets that straddle the 40-char span cut
+    for line in (f"{'x' * pad}{shape} {_ERR}", f"{_ERR} {'y' * pad}{shape}"):
+        res = dn.match(line + "\n")
+        assert res.matches, line
+        assert SECRET not in repr(res) and SECRET not in json.dumps(repr(res))
+
+
+def test_r3_span_cut_after_redaction():
+    # old code cut 40 chars before the match then redacted: the keyword fell outside the span
+    line = "password=" + SECRET + " " * 25 + _ERR
+    res = dn.match(line)
+    spans = [e["span"] for m in res.matches for e in m.evidence]
+    assert spans and all(SECRET not in s and SECRET[2:] not in s for s in spans)
+
+
+def test_r3_field_in_views_irreversible_guarded():
+    sig = next(s for s in dn.CATALOGUE if s.id == "field-in-views")
+    assert sig.fix_tier == tt.T3
+    assert any("back up" in d.lower() and "drop" in d.lower() for d in sig.dont)
+    tpl = next(s for s in dn.CATALOGUE if s.id == "template-render-failed")
+    assert any("copy" in d for d in tpl.dont)
+
+
+@pytest.mark.parametrize("k", ["title", "cause", "source"])
+@pytest.mark.parametrize("bad", ["a\nb", "a\rb", "a\x00b", "a\x1bb", "a\u2028b", "a\x7fb"])
+def test_r3_check_note_rejects_control_chars(k, bad):
+    with pytest.raises(ValueError):
+        dn.check_note(_note(**{k: bad}))
+
+
+@pytest.mark.parametrize("k", ["diagnosis", "dont"])
+def test_r3_check_note_rejects_control_in_lists(k):
+    with pytest.raises(ValueError):
+        dn.check_note(_note(**{k: ["ok", "bad\nline"]}))
+
+
+def test_r3_check_note_sample_may_be_multiline():
+    assert dn.check_note(_note(sample="Traceback\n  line\n" + _ERR))["sample"]

@@ -45,12 +45,13 @@ PG_NAME_MAX = 63
 
 
 def m2m_table(model: str, field_name: str) -> str:
-    """x_<model>_<field>_rel, unique per field; shortened with a stable hash past 63 chars."""
-    name = f"x_{model.replace('.', '_')}_{field_name}_rel"
-    if len(name) <= PG_NAME_MAX:
-        return name
-    digest = hashlib.sha256(name.encode()).hexdigest()[:10]
-    return f"{name[: PG_NAME_MAX - 16]}_{digest}_rel"
+    """x_<model>__<field>_<hash>_rel. The hash covers the (model, field) pair itself, so two
+    pairs whose underscore-joined text coincides (a.b_x_c vs a_x_b.c) still get distinct tables.
+    The readable prefix is cut so the name always fits Postgres' 63-character limit."""
+    digest = hashlib.sha256(f"{model}\x00{field_name}".encode()).hexdigest()[:10]
+    tail = f"_{digest}_rel"
+    head = f"x_{model.replace('.', '_')}__{field_name}"[: PG_NAME_MAX - len(tail)]
+    return f"{head}{tail}"
 
 
 SCALAR_TYPES = frozenset(
@@ -137,6 +138,7 @@ class _Builder:
     def __init__(self, req: dict[str, Any], version: int, installed: frozenset[str]):
         self.req, self.v, self.inst = req, version, installed
         self.errs: list[str] = []
+        self.m2m_tables: dict[str, str] = {}  # relation table -> field that owns it
         self.trace: dict[str, list[str]] = {}
         self.assume: list[str] = []
         self.depends: set[str] = {"base"}
@@ -197,7 +199,14 @@ class _Builder:
                 me = where.split(".", 1)[0]
                 # Two links between the same pair would share Odoo's default table, so every
                 # link gets its own explicit table, hash-shortened to fit Postgres' limit.
-                kw["relation_table"] = m2m_table(self.model_of.get(me, me), f"x_{k}")
+                table = m2m_table(self.model_of.get(me, me), f"x_{k}")
+                if table in self.m2m_tables:
+                    self.errs.append(
+                        f"{where}: relation table {table} already used by {self.m2m_tables[table]}"
+                    )
+                    return None
+                self.m2m_tables[table] = where
+                kw["relation_table"] = table
             if t == "many2one":
                 kw["on_delete"] = "restrict" if kw["required"] else "set null"
         elif "options" in f or "relation" in f:

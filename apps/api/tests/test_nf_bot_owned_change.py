@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import io
 import os
 import zipfile
@@ -431,3 +432,80 @@ def test_r2_c7_patch_keys_must_match(tmp_path):
     with pytest.raises(ChangeError) as e:
         oc.apply_change_set(raw(), cs, approved_id=cs.id)
     assert e.value.code == "patch-invalid"
+
+
+INHERIT_SALE = """<odoo>
+  <record id="view_order_form_x" model="ir.ui.view">
+    <field name="name">sale.order.form.x</field>
+    <field name="model">sale.order</field>
+    <field name="inherit_id" ref="sale.view_order_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//field[@name='partner_id']" position="after">
+        <field name="x_nonexistent_zz"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>"""
+
+
+@pytest.mark.parametrize(
+    "extra,edits",
+    [
+        (
+            {},
+            [
+                Edit(
+                    "__init__.py",
+                    "replace_file",
+                    "from os import system\nsystem('id')\nfrom . import models\n",
+                )
+            ],
+        ),
+        (
+            {},
+            [
+                Edit(
+                    "__init__.py",
+                    "replace_file",
+                    "import os as o\no.system('id')\nfrom . import models\n",
+                )
+            ],
+        ),
+        (
+            {"static/src/x.py": "x = 1\n"},
+            [Edit("static/src/x.py", "replace_file", "import os\nos.system('id')\n")],
+        ),
+        (
+            {"tests/__init__.py": "", "tests/evil.py": "import os\nos.system('id')\n"},
+            [
+                Edit(
+                    "__init__.py", "replace_file", "from . import models\nfrom .tests import evil\n"
+                )
+            ],
+        ),
+        ({}, [Edit("views/views.xml", "replace_file", INHERIT_SALE)]),
+    ],
+    ids=["from-import", "import-as", "static-py", "tests-imported", "field-undefined"],
+)
+def test_r3_c3_gate_blocks_round3_payloads(tmp_path, extra, edits):
+    with pytest.raises(ChangeError) as e:
+        oc.build_change_set(
+            tree(tmp_path, {**FILES, **extra}),
+            ChangeRequest(MOD, tuple(edits), ""),
+            version=17,
+            owned_names=OWNED,
+        )
+    assert e.value.code == "audit-regression"
+
+
+def test_r3_id_covers_reason_and_counts(tmp_path):
+    a = build(tmp_path / "a", Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"))
+    b = build(
+        tmp_path / "b",
+        Edit("models/demo.py", "replace_symbol", NEW_LABEL, "Demo.label"),
+        reason="other",
+    )
+    assert a.id != b.id
+    c = copy.deepcopy(a)
+    c.post_counts = {**c.post_counts, "low": c.post_counts.get("low", 0) + 1}
+    assert c.id != a.id
