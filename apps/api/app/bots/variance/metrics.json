@@ -1,0 +1,359 @@
+{
+ "version": 1,
+ "metrics": [
+  {
+   "id": "component_consumption",
+   "model": "stock.move",
+   "unit": "uom",
+   "direction": "both",
+   "domain": [
+    [
+     "raw_material_production_id",
+     "!=",
+     false
+    ],
+    [
+     "state",
+     "=",
+     "done"
+    ]
+   ],
+   "actual": {
+    "field": "quantity"
+   },
+   "expected": {
+    "field": "product_uom_qty"
+   },
+   "uom_field": [
+    "product_uom",
+    "uom_id"
+   ],
+   "group_by": [
+    "product_id"
+   ],
+   "tolerance": {
+    "pct": 2.0
+   },
+   "followups": [
+    {
+     "action": "review scrap",
+     "task": "m:stock.scrap:read"
+    },
+    {
+     "action": "adjust BoM qty",
+     "task": "m:mrp.bom.line:write",
+     "fields": [
+      "product_qty"
+     ]
+    }
+   ],
+   "date_field": "date"
+  },
+  {
+   "id": "production_output",
+   "model": "mrp.production",
+   "unit": "uom",
+   "direction": "under",
+   "domain": [
+    [
+     "state",
+     "=",
+     "done"
+    ]
+   ],
+   "actual": {
+    "field": "qty_produced"
+   },
+   "expected": {
+    "field": "product_qty"
+   },
+   "uom_field": [
+    "product_uom_id",
+    "uom_id"
+   ],
+   "group_by": [
+    "product_id"
+   ],
+   "tolerance": {
+    "pct": 2.0
+   },
+   "followups": [
+    {
+     "action": "open quality check",
+     "task": "m:quality.check:create"
+    }
+   ],
+   "date_field": "date_finished"
+  },
+  {
+   "id": "workorder_duration",
+   "model": "mrp.workorder",
+   "unit": "minute",
+   "direction": "over",
+   "domain": [
+    [
+     "state",
+     "=",
+     "done"
+    ]
+   ],
+   "actual": {
+    "field": "duration"
+   },
+   "expected": {
+    "field": "duration_expected"
+   },
+   "group_by": [
+    "workcenter_id"
+   ],
+   "tolerance": {
+    "pct": 10.0
+   },
+   "followups": [
+    {
+     "action": "review operation time",
+     "task": "m:mrp.routing.workcenter:write",
+     "fields": [
+      "time_cycle_manual"
+     ]
+    }
+   ],
+   "date_field": "date_finished"
+  },
+  {
+   "id": "standard_cost",
+   "model": "product.product",
+   "unit": "currency",
+   "direction": "both",
+   "domain": [],
+   "actual": {
+    "field": "standard_price"
+   },
+   "expected": {
+    "standard": true
+   },
+   "group_by": [
+    "id"
+   ],
+   "tolerance": {
+    "pct": 5.0
+   },
+   "followups": [
+    {
+     "action": "review product cost",
+     "task": "m:product.product:write",
+     "fields": [
+      "standard_price"
+     ]
+    }
+   ],
+   "company_context": true
+  },
+  {
+   "id": "purchase_price",
+   "model": "purchase.order.line",
+   "unit": "currency",
+   "direction": "over",
+   "domain": [
+    [
+     "state",
+     "in",
+     [
+      "purchase",
+      "done"
+     ]
+    ]
+   ],
+   "actual": {
+    "field": "price_unit"
+   },
+   "expected": {
+    "standard": true
+   },
+   "currency_field": "currency_id",
+   "group_by": [
+    "product_id"
+   ],
+   "aggregate": "avg",
+   "tolerance": {
+    "pct": 5.0
+   },
+   "followups": [
+    {
+     "action": "review vendor price",
+     "task": "m:product.supplierinfo:write",
+     "fields": [
+      "price"
+     ]
+    }
+   ],
+   "date_field": "date_order",
+   "uom_field": [
+    "product_uom",
+    "product_uom_id",
+    "uom_id"
+   ],
+   "uom_kind": "per_unit"
+  },
+  {
+   "id": "sale_price",
+   "model": "sale.order.line",
+   "unit": "currency",
+   "direction": "under",
+   "domain": [
+    [
+     "state",
+     "=",
+     "sale"
+    ]
+   ],
+   "actual": {
+    "field": "price_unit"
+   },
+   "expected": {
+    "standard": true
+   },
+   "currency_field": "currency_id",
+   "group_by": [
+    "product_id"
+   ],
+   "aggregate": "avg",
+   "tolerance": {
+    "pct": 3.0
+   },
+   "followups": [
+    {
+     "action": "review price list",
+     "task": "m:product.pricelist.item:write",
+     "fields": [
+      "fixed_price"
+     ]
+    }
+   ],
+   "date_field": "create_date",
+   "uom_field": [
+    "product_uom",
+    "product_uom_id",
+    "uom_id"
+   ],
+   "uom_kind": "per_unit"
+  },
+  {
+   "id": "stock_count",
+   "model": "stock.quant",
+   "unit": "uom",
+   "direction": "both",
+   "domain": [
+    [
+     "inventory_quantity_set",
+     "=",
+     true
+    ]
+   ],
+   "actual": {
+    "field": "inventory_quantity"
+   },
+   "expected": {
+    "field": "quantity"
+   },
+   "uom_field": [
+    "product_uom_id",
+    "uom_id"
+   ],
+   "group_by": [
+    "product_id",
+    "location_id"
+   ],
+   "tolerance": {
+    "abs": 0.0
+   },
+   "followups": [
+    {
+     "action": "review count before applying",
+     "task": "m:stock.quant:read"
+    }
+   ],
+   "date_field": "write_date"
+  },
+  {
+   "id": "bill_vs_po_qty",
+   "model": "purchase.order.line",
+   "unit": "uom",
+   "direction": "over",
+   "domain": [
+    [
+     "state",
+     "in",
+     [
+      "purchase",
+      "done"
+     ]
+    ]
+   ],
+   "actual": {
+    "field": "qty_invoiced"
+   },
+   "expected": {
+    "field": "qty_received"
+   },
+   "uom_field": [
+    "product_uom",
+    "product_uom_id",
+    "uom_id"
+   ],
+   "group_by": [
+    "order_id"
+   ],
+   "tolerance": {
+    "abs": 0.0
+   },
+   "followups": [
+    {
+     "action": "review vendor bill",
+     "task": "m:account.move:read"
+    }
+   ],
+   "date_field": "date_order"
+  },
+  {
+   "id": "lead_time",
+   "model": "purchase.order",
+   "unit": "day",
+   "direction": "over",
+   "domain": [
+    [
+     "state",
+     "in",
+     [
+      "purchase",
+      "done"
+     ]
+    ]
+   ],
+   "actual": {
+    "field": "effective_date",
+    "days_from": "date_approve"
+   },
+   "expected": {
+    "standard": true
+   },
+   "group_by": [
+    "partner_id"
+   ],
+   "aggregate": "avg",
+   "tolerance": {
+    "abs": 2.0
+   },
+   "followups": [
+    {
+     "action": "review vendor lead time",
+     "task": "m:product.supplierinfo:write",
+     "fields": [
+      "delay"
+     ]
+    }
+   ],
+   "date_field": "date_approve"
+  }
+ ]
+}
