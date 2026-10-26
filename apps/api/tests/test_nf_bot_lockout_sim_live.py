@@ -1,11 +1,14 @@
 """BOT-LOCKOUT-SIM live: Odoo 17 + 20 over JSON-RPC (ports 18217-18220, DB ingenium_nf2_lock_<v>).
 
-Needs ODOO_LIVE=1. Fixtures are seeded by a test-side writer; the simulator only reads
+Needs ODOO_LIVE=1 (skips cleanly otherwise). Target via env, defaults = nf2 sandboxes:
+LOCKOUT_LIVE_URL="http://127.0.0.1:182{v}", LOCKOUT_LIVE_DB="ingenium_nf2_lock_{v}".
+Fixtures are seeded by a test-side writer; the simulator only reads
 (every simulator call is recorded and must be a read method).
 """
 
 from __future__ import annotations
 
+import os
 import uuid
 from pathlib import Path
 
@@ -22,8 +25,8 @@ EVIDENCE = Path.home() / ".ingenium_nf" / "nfwt" / "BOT-LOCKOUT-SIM_live.txt"
 
 class Lock(Json):
     def __init__(self, v: int) -> None:
-        self.url = f"http://127.0.0.1:182{v}"
-        self.db = f"ingenium_nf2_lock_{v}"
+        self.url = os.environ.get("LOCKOUT_LIVE_URL", "http://127.0.0.1:182{v}").format(v=v)
+        self.db = os.environ.get("LOCKOUT_LIVE_DB", "ingenium_nf2_lock_{v}").format(v=v)
         self.uid = self._call("common", "login", [self.db, "admin", "admin"])
 
 

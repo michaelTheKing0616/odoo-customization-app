@@ -516,3 +516,37 @@ def test_created_ir_access_shows_permission_gains():
         sim(Fake(20), lk.Change("ir.access", "create", (), {"model_id": 103, "operation": "r"})),
         "Bot",
     )  # global row applies to the Bot
+
+
+@pytest.mark.parametrize("v", [17, 19, 20])
+def test_bot_self_widening_refused_by_every_route(v):
+    """Review BOT-V20-ACCESS: any gain of the Bot's own access is refused, not just losses."""
+    gu = "user_ids" if v >= 19 else "users"
+    acl = "ir.access" if v >= 20 else "ir.model.access"
+    row = {"model_id": 103, "group_id": 1, "name": "x"}
+    row |= {"operation": "r"} if v >= 20 else {"perm_read": True}
+    C = lambda m, vals: lk.Change(m, "create", (), vals)  # noqa: E731
+    routes = {
+        "implied chain": W("res.groups", [3], implied_ids=[(4, 6)]),
+        "implied, two steps": (
+            C("res.groups", {"name": "n"}),
+            W("res.groups", [2], implied_ids=[(4, -1)]),
+        ),
+        "member list": W("res.groups", [6], **{gu: [(4, BOT)]}),
+        "user groups": W("res.users", [BOT], **{_g(v): [(4, 6)]}),
+        "company": W("res.users", [BOT], company_ids=[(4, 2)]),
+        "access row": C(acl, row),
+    }
+    if v < 20:
+        routes["record rule"] = C(
+            "ir.rule", {"model_id": 103, "groups": [(6, 0, [1])], "name": "r"}
+        )
+    for name, ch in routes.items():
+        r = sim(Fake(v), *(ch if isinstance(ch, tuple) else (ch,)))
+        assert isinstance(r, Refusal) and "Bot" in r.reason, (name, r)
+    assert (
+        "widens the Bot's own access (groups, permissions)"
+        in sim(Fake(v), routes["implied chain"]).reason
+    )
+    ok = sim(Fake(v), W("res.groups", [6], implied_ids=[(4, 3)]))  # bot not in group 6: allowed
+    assert isinstance(ok, lk.LockoutSim), ok

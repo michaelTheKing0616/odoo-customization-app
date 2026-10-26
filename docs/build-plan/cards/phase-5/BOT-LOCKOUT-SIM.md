@@ -86,3 +86,12 @@ Also: `guard.KillSwitch.open_job` refuses reusing a live job whose level < need 
 ## Proposed tracking lines
 - PROGRESS: `BOT-LOCKOUT-SIM | done (nf2, uncommitted) | lockout.py + guard open_job level | 36 unit + 12 live, review round 1 fixed`
 - STATE_NF: `lockout simulation available: lockout.simulate -> Refusal | LockoutSim(L3, impacts, gate_facts)`
+
+## Note (BOT-V20-ACCESS review, 2026-10-26)
+- `simulate` now refuses a plan if, after any step, the Bot GAINS anything: effective groups,
+  ACL permissions, record rules that apply to it (any change), or companies. This covers every route (member list, implied
+  chain, access rows, rules, company, user/role fields). Before this, only losses were refused. Unit test:
+  `test_bot_self_widening_refused_by_every_route` (17/19/20).
+- The live file reads `LOCKOUT_LIVE_URL` / `LOCKOUT_LIVE_DB` (defaults are the nf2 values `http://127.0.0.1:182{v}`,
+  `ingenium_nf2_lock_{v}`) and skips without ODOO_LIVE. It was run on the NF sandboxes with
+  `LOCKOUT_LIVE_URL='http://127.0.0.1:181{v}' LOCKOUT_LIVE_DB='ingenium_nf_bv_{v}'`: green.

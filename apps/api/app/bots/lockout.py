@@ -689,6 +689,21 @@ def _acl_perms(st: State, eff: set[int]) -> set[tuple[Any, str]]:
     return out
 
 
+def _sig(r: dict) -> tuple:
+    return tuple(sorted((k, repr(sorted(v) if isinstance(v, set) else v)) for k, v in r.items()))
+
+
+def _bot_view(st: State, eff: set[int], uid: int) -> tuple[set, set, set, set]:
+    """Everything that decides what the Bot can do: groups, ACL perms, rules, companies."""
+    rules = set()
+    for r in [*st.rules_, *(a for a in st.acl if a.get("domain"))]:
+        gs = set(r.get("groups") or []) | ({g} if (g := _m2o(r.get("group_id"))) else set())
+        if r.get("active", True) and (not gs or gs & eff):
+            rules.add(_sig(r))
+    comp = set(st.users[uid]["company_ids"]) - st.companies_off
+    return set(eff), _acl_perms(st, eff), rules, comp
+
+
 def simulate(rpc: Any, changes: Sequence[Change], *, bot_uid: int) -> LockoutSim | Refusal:
     read = rpc if isinstance(rpc, df.ReadOnly) else df.ReadOnly(rpc)
     if not changes:
@@ -714,6 +729,7 @@ def simulate(rpc: Any, changes: Sequence[Change], *, bot_uid: int) -> LockoutSim
             set(before.users[bot_uid]["company_ids"]),
             _login_ok(before, bot_uid, before.users[bot_uid]),
         )
+        view0 = _bot_view(before, eff0[bot_uid], bot_uid)
         after = copy.deepcopy(before)
         eff, adm = {i: set(g) for i, g in eff0.items()}, set(a0)
         why: list[str] = []
@@ -762,6 +778,20 @@ def simulate(rpc: Any, changes: Sequence[Change], *, bot_uid: int) -> LockoutSim
                 or (after.acl_changed and bot0[1] - _acl_perms(after, eff[bot_uid]))
             ):
                 return Refusal(RF, MISS, f"step {k}: removes the Bot's own access")
+            view = _bot_view(after, eff[bot_uid], bot_uid)
+            gain = [
+                n
+                for n, a, b in zip(
+                    ("groups", "permissions", "", "companies"), view0, view, strict=True
+                )
+                if n and b - a
+            ]
+            if gain or view[2] != view0[2]:  # any gain, by any route; rule-set changes too
+                return Refusal(
+                    RF,
+                    MISS,
+                    f"step {k}: widens the Bot's own access ({', '.join(gain) or 'record rules'})",
+                )
             after.acl_changed = False
             key = (ch.model, tuple(sorted(ch.values)))
             try:

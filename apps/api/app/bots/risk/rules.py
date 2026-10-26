@@ -1110,3 +1110,34 @@ def plan_tier(
     return TierPlan(
         tier, batches, policy.batch_cap, blast_count, TIER_CONTROLS[tier], tuple(reasons)
     )
+
+
+# ---------------------------------------------------------------- BOT-V20-ACCESS (append-only)
+# Reviewed: an access change touching one of these groups changes who can do anything at all.
+ACCESS_CORE_GROUPS: dict[str, str] = {
+    "base.group_system": "Settings/administrator: holders control every other access",
+    "base.group_erp_manager": "Access Rights: holders can grant any group",
+    "base.group_user": "internal user: every employee's base access",
+    "base.group_portal": "portal: every customer/vendor login",
+    "base.group_public": "public: anonymous website visitors",
+    "base.group_no_one": "technical features: debug menus, raw models and access screens",
+}
+# Reviewed: any other access change still alters what people can see or do -> at least L2.
+ACCESS_MIN_TIER = 2
+
+
+def access_tier(
+    floor_tier: int, *, core: set[str], global_rule: bool, security_model: bool
+) -> tuple[int, list[str]]:
+    """Tier for a Bot access change: the classifier's floor, raised by the reviewed rules."""
+    why = [f"risk floor L{floor_tier}"]
+    tier = max(floor_tier, ACCESS_MIN_TIER)
+    for x in sorted(core):
+        why.append(f"touches {x}: {ACCESS_CORE_GROUPS[x]}")
+    if global_rule:
+        why.append("global row: applies to every user")
+    if security_model:
+        why.append("row grants access to a security model")
+    if core or global_rule or security_model:
+        tier = 3
+    return tier, why
