@@ -508,6 +508,36 @@ _OS_WRITE = frozenset(
         "walk",
     }
 )
+# Methods that, defined on any TestCase subclass, take over how the runner drives or reports it.
+_CASE_DEF = frozenset(
+    {
+        "run",
+        "debug",
+        "__call__",
+        "__init_subclass__",
+        "__getattribute__",
+        "_callSetUp",
+        "defaultTestResult",
+    }
+)
+# Introspection / process hooks that reach the runner's frames, objects or lifecycle.
+_INTROSPECT = frozenset(
+    {
+        "sys._getframe",
+        "sys.settrace",
+        "sys.setprofile",
+        "inspect.stack",
+        "inspect.currentframe",
+        "inspect.getouterframes",
+        "gc.get_objects",
+        "gc.get_referrers",
+        "atexit.register",
+        "os.register_at_fork",
+        "threading.settrace",
+        "threading.setprofile",
+    }
+)
+_TEST_FILE = re.compile(r"^tests/(?:__init__|test_[a-z0-9_]{1,60})\.py$")
 _LIST_CALLS = frozenset({"listdir", "scandir", "walk", "iterdir", "glob", "rglob", "iglob"})
 _THREAD_ROOTS = ("threading", "_thread", "multiprocessing", "concurrent", "signal", "sched")
 _PRIV_PATH = re.compile(r"^/(?:var/tmp|proc|tmp|dev/shm|run)(?:/|$)")
@@ -553,7 +583,50 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
                 for a in n.names
                 if a.name.startswith(("odoo.tests", "unittest"))
             }
+    if (path.startswith("tests/") or "/tests/" in path) and not _TEST_FILE.match(path):
+        hit(tree, f"{path}: test files must be flat tests/__init__.py or tests/test_*.py.")
+    if path == "tests/__init__.py":
+        for st in getattr(tree, "body", []):
+            if not (
+                isinstance(st, ast.ImportFrom)
+                and st.module is None
+                and st.level == 1
+                and all(
+                    re.fullmatch(r"test_[a-z0-9_]{1,60}", a.name) and not a.asname for a in st.names
+                )
+            ):
+                hit(st, "tests/__init__.py may only contain 'from . import test_x' lines.")
+    aliases: dict[str, str] = {}  # import inspect as i / from sys import _getframe as g
     for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            aliases |= {a.asname: a.name for a in n.names if a.asname}
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            aliases |= {(a.asname or a.name): f"{n.module}.{a.name}" for a in n.names}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ClassDef):
+            bases = " ".join(_chain(b) for b in n.bases)
+            if re.search(r"Case|Test", bases) or any(
+                b.split(".")[0] in test_names for b in bases.split()
+            ):
+                for st in n.body:
+                    if isinstance(st, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                        st.name in _CASE_DEF
+                    ):
+                        hit(st, f"Defines {n.name}.{st.name}: takes over the test runner.")
+                    if isinstance(st, ast.Assign) and any(
+                        isinstance(t, ast.Name) and t.id in _CASE_DEF for t in st.targets
+                    ):
+                        hit(st, f"Assigns {n.name} runner hook: takes over the test runner.")
+        if isinstance(n, ast.ImportFrom) and any(
+            f"{n.module}.{a.name}" in _INTROSPECT for a in n.names
+        ):
+            hit(n, f"Imports a frame/object/lifecycle hook from {n.module}.")
+        if isinstance(n, (ast.Call, ast.Attribute)) and not isinstance(
+            getattr(n, "ctx", None), ast.Store
+        ):
+            d0 = _resolve(_chain(n.func if isinstance(n, ast.Call) else n), aliases)
+            if d0 in _INTROSPECT:
+                hit(n, f"{d0}: reaches the runner's frames, objects or lifecycle.")
         targets: list[ast.AST] = []
         if isinstance(n, (ast.Assign, ast.Delete)):
             targets = list(n.targets)

@@ -526,7 +526,11 @@ def test_r3_tests_imported_by_prod_not_capped():
     evil = "import os\nos.system('id')\n"
     base = {"tests/__init__.py": "", "tests/evil.py": evil}
     capped = ca.audit(zbytes(_tree(**base)), version=17)
-    assert all(f.severity == "low" for f in capped.findings if f.file.startswith("tests/"))
+    assert all(
+        f.severity == "low"
+        for f in capped.findings
+        if f.file.startswith("tests/") and f.code != "test-tamper"  # r7: shape is HIGH
+    )
     for init in (
         "from . import models\nfrom .tests import evil\n",
         "from . import models\nfrom . import tests\n",
@@ -838,3 +842,58 @@ def test_r6_ordinary_code_not_flagged():
         "        with open(__file__) as fh:\n            return fh.read()\n"
     )
     assert "test-tamper" not in codes(_r5_files({"models/m.py": src}))
+
+
+R7_TAMPER = [
+    *(
+        f"from odoo.tests.common import TransactionCase\nclass T(TransactionCase):\n"
+        f"    def {m}(self, *a):\n        return None\n"
+        for m in sorted(ca._CASE_DEF)
+    ),
+    "import sys\nf = sys._getframe(1)\n",
+    "from sys import _getframe as g\ng(2)\n",
+    "import inspect as i\ni.stack()\n",
+    "import inspect\ninspect.currentframe()\n",
+    "import inspect\ninspect.getouterframes(None)\n",
+    "import gc\ngc.get_objects()\n",
+    "import atexit\natexit.register(print)\n",
+    "import sys\nsys.settrace(None)\n",
+    "import sys\nsys.setprofile(None)\n",
+    "import os\nos.register_at_fork(after_in_child=print)\n",
+    "import multiprocessing\n",
+]
+
+
+@pytest.mark.parametrize("src", R7_TAMPER)
+def test_r7_runner_hooks_and_introspection_are_high(src):
+    for path in ("models/m.py", "tests/test_x.py"):
+        r = _r5_files({path: src})
+        hits = [f for f in r.findings if f.code == "test-tamper"]
+        assert hits and all(f.severity == ca.HIGH for f in hits), (path, src)
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        {"tests/sub/test_x.py": "x = 1\n"},
+        {"tests/helpers.py": "x = 1\n"},
+        {"tests/__init__.py": "import os\n"},
+        {"tests/__init__.py": "from . import test_a as b\n"},
+        {"tests/__init__.py": "from . import test_a\nx = 1\n"},
+    ],
+)
+def test_r7_test_files_fixed_shape(files):
+    r = _r5_files(files)
+    assert any(f.code == "test-tamper" and f.severity == ca.HIGH for f in r.findings), files
+
+
+def test_r7_plain_test_shape_is_clean():
+    r = _r5_files(
+        {
+            "tests/__init__.py": "from . import test_a\n",
+            "tests/test_a.py": "from odoo.tests.common import TransactionCase\n\n\n"
+            "class TestA(TransactionCase):\n    def setUp(self):\n        super().setUp()\n\n"
+            "    def test_a(self):\n        self.assertTrue(True)\n",
+        }
+    )
+    assert not [f for f in r.findings if f.code == "test-tamper"]
