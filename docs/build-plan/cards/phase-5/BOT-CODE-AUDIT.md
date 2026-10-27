@@ -31,3 +31,32 @@ test_nf_bot_code_audit_4_probes.py (127). UNBASELINABLE codes never baselined in
   sql-injection from dynamic `_fields` column lists (mail_followers.py:415,
   hr_employee_public.py:196), one mail js-external-request. Stock web/account keep many
   HIGHs (js-eval, markup-script, script-file, test-tamper) by design: foreign code is audit-only.
+
+## CODE-AUDIT-5 status (review 4: H1-H15, M1-M8, L1-L4)
+All review-4 reproducers are caught or graded (probe harness: 6 of ~270 probes still return no
+finding, each a documented limit below). Tests: test_nf_bot_code_audit_5.py.
+- Node (H1/M1): the pinned binary and its whole non-sealed dylib closure are copied, each copy
+  compared with its own pinned sha256, relinked to private paths (install_name_tool), ad-hoc
+  signed, and kept in an owner-only cache (~/.cache/ingenium-node/<pin>) whose every file is
+  re-verified against the pinned post-relink hashes before each use (rebuilt when it differs).
+  Linux runs node through the pinned, copied ELF interpreter with --library-path.
+- Operator step (L3): a fresh checkout has no node.pin.json, so every JS/CSS file is HIGH
+  web-unaudited (fail closed). Pin once per host after npm ci:
+  `cd apps/api && python -m app.bots.code_audit_web --pin-node [/path/to/node]`
+  (exit 0 = pinned; 1 = Node missing/too old/closure unresolvable; 2 = usage). Re-pin after
+  any Node upgrade.
+## Remaining limits (CODE-AUDIT-5, honest)
+- View attrs/invisible/readonly expressions and field context are evaluated client-side
+  (domain/py.js, no server code): not flagged (probes x-view-attrs-expr, x-view-field-context).
+- Default-value JSON on non-core fields, json/markdown modules, static/tests JS (loaded only
+  in test bundles) are LOW or unflagged by design.
+- owl-url-attr: URL-controlled HIGH, record data MEDIUM, props/state LOW (flagged, not silent).
+- Same-user TOCTOU between the verify of the private Node cache and exec remains (the cache is
+  owner-only; any attacker able to write it can also rewrite the pin).
+- web emoji_data: stack overflow in the helper fails closed as HIGH web-unaudited (stock).
+- Stock HIGHs kept by policy: web js-eval (v17 14 / v19 22, incl. assets.js script textContent),
+  markup-script, script-file, test-tamper on threading; foreign-record-edit on base groups;
+  binary-code __pycache__ (image artifact); sql-data-file neutralize.sql; mrp uninstall_hook
+  mass write (true positive of the hook rule); account sql-injection 2 (account_move 1642,
+  aml 741, conservative); mail tainted-model on thread_model route params; mail js-markup
+  MEDIUM x2.
