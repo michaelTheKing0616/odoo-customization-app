@@ -256,3 +256,35 @@ def test_h7_token_leak(attr):
 
 def test_h7_local_csrf_ok():
     assert not has(X("""<template id='t'><img t-att-src="'/web/x?'+request.csrf_token()"/></template>"""), "qweb-token-leak")
+
+
+# ---------------------------------------------------------------- H8 public/portal write on a core model
+H8_XML = "<record id='a' model='ir.model.access'><field name='name'>a</field><field name='model_id' ref='base.model_res_users'/><field name='group_id' ref='base.group_{g}'/><field name='perm_{p}' eval='1'/></record>"
+H8_CSV = "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink\na,a,{m},base.group_{g},1,{w},0,0\n"
+
+
+@pytest.mark.parametrize("g", ["public", "portal"])
+@pytest.mark.parametrize("p", ["write", "create", "unlink"])
+def test_h8_public_core_access_xml(g, p):
+    assert L3 in codes(X(H8_XML.format(g=g, p=p)))
+
+
+@pytest.mark.parametrize("g", ["public", "portal"])
+def test_h8_public_core_access_csv(g):
+    assert L3 in codes({"security/ir.model.access.csv": H8_CSV.format(m="base.model_res_users", g=g, w=1)})
+
+
+def test_h8_own_model_user_read_ok():
+    f = {"security/ir.model.access.csv": "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink\na,a,model_a_a,base.group_user,1,1,1,0\n"}
+    assert L3 not in codes(f)
+
+
+# ---------------------------------------------------------------- H9 ir.mail_server data graded like Python
+@pytest.mark.parametrize("host", ["e.v", "localhost", "smtp.gmail.com"])
+def test_h9_mail_server_data(host):
+    assert L3 in codes(X(f"<record id='m' model='ir.mail_server'><field name='name'>m</field><field name='smtp_host'>{host}</field></record>"))
+
+
+def test_h9_mail_server_csv_and_python():
+    assert L3 in codes({"data/ir.mail_server.csv": "id,name,smtp_host\nm,m,e.v\n"})
+    assert ("sensitive-model-write", "high") in codes(py("self.env['ir.mail_server'].create({'name':'m','smtp_host':'e.v'})"))
