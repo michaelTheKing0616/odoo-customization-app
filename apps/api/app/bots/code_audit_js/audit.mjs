@@ -409,6 +409,12 @@ function auditJs(text) {
           add("medium", "js-sensitive-model", n, `orm.${meth}() reads ${model} from the browser.`);
         }
       }
+      // H15: mass change from the client - write/unlink over ids from an empty-domain search
+      if (onOrm && (meth === "unlink" || meth === "write" || (meth === "call" && /^(unlink|write)$/.test(lit(n.arguments[1]) || "")))) {
+        const idsArg = meth === "call" ? n.arguments[2] : n.arguments[1];
+        if (idsArg && emptySearch(idsArg)) add("high", "js-mass-change", n,
+          `orm.${meth}() over every record (ids from an empty-domain search) from the browser.`);
+      }
       if (["rpc", "jsonrpc", "this.rpc", "rpc.query", "ajax.rpc", "session.rpc"].includes(r) || last(r) === "rpc") {
         const route = lit(a0);
         if (route !== null) {
@@ -879,3 +885,24 @@ process.stdin.on("end", () => {
   });
   process.stdout.write(JSON.stringify({ helper: "ingenium-code-audit-js/1", results }));
 });
+
+function emptySearch(node) {
+  // true when node (or an await/array wrapping it) is orm.search*(model, []) with an empty domain
+  let found = false;
+  (function walk(x, d) {
+    if (!x || typeof x !== "object" || found || d > 12) return;
+    if (x.type === "CallExpression" && x.callee) {
+      const c = x.callee;
+      const name = c.type === "MemberExpression" && c.property ? (c.property.name || c.property.value) : "";
+      if (/^(search|searchRead|search_read|webSearchRead)$/.test(name || "")) {
+        const dom = x.arguments[1];
+        if (!dom || (dom.type === "ArrayExpression" && dom.elements.length === 0)) { found = true; return; }
+      }
+    }
+    for (const k of Object.keys(x)) if (k !== "loc" && k !== "start" && k !== "end") {
+      const v = x[k];
+      if (Array.isArray(v)) v.forEach((y) => walk(y, d + 1)); else if (v && typeof v === "object") walk(v, d + 1);
+    }
+  })(node, 0);
+  return found;
+}

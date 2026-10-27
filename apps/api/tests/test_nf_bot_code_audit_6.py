@@ -360,3 +360,28 @@ def test_h16_script_urls(m, u):
 
 def test_h16_relative_url_ok():
     assert not has(X("<record id='u' model='website.menu'><field name='name'>u</field><field name='url'>/shop</field></record>"), "script-url")
+
+
+# ---------------------------------------------------------------- H14 OWL javascript: href
+@pytest.mark.parametrize("a", ["t-att-href=\"'javascript:'+props.c\"", "t-attf-href='javascript:{{props.c}}'", "t-att-href=\"' javascript:' + x\""])
+def test_h14_owl_js_href(a):
+    assert has({"static/src/a.xml": f"<templates><t t-name='a.A'><a {a}>x</a></t></templates>"}, "qweb-js-url")
+
+
+def test_h14_owl_relative_href_ok():
+    assert not has({"static/src/a.xml": "<templates><t t-name='a.A'><a t-att-href=\"'/shop/'+props.c\">x</a></t></templates>"}, "qweb-js-url")
+
+
+# ---------------------------------------------------------------- H15 JS mass change
+@pytest.mark.parametrize("src", [
+    "export async function f(orm){ await orm.unlink('res.partner', await orm.search('res.partner',[])); }",
+    "export async function f(orm){ const ids = await this.orm.search('a.a', []); }\nexport async function g(orm){ await orm.write('a.a', await orm.search('a.a', []), {x:1}); }",
+    "export async function f(orm){ await orm.call('res.partner','unlink',[await orm.search('res.partner')]); }",
+])
+def test_h15_js_mass_change(src):
+    assert has({"static/src/a.js": src + "\n"}, "js-mass-change")
+
+
+def test_h15_js_scoped_unlink_ok():
+    src = "export async function f(orm){ await orm.unlink('a.a', await orm.search('a.a',[['state','=','draft']])); }\n"
+    assert not has({"static/src/a.js": src}, "js-mass-change")
