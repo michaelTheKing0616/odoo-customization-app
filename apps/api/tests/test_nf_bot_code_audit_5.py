@@ -1030,3 +1030,12 @@ def test_l1_importmap_external_url():
     j = '{"imports": {"a": "https://e.v/a.js"}}'
     assert ("json-external-url", "medium") in codes({"static/src/importmap.json": j})
     assert not codes({"static/src/x.json": '{"imports": {"a": "./a.js"}}'})
+
+
+# --- M7 noise: setting an own object's __proto__ is not built-in tampering --------------
+
+
+def test_m7_own_proto_low_pollution_high():
+    assert ("js-prototype-tamper", "low") in codes(J("var a={}; a.__proto__=B.prototype"))
+    assert ("js-prototype-tamper", "high") in codes(J("var a={}; a.__proto__.isAdmin=true"))
+    assert ("js-prototype-tamper", "high") in codes(J("Object.prototype.x=1"))

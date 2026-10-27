@@ -468,7 +468,10 @@ function auditJs(text) {
       // prototype pollution / network hooks: built-ins rewritten for every script on the page
       if (/^(Object|Array|Function|String|Element|Node|HTMLElement|EventTarget|Document)\.prototype(\.|$)/.test(r) ||
           /(^|\.)__proto__(\.|$)/.test(r)) {
-        add(/^Object\.prototype|__proto__/.test(r) ? "high" : "medium", "js-prototype-tamper", n,
+        // writing THROUGH __proto__ pollutes a shared prototype (HIGH); setting an own
+        // object's __proto__ (compiled code, Object.setPrototypeOf) only re-links it (LOW)
+        const own = /__proto__$/.test(r) && !/^(Object|Array|Function|String|window|document|navigator|globalThis|self)\./.test(r);
+        add(own ? "low" : /^Object\.prototype|__proto__/.test(r) ? "high" : "medium", "js-prototype-tamper", n,
             `Assigns ${r}: changes built-in behaviour for every script.`);
       }
       if (/^(fetch|XMLHttpRequest|XMLHttpRequest\.prototype\.(open|send|setRequestHeader)|navigator\.sendBeacon|WebSocket|WebSocket\.prototype\.send|EventSource)$/.test(r)) {
