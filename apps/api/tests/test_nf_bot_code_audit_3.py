@@ -247,7 +247,7 @@ POS = [
         "po-markup-injection",
         "high",
     ),
-    ("L6-oversized", lambda: audit({"static/src/b.js": "x" * 3_000_000}), "file-unaudited", "high"),
+    ("L6-oversized", lambda: audit({"static/src/b.js": "x" * (ca.MAX_FILE + 1_000_000)}), "file-unaudited", "high"),
     (
         "F-cross-file",
         lambda: audit(

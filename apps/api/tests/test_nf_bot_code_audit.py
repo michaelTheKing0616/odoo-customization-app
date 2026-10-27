@@ -210,7 +210,7 @@ def test_hostile_archives_refused(files, root, mode, needle):
 
 
 def test_zip_bomb_and_limits(monkeypatch):
-    bomb = zbytes({"__manifest__.py": "{}", "big.py": "#" * 3_000_000})
+    bomb = zbytes({"__manifest__.py": "{}", "big.py": "#" * (ca.MAX_FILE + 1_000_000)})
     r = ca.audit(bomb, version=17)
     # one oversized file is reported HIGH unaudited; the rest of the module is still audited
     assert "over-compressed" in r.error or (
@@ -958,7 +958,7 @@ def _codes(r, file=None):
 
 
 def test_web_oversized_js_fails_closed():
-    r = _web({"static/src/big.js": "x" * 3_000_000, "static/src/b.js": "eval(x)\n"})
+    r = _web({"static/src/big.js": "x" * (ca.MAX_FILE + 1_000_000), "static/src/b.js": "eval(x)\n"})
     got = {(f.code, f.file, f.severity) for f in r.findings}
     # the oversized file is HIGH unaudited and every other file is still audited
     assert r.ok and ("file-unaudited", "static/src/big.js", "high") in got

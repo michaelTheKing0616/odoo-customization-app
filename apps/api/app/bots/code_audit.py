@@ -34,7 +34,12 @@ from app.bots import code_audit_web as web
 from app.bots.versioncaps import caps
 
 VERSIONS = (17, 18, 19, 20)
-MAX_FILES, MAX_FILE, MAX_TOTAL, MAX_DEPTH, MAX_RATIO = 2000, 2_000_000, 20_000_000, 12, 100
+# Budget sized from measurements of all 630 stock addons (2026-10-27): the largest module is
+# `web` (25.2 MB of code in 1841 files + 70 .po), the largest single file 2.7 MB
+# (spreadsheet o_spreadsheet.js). A whole-module audit of `web` takes ~9 s and ~400 MB RSS, so
+# every stock module is audited in full; anything past these caps is not a normal Odoo module
+# and still fails closed ("source too large" / file-unaudited HIGH).
+MAX_FILES, MAX_FILE, MAX_TOTAL, MAX_DEPTH, MAX_RATIO = 3000, 4_000_000, 40_000_000, 12, 100
 HEAD_BYTES = 262_144  # inert files: only this much is read, for type/content sniffing
 MAX_AST_NODES = 200_000
 HIGH, MEDIUM, LOW, INFO = "high", "medium", "low", "info"
@@ -2225,6 +2230,26 @@ _RPC_PROXY = re.compile(
     r"^odoo\.(?:service\.(?:dispatch_rpc|model\.(?:execute(?:_kw|_cr)?|dispatch)|common\.dispatch|"
     r"db\.(?:dispatch|exp_\w+)|dispatch)|http\.dispatch_rpc)$"
 )
+
+
+def _rpc_open(x: ast.Call, o: str) -> bool:
+    """An RPC dispatch is an open proxy when the caller picks the service/model/method; a call
+    with those fixed by literals (dispatch_rpc('db', 'list', ...), db.exp_list()) is a fixed
+    service call and is graded by what it does, not as a proxy."""
+    if any(isinstance(a, ast.Starred) for a in x.args) or any(k.arg is None for k in x.keywords):
+        return True
+    tail = o.rsplit(".", 1)[-1]
+    if tail.startswith("exp_"):
+        return False
+    pos = {"dispatch_rpc": (0, 1), "execute" + "_kw": (3, 4), "execute": (2, 3), "execute_cr": (2, 3), "dispatch": (0,)}.get(tail, (0,))
+    if tail == "dispatch" and ".model." not in o and ".common." not in o and ".db." not in o:
+        pos = (0, 1)
+    for i in pos:
+        if i >= len(x.args) or _fold_str(x.args[i]) is None:
+            return True
+    return False
+
+
 _RULE_CORE = frozenset({"ir.rule", "ir.model.access"})
 _RULE_CORE_METHODS = frozenset({"_compute_domain", "_compute_domain_keys", "_get_rules", "domain_get", "_get_failing", "check", "_get_allowed_models", "call_cache_clearing_methods"})
 
@@ -2459,7 +2484,7 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                 if isinstance(x, ast.Call):
                     o = origin(x.func)
                     callee = x.func.attr if isinstance(x.func, ast.Attribute) and _chain(x.func.value) in ("self", "cls") else (x.func.id if isinstance(x.func, ast.Name) else "")
-                    if _RPC_PROXY.match(o) or callee in proxy:
+                    if (_RPC_PROXY.match(o) and _rpc_open(x, o)) or callee in proxy:
                         proxy.add(name)
                         break
     for f in funcs.values():
@@ -2472,7 +2497,7 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                 continue
             o = origin(x.func)
             callee = x.func.attr if isinstance(x.func, ast.Attribute) and _chain(x.func.value) in ("self", "cls") else (x.func.id if isinstance(x.func, ast.Name) else "")
-            if _RPC_PROXY.match(o) or (callee and callee in proxy and callee != f.name):
+            if (_RPC_PROXY.match(o) and _rpc_open(x, o)) or (callee and callee in proxy and callee != f.name):
                 c.add(HIGH if public else MEDIUM, "rpc-proxy", path, x.lineno,
                       f"auth='{auth}' route {f.name}() forwards to the RPC dispatcher ({o or callee}):"
                       " an open proxy to every model and service.",
@@ -5134,6 +5159,20 @@ def _audit_other_file(c: _Ctx, path: str, body: bytes, manifest: dict[str, Any] 
             "Never ship private keys; load secrets from configuration.",
         )
         return
+    if low.endswith((".b64", ".base64")):
+        # base64-wrapped binaries (stock web ships roboto.b64 for PDF reports): decode strictly
+        # and accept only inert font/image payloads; anything else stays unaudited
+        import base64 as _b64
+        import binascii as _ba
+
+        try:
+            raw = _b64.b64decode(re.sub(rb"\s+", b"", body), validate=True)
+        except (_ba.Error, ValueError):
+            raw = b""
+        if raw[:4] in (b"\x00\x01\x00\x00", b"OTTO", b"true", b"wOFF", b"wOF2", b"ttcf") or raw.startswith(
+            (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a")
+        ) or (raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"):
+            return
     if "." not in name and not body.startswith(b"#!") and b"\x00" not in body[:4096]:
         return  # extensionless text (LICENSE, COPYRIGHT): never imported or served as script
     kind = name.rsplit(".", 1)[-1] if "." in name else "no extension"

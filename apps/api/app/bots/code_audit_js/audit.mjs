@@ -143,6 +143,63 @@ function scriptScheme(s) {
   return typeof s === "string" && /^[\s\x00-\x20]*(javascript|vbscript|livescript)\s*:|^\s*data:\s*(text\/html|image\/svg|application\/(x-)?javascript|text\/javascript)/i.test(s);
 }
 
+// Generated data files (CLDR emoji tables) concatenate thousands of string pieces in one
+// left-deep `a + b + c ...` chain; every recursive pass over that tree overflows the stack.
+// When the chain starts with a string, `+` is plain string concatenation and therefore
+// associative, so the chain is rebuilt balanced (depth log2 n) without changing its value.
+// Iterative: the rebuild itself must not recurse on the deep chain.
+const DEEP_CHAIN = 256;
+function isStr(n) {
+  return n && ((n.type === "Literal" && typeof n.value === "string") || n.type === "TemplateLiteral");
+}
+function balance(leaves) {
+  let level = leaves;
+  while (level.length > 1) {
+    const next = [];
+    for (let i = 0; i < level.length; i += 2) {
+      if (i + 1 === level.length) { next.push(level[i]); continue; }
+      const l = level[i], r = level[i + 1];
+      next.push({ type: "BinaryExpression", operator: "+", left: l, right: r, start: l.start, end: r.end,
+        loc: { start: l.loc.start, end: r.loc.end } });
+    }
+    level = next;
+  }
+  return level[0];
+}
+function rebalanceChains(root) {
+  const stack = [root];
+  let seen = 0;
+  while (stack.length) {
+    const n = stack.pop();
+    if (++seen > 50_000_000) throw new Error("AST too large");
+    for (const k of Object.keys(n)) {
+      if (k === "loc") continue;
+      let v = n[k];
+      const kids = Array.isArray(v) ? v : [v];
+      for (let i = 0; i < kids.length; i++) {
+        let c = kids[i];
+        if (!c || typeof c.type !== "string") continue;
+        if (c.type === "BinaryExpression" && c.operator === "+") {
+          const leaves = [];
+          let x = c;
+          while (x.type === "BinaryExpression" && x.operator === "+") { leaves.push(x.right); x = x.left; }
+          leaves.push(x);
+          if (leaves.length > DEEP_CHAIN && isStr(x)) {
+            leaves.reverse();
+            const b = balance(leaves);
+            if (Array.isArray(v)) v[i] = b; else n[k] = b;
+            c = b;
+            for (const l of leaves) stack.push(l);
+            continue;
+          }
+        }
+        stack.push(c);
+      }
+    }
+  }
+  return root;
+}
+
 function auditJs(text) {
   let ast;
   const opts = { ecmaVersion: "latest", locations: true, allowHashBang: true,
@@ -157,6 +214,7 @@ function auditJs(text) {
       return { ok: false, error: String(e1.message).slice(0, 200), line: e1.loc ? e1.loc.line : 0 };
     }
   }
+  rebalanceChains(ast);
   const out = [];
   const add = (sev, code, node, msg) => out.push({ sev, code, line: node.loc.start.line, msg });
   for (const m of text.matchAll(/[#@]\s*source(?:Mapping)?URL\s*=\s*(\S+)/g)) {
