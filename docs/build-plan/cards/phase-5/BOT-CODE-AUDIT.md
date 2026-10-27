@@ -157,3 +157,26 @@ Tests: `tests/test_nf_bot_code_audit_8.py` (29). Each change has the probe, at l
 - web-unaudited and file-unaudited are 0 in every module, including `web`.
 - All `tests/*code_audit*.py`: 1089 passed forward, 1089 passed reverse.
 - gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
+
+## CODE-AUDIT-9 status (REVIEW-CODE-AUDIT-7: 7 HIGH, 4 MEDIUM, 1 LOW, all closed)
+
+- H3: secrets returned through helpers are still caught (covered by CA8 2536273c); test added for the review's probe.
+- H1/H2: a secret read is caught however the field is named: `rec['password']`, `rec[fld]` with a folded or local constant, `getattr`/`attrgetter`, `.get`/`.mapped`/`.read([...])`. The value must come from a recordset; request input (`kw['password']`) stays quiet.
+- H4 (Python) and H5 (JS): a domain counts as unbounded unless it is provably constrained. Each domain gets a three-way result: matches everything, matches nothing, or truly constrained. The check covers:
+  - leaves such as `(1,'=',1)`, `('id','!=',0)`, `('id','>',0)` and `('create_date','!=',False)`;
+  - `&`, `|` and `!` operators;
+  - domains built through local names, module constants, helper returns, `expression.AND`/`OR`, `Domain.and`, concatenation and spreads.
+  - Names that are mutated, parameters or loop targets count as runtime values (constrained). A `limit=N` batch is bounded.
+- H6: requests to ORM endpoints (`/web/dataset/call_kw`, `call_button`, `/jsonrpc` including `execute_kw`) are graded by their body with the same rules as `orm`/`rpc`. This covers fetch, XMLHttpRequest `open`+`send`, sendBeacon (including Blob bodies), axios and `$.ajax`. A body that can't be resolved is MEDIUM `js-raw-orm-request`.
+- H7: results of an unbounded search are tracked through array, object and nested destructuring, spreads, ternaries and `await`.
+- M1: HTML entities in OWL templates are decoded before the checks (numeric, hex, named, nested `&amp;`). Quotes stay encoded.
+- M2: `static template = T` and `A.template = ...` are analysed when the value is an inline string, backtick or concatenated template.
+- M3: `atob`, `decodeURIComponent`, `decodeURI` and `unescape` of a literal fold to the literal. The request is then graded as if the decoded URL were written out: an external URL is HIGH.
+- M4: new MEDIUM `route-attachment-idor`. It fires when a public route returns `ir.attachment` `raw`/`datas` under sudo for an id taken from the request, with no access_token or ownership check.
+- L1: `str*int` padding now folds (bounded), so `'UPDATE res_users ...' + 'a'*200000` stays HIGH `core-table-dml`.
+
+### CODE-AUDIT-9 verification (2026-10-28 WAT)
+- `tests/test_nf_bot_code_audit_9.py`: each finding has its probe, at least 2 variants and a benign stock-like case.
+- Stock HIGH/MEDIUM, v17 and v19, including `web`: identical to CODE-AUDIT-8 in all 24 runs. The search_fetch coverage briefly added one mail mass-change; it was removed by the limit rule.
+- All `tests/*code_audit*.py`: 1171 passed forward, 1171 passed reverse.
+- gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed. bl_08: 4 passed. 97-id stale rerun: 95 passed, 1 skipped.
