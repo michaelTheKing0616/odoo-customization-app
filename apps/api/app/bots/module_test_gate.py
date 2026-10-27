@@ -1842,7 +1842,7 @@ def _audit(files, old, module, version) -> Check:
         if not prev.ok:
             return Check(FAIL, f"prior audit could not run: {prev.error}")
         for f in prev.findings:
-            if f.severity in _BLOCK:
+            if f.severity in _BLOCK and f.code not in ca.UNBASELINABLE:
                 base[(f.code, f.file)] = base.get((f.code, f.file), 0) + 1
     added = []
     for f in new.findings:

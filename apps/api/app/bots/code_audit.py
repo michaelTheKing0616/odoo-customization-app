@@ -3438,6 +3438,22 @@ def _prod_tests(files: dict[str, bytes], module: str, manifest: dict[str, Any] |
 
 MAX_FLOW_ROUNDS = 64
 
+# Findings that mean "this was not (or cannot be) checked". A base copy with the same
+# finding proves nothing about the new bytes, so approval gates never baseline them.
+UNBASELINABLE = frozenset(
+    {
+        "file-unaudited",
+        "xml-unaudited",
+        "web-unaudited",
+        "parse-error",
+        "binary-code",
+        "script-file",
+        "sql-data-file",
+        "key-material",
+        "flow-incomplete",
+    }
+)
+
 
 class FlowIncomplete(RuntimeError):
     """Interprocedural summaries did not reach a fixpoint: the audit fails closed."""

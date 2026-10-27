@@ -359,7 +359,9 @@ def build_change_set(
     post = ca.audit(_zip(req.module, after_files), version=version, owned_names=owned)
     if not post.ok:
         raise ChangeError("audit-failed", post.error or "post audit failed")
-    before = Counter(_key(f) for f in pre.findings if f.severity in _BLOCK)
+    before = Counter(
+        _key(f) for f in pre.findings if f.severity in _BLOCK and f.code not in ca.UNBASELINABLE
+    )
     new = []
     for f in post.findings:
         if f.severity in _BLOCK:
