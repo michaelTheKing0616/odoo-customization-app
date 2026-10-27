@@ -4031,6 +4031,20 @@ def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
                 "Ship the resource in the module; never load code from other hosts.",
             )
             break
+        else:
+            # L1: an import map (imports/scopes objects) maps module names to URLs: any
+            # external URL value inside it loads code from another host
+            if re.search(r'"(imports|scopes)"\s*:\s*\{', text) or "importmap" in low:
+                m = re.search(r':\s*"((?:https?:)?//[^"]+)"', text)
+                if m:
+                    c.add(
+                        MEDIUM,
+                        "json-external-url",
+                        path,
+                        text[: m.start()].count("\n") + 1,
+                        f"Import map entry points at an external host ({m.group(1)[:60]}).",
+                        "Ship the resource in the module; never load code from other hosts.",
+                    )
 
 
 def _audit_other_file(c: _Ctx, path: str, body: bytes, manifest: dict[str, Any] | None) -> None:

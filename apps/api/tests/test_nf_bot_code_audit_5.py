@@ -1024,3 +1024,9 @@ def test_h12_owl_dynamic_call_low_server_medium():
 def test_m3_url_source_high(src):
     got = codes(J(src))
     assert ("js-dom-xss", "high") in got or ("js-flow-sink", "high") in got
+
+
+def test_l1_importmap_external_url():
+    j = '{"imports": {"a": "https://e.v/a.js"}}'
+    assert ("json-external-url", "medium") in codes({"static/src/importmap.json": j})
+    assert not codes({"static/src/x.json": '{"imports": {"a": "./a.js"}}'})
