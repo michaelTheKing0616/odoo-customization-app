@@ -120,3 +120,135 @@ def test_l1_padded_core_dml_high(sql):
 
 def test_l1_benign_padding_silent():
     assert not _sev(_m("self.env.cr.execute('SELECT ' + '1,' * 3 + '1')"), "core-table-dml")
+
+
+# ---------------------------------------------------------------- JS helpers
+def _js(body):
+    return {"static/src/a.js": "export async function f(orm, rpc, env, axios) {\n" + body + "\n}\n"}
+
+
+def _owl(src):
+    return {"static/src/a.js": "import { Component, xml } from '@odoo/owl';\n" + src + "\n"}
+
+
+# ---------------------------------------------------------------- H5 tautological JS domains
+@pytest.mark.parametrize("body", [
+    "await orm.unlink('res.partner', await orm.search('res.partner', [['id', '!=', 0]]));",  # review probe
+    "await orm.unlink('res.partner', await orm.search('res.partner', [[1, '=', 1]]));",
+    "await orm.unlink('res.partner', await orm.search('res.partner', ['|', ['id', '=', 0], ['id', '!=', 0]]));",
+    "const D = [['create_date', '!=', false]]; await orm.write('res.partner', await orm.search('res.partner', D), {active: false});",
+    "const all = () => [['id', '>', 0]]; await orm.unlink('res.partner', await orm.search('res.partner', all()));",
+    "await orm.unlink('res.partner', await orm.search('res.partner', Domain.and([[], [['id', '!=', false]]]).toList()));",
+])
+def test_h5_js_tautology_mass_change(body):
+    assert "high" in _sev(_js(body), "js-mass-change")
+
+
+@pytest.mark.parametrize("body", [
+    "await orm.unlink('res.partner', await orm.search('res.partner', [['state', '=', 'draft']]));",
+    "await orm.unlink('res.partner', await orm.search('res.partner', ['|', ['id', '=', 0], ['name', '=', 'x']]));",
+    "const d = []; d.push(['company_id', '=', 1]); await orm.unlink('res.partner', await orm.search('res.partner', d));",
+    "await orm.unlink('res.partner', this.props.record.resIds);",  # stock list-view delete: selected ids
+])
+def test_h5_benign_silent(body):
+    assert not _sev(_js(body), "js-mass-change")
+
+
+# ---------------------------------------------------------------- H6 raw HTTP to ORM endpoints
+BODY_W = "JSON.stringify({jsonrpc: '2.0', params: {model: 'res.users', method: 'write', args: [[2], {groups_id: [[4, 1]]}], kwargs: {}}})"
+BODY_U = "JSON.stringify({params: {model: 'res.partner', method: 'unlink', args: [await orm.search('res.partner', [])], kwargs: {}}})"
+
+
+@pytest.mark.parametrize("body,code", [
+    (f"await fetch('/web/dataset/call_kw', {{method: 'POST', body: {BODY_W}}});", "js-sensitive-model"),  # review probe
+    (f"const x = new XMLHttpRequest(); x.open('POST', '/web/dataset/call_kw'); x.send({BODY_U});", "js-mass-change"),
+    (f"navigator.sendBeacon('/web/dataset/call_kw/res.users/write', {BODY_W});", "js-sensitive-model"),
+    (f"await axios.post('/web/dataset/call_button', {BODY_W});", "js-sensitive-model"),
+    ("await fetch('/jsonrpc', {method: 'POST', body: JSON.stringify({params: {service: 'object', method: 'execute' + '_kw',"
+     " args: ['db', 2, 'pw', 'res.users', 'write', [[2], {groups_id: [[4, 1]]}]]}})});", "js-sensitive-model"),
+])
+def test_h6_raw_http_orm_high(body, code):
+    assert "high" in _sev(_js(body), code)
+
+
+def test_h6_runtime_body_flagged_medium():
+    assert "medium" in _sev(_js("await fetch('/web/dataset/call_kw', {method: 'POST', body: makeBody()});"), "js-raw-orm-request")
+
+
+@pytest.mark.parametrize("body", [
+    # stock shapes: reading partners through call_kw, and fetches to non-ORM routes
+    "await fetch('/web/dataset/call_kw', {method: 'POST', body: JSON.stringify({params: {model: 'res.partner', method: 'read', args: [[1], ['name']], kwargs: {}}})});",
+    "await fetch('/web/image/res.partner/1/avatar_128');",
+    "navigator.sendBeacon('/website/track', JSON.stringify({a: 1}));",
+])
+def test_h6_benign_silent(body):
+    found = {c for c, s in codes(_js(body)) if s in ("high", "medium")}
+    assert not found & {"js-sensitive-model", "js-mass-change", "js-raw-orm-request"}
+
+
+# ---------------------------------------------------------------- H7 resolver beyond plain const
+@pytest.mark.parametrize("body", [
+    "const [ids] = [await orm.search('res.partner', [])]; await orm.unlink('res.partner', ids);",  # review probe
+    "const {ids} = {ids: await orm.search('res.partner', [])}; await orm.unlink('res.partner', ids);",
+    "const ids = await orm.search('res.partner', []); await orm.unlink('res.partner', [...ids]);",
+    "const ids = await orm.search('res.partner', []); await orm.unlink('res.partner', cond ? ids : ids);",
+    "let a, b; [a, b] = [await orm.search('res.partner', []), 1]; await orm.unlink('res.partner', a);",
+    "const {ids: {list}} = {ids: {list: await orm.search('res.partner', [])}}; await orm.write('res.partner', list, {active: false});",
+])
+def test_h7_destructured_flows_high(body):
+    assert "high" in _sev(_js(body), "js-mass-change")
+
+
+@pytest.mark.parametrize("body", [
+    "const [ids] = [await orm.search('res.partner', [['parent_id', '=', 7]])]; await orm.unlink('res.partner', ids);",
+    "const {resIds} = this.props; await orm.unlink('res.partner', resIds);",
+])
+def test_h7_benign_silent(body):
+    assert not _sev(_js(body), "js-mass-change")
+
+
+# ---------------------------------------------------------------- M1 entity-encoded javascript: in OWL
+@pytest.mark.parametrize("tpl", [
+    "<a t-att-href=\"'java&#115;cript:alert(1)'\">x</a>",  # review probe
+    "<a href=\"&#x6A;avascript&#58;alert(1)\">x</a>",
+    "<a href=\"javascript&colon;alert(1)\">x</a>",
+    "<a href=\"java&amp;#115;cript:alert(1)\">x</a>",
+])
+def test_m1_entity_js_url(tpl):
+    assert _sev(_owl("class A extends Component { static template = xml`" + tpl + "`; }"), "owl-js-url") & {"medium", "high"}
+
+
+def test_m1_benign_entities_silent():
+    tpl = "<a href=\"/shop?a=1&amp;b=2\" t-att-title=\"'Tom &amp; Jerry'\">x</a>"
+    assert not _sev(_owl("class A extends Component { static template = xml`" + tpl + "`; }"), "owl-js-url")
+
+
+# ---------------------------------------------------------------- M2 static template = string variable
+@pytest.mark.parametrize("src", [
+    "const T = `<a href=\"javascript:alert(1)\">x</a>`; class A extends Component { static template = T; }",  # review probe
+    "const T = '<a href=\"javascript:alert(1)\">x</a>'; class A extends Component { static template = T; }",
+    "class A extends Component { static template = '<div>' + '<a href=\"javascript:alert(1)\">x</a></div>'; }",
+    "class A extends Component {}\nA.template = `<iframe src=\"javascript:alert(1)\"/>`;",
+])
+def test_m2_string_template_analysed(src):
+    assert "high" in _sev(_owl(src), "owl-js-url")
+
+
+def test_m2_benign_template_name_silent():
+    src = "const T = 'web.MyTemplate'; class A extends Component { static template = T; }\nclass B extends Component { static template = `<a href=\"/web\">x</a>`; }"
+    assert not _sev(_owl(src), "owl-js-url")
+
+
+# ---------------------------------------------------------------- M3 decoded request targets
+@pytest.mark.parametrize("body", [
+    "await fetch(atob('aHR0cHM6Ly9lLnYv'));",  # review probe: decodes to https://e.v/
+    "await fetch(window.atob('aHR0cHM6Ly9lLnYv') + 'x');",
+    "await fetch(decodeURIComponent('https%3A%2F%2Fe.v%2F'));",
+])
+def test_m3_decoded_external_request(body):
+    # a deterministic decoder of a literal is the literal: graded like fetch('https://e.v/') (HIGH >= MEDIUM)
+    assert _sev(_js(body), "js-external-request") & {"medium", "high"}
+
+
+def test_m3_benign_decoded_local_silent():
+    assert not _sev(_js("await fetch(atob('L3dlYi9pbWFnZQ=='));"), "js-external-request")  # '/web/image'

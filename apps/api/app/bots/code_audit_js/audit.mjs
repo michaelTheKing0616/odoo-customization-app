@@ -34,6 +34,109 @@ let CONSTS = new Map();
 let COOKIE_VARS = new Set();
 let URL_VARS = new Set(); // locals holding a URL-controlled value
 let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
+let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
+// ORM HTTP endpoints reached with fetch / XHR / sendBeacon / axios (CA9 H6)
+const ORM_ROUTE = /\/web\/dataset\/(?:call_kw|call_button|call|search_read|resequence)\b|\/jsonrpc\b|\/xmlrpc\b|\/web\/session\/authenticate/;
+// literal JS value (numbers, booleans, null, strings, arrays of those)
+function jsVal(n) {
+  if (!n) return { ok: false };
+  if (n.type === "Literal") return { ok: true, v: n.value };
+  if (n.type === "Identifier" && n.name === "undefined") return { ok: true, v: null };
+  if (n.type === "UnaryExpression" && n.operator === "-" && n.argument.type === "Literal" && typeof n.argument.value === "number") return { ok: true, v: -n.argument.value };
+  if (n.type === "ArrayExpression") {
+    const xs = n.elements.map(jsVal);
+    return xs.every((x) => x.ok) ? { ok: true, v: xs.map((x) => x.v) } : { ok: false };
+  }
+  const s = lit(n);
+  return s === null ? { ok: false } : { ok: true, v: s };
+}
+const ALWAYS_SET = new Set(["id", "create_date", "write_date", "create_uid", "write_uid"]);
+function leafTruth(el) {
+  const [L, O, R] = el.map(jsVal);
+  if (!O.ok || typeof O.v !== "string") return "C";
+  const op = O.v.trim().toLowerCase();
+  if (L.ok && R.ok && typeof L.v !== "string") {
+    const t = { "=": L.v === R.v, "==": L.v === R.v, "!=": L.v !== R.v, "<>": L.v !== R.v, ">": L.v > R.v, ">=": L.v >= R.v, "<": L.v < R.v, "<=": L.v <= R.v }[op];
+    return t === undefined ? "C" : (t ? "T" : "F");
+  }
+  if (!(L.ok && typeof L.v === "string" && R.ok)) return "C";
+  const fld = L.v.split(".")[0], r = R.v;
+  const isNum = typeof r === "number";
+  if (ALWAYS_SET.has(fld)) {
+    if ((op === "!=" || op === "<>") && (r === false || r === null || r === 0 || r === -1)) return "T";
+    if ((op === "!=" || op === "<>") && fld === "id" && isNum && r <= 0) return "T";
+    if (fld === "id" && isNum && ((op === ">" && r < 1) || (op === ">=" && r <= 1))) return "T";
+    if (op === "not in" && Array.isArray(r) && r.every((v) => v === false || v === null || v === 0)) return "T";
+  }
+  if (op === "not in" && Array.isArray(r) && !r.length) return "T";
+  if (op === "in" && Array.isArray(r) && !r.length) return "F";
+  if (fld === "active" && op === "in" && Array.isArray(r) && r.includes(true) && r.includes(false)) return "T";
+  return "C";
+}
+const AND = (a, b) => (a === "F" || b === "F") ? "F" : (a === "T" && b === "T" ? "T" : "C");
+const OR = (a, b) => (a === "T" || b === "T") ? "T" : (a === "F" && b === "F" ? "F" : "C");
+// T: the domain matches every record (empty, tautology, via names/helpers/concat/Domain.and);
+// F: matches none; C: a real condition or a runtime value
+function domTruth(d, depth = 0) {
+  if (!d || (d.type === "Identifier" && d.name === "undefined")) return "T";
+  if (depth > 8) return "C";
+  if (d.type === "AwaitExpression") return domTruth(d.argument, depth + 1);
+  if (d.type === "Identifier") {
+    const vs = DOM_VARS.get(d.name);
+    if (!vs) return "C";
+    const ts = new Set(vs.map((v) => domTruth(v, depth + 1)));
+    return ts.size === 1 ? [...ts][0] : "C";
+  }
+  if (d.type === "CallExpression") {
+    const c = d.callee;
+    const nm = c.type === "MemberExpression" ? (c.property.name || c.property.value) : (c.name || "");
+    if (c.type === "Identifier" && DOM_VARS.has("()" + c.name)) {
+      const ts = new Set(DOM_VARS.get("()" + c.name).map((v) => domTruth(v, depth + 1)));
+      return ts.size === 1 ? [...ts][0] : "C";
+    }
+    if (nm === "concat" && c.type === "MemberExpression") return [c.object, ...d.arguments].map((x) => domTruth(x, depth + 1)).reduce(AND);
+    if (/^(and|AND|or|OR)$/.test(nm) && d.arguments.length === 1 && d.arguments[0].type === "ArrayExpression") {
+      const ps = d.arguments[0].elements.map((x) => domTruth(x, depth + 1));
+      if (!ps.length) return /and/i.test(nm) ? "T" : "F";
+      return ps.reduce(/and/i.test(nm) ? AND : OR);
+    }
+    if (nm === "toList" && c.type === "MemberExpression") return domTruth(c.object, depth + 1);
+    if (nm === "Domain") return domTruth(d.arguments[0], depth + 1);
+    return "C";
+  }
+  if (d.type === "NewExpression" && (d.callee.name === "Domain") ) return domTruth(d.arguments[0], depth + 1);
+  if (d.type === "MemberExpression" && !d.computed && d.object.name === "Domain") return d.property.name === "TRUE" ? "T" : d.property.name === "FALSE" ? "F" : "C";
+  if (d.type !== "ArrayExpression") return "C";
+  const terms = [];
+  for (const e of d.elements) {
+    if (!e) return "C";
+    if (e.type === "Literal" && ["&", "|", "!"].includes(e.value)) terms.push(e.value);
+    else if (e.type === "ArrayExpression" && e.elements.length === 3) terms.push(leafTruth(e.elements));
+    else if (e.type === "SpreadElement") terms.push(domTruth(e.argument, depth + 1));
+    else return "C";
+  }
+  let pos = 0;
+  const take = () => {
+    if (pos >= terms.length) throw new Error("dom");
+    const t = terms[pos++];
+    if (t === "!") { const v = take(); return v === "T" ? "F" : v === "F" ? "T" : "C"; }
+    if (t === "&" || t === "|") { const a = take(), b = take(); return t === "&" ? AND(a, b) : OR(a, b); }
+    return t;
+  };
+  let out = "T";
+  try { while (pos < terms.length) out = AND(out, take()); } catch { return "C"; }
+  return out;
+}
+function decodeEntities(t) {
+  // quotes stay encoded: they delimit the attribute values the checks split on
+  const named = { amp: "&", lt: "<", gt: ">", colon: ":", tab: "\t", newline: "\n", sol: "/", lpar: "(", rpar: ")", period: ".", nbsp: " " };
+  for (let i = 0; i < 3 && /&(#\d+|#x[0-9a-f]+|[a-z]+);?/i.test(t); i++) {  // nested &amp;#115; too
+    t = t.replace(/&#(\d+);?/g, (q, d) => { const c = +d; return c > 0 && c < 0x110000 && c !== 34 && c !== 39 ? String.fromCodePoint(c) : q; })
+      .replace(/&#x([0-9a-f]+);?/gi, (q, h) => { const c = parseInt(h, 16); return c > 0 && c < 0x110000 && c !== 34 && c !== 39 ? String.fromCodePoint(c) : q; })
+      .replace(/&([a-z]+);/gi, (q, nm) => named[nm.toLowerCase()] ?? q);
+  }
+  return t;
+}
 let DEPTH = 0;
 function lit(n) {
   if (!n) return null;
@@ -64,10 +167,24 @@ function lit(n) {
       const parts = [n.callee.object, ...n.arguments].map((e) => lit(e));
       if (parts.every((x) => x !== null)) return parts.join("");
     }
+    if (m === "atob" && GLOBALS.has(n.callee.object.name || "") && n.arguments.length === 1) {
+      const a = lit(n.arguments[0]);
+      if (a !== null && /^[A-Za-z0-9+/=\s]*$/.test(a)) return Buffer.from(a, "base64").toString("latin1");
+    }
     if (m === "fromCharCode" && n.callee.object.type === "Identifier" && n.callee.object.name === "String" &&
         n.arguments.every((a) => a.type === "Literal" && typeof a.value === "number")) {
       return String.fromCharCode(...n.arguments.map((a) => a.value));
     }
+  }
+  // atob('aHR0cHM6Ly9lLnYv') / decodeURIComponent('%68ttps...') / unescape(...): deterministic decoders (M3)
+  if (n.type === "CallExpression" && n.callee.type === "Identifier" && n.arguments.length === 1 &&
+      ["atob", "decodeURIComponent", "decodeURI", "unescape"].includes(n.callee.name)) {
+    const a = lit(n.arguments[0]);
+    if (a === null) return null;
+    try {
+      if (n.callee.name === "atob") return /^[A-Za-z0-9+/=\s]*$/.test(a) ? Buffer.from(a, "base64").toString("latin1") : null;
+      return n.callee.name === "unescape" ? unescape(a) : decodeURIComponent(a);
+    } catch { return null; }
   }
   return null;
 }
@@ -229,7 +346,17 @@ function auditJs(text) {
   COOKIE_VARS = new Set();
   URL_VARS = new Set();
   EMPTY_VARS = new Set();
+  DOM_VARS = new Map();
   const assigned = new Map();
+  const patIds = (pt, out = []) => {
+    if (!pt) return out;
+    if (pt.type === "Identifier") out.push(pt.name);
+    else if (pt.type === "ArrayPattern") pt.elements.forEach((e) => patIds(e, out));
+    else if (pt.type === "ObjectPattern") pt.properties.forEach((q) => patIds(q.type === "RestElement" ? q.argument : q.value, out));
+    else if (pt.type === "RestElement") patIds(pt.argument, out);
+    else if (pt.type === "AssignmentPattern") patIds(pt.left, out);
+    return out;
+  };
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier") {
       assigned.set(n.id.name, (assigned.get(n.id.name) || 0) + 1);
@@ -238,9 +365,36 @@ function auditJs(text) {
       assigned.set(n.left.name, (assigned.get(n.left.name) || 0) + 2);
     }
   });
+  const mutated = new Set();
+  walk.full(ast, (n) => {
+    if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && n.callee.object.type === "Identifier" &&
+        /^(push|unshift|splice)$/.test(n.callee.property.name || "")) mutated.add(n.callee.object.name);
+    if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression" && n.left.object.type === "Identifier") mutated.add(n.left.object.name);
+  });
+  walk.full(ast, (n) => {
+    if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init && assigned.get(n.id.name) === 1 && !mutated.has(n.id.name)) DOM_VARS.set(n.id.name, [n.init]);
+    const fn = n.type === "FunctionDeclaration" && n.id ? n.id.name : null;
+    if (fn) {
+      const rets = [];
+      walk.simple(n.body, { ReturnStatement(r) { if (r.argument) rets.push(r.argument); } });
+      if (n.body.type !== "BlockStatement") rets.push(n.body);
+      if (rets.length) DOM_VARS.set("()" + fn, rets);
+    }
+    if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init && /ArrowFunctionExpression|FunctionExpression/.test(n.init.type)) {
+      const b = n.init.body, rets = [];
+      if (b.type !== "BlockStatement") rets.push(b); else walk.simple(b, { ReturnStatement(r) { if (r.argument) rets.push(r.argument); } });
+      if (rets.length) DOM_VARS.set("()" + n.id.name, rets);
+    }
+  });
   for (let round = 0, changed = true; changed && round < 64; round++) {
     changed = false;
     walk.full(ast, (n) => {
+      // CA9 H7: const [ids] = [await orm.search(..)] / const {ids} = {ids: ...} / [a, b] = ...
+      const pat = n.type === "VariableDeclarator" && n.id.type !== "Identifier" ? [n.id, n.init]
+        : n.type === "AssignmentExpression" && n.left.type !== "Identifier" && n.left.type !== "MemberExpression" ? [n.left, n.right] : null;
+      if (pat && pat[1] && emptySearch(pat[1])) {
+        for (const i of patIds(pat[0])) if (!EMPTY_VARS.has(i)) { EMPTY_VARS.add(i); changed = true; }
+      }
       let id = null, v = null;
       if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init) [id, v] = [n.id.name, n.init];
       if (n.type === "AssignmentExpression" && n.left.type === "Identifier") [id, v] = [n.left.name, n.right];
@@ -298,6 +452,59 @@ function auditJs(text) {
       }
     }
   });
+  let XHR_ORM = null;
+  function xhrOrm() {  // XMLHttpRequest variables opened on an ORM endpoint
+    if (XHR_ORM) return XHR_ORM;
+    XHR_ORM = new Map();
+    walk.full(ast, (m) => {
+      if (m.type === "CallExpression" && m.callee.type === "MemberExpression" && m.callee.object.type === "Identifier" &&
+          (m.callee.property.name || "") === "open" && m.arguments.length >= 2) {
+        const u = lit(m.arguments[1]);
+        if (u && ORM_ROUTE.test(u)) XHR_ORM.set(m.callee.object.name, u);
+      }
+    });
+    return XHR_ORM;
+  }
+  function bodyObj(b, d = 0) {
+    if (!b || d > 6) return null;
+    if (b.type === "ObjectExpression") return b;
+    if (b.type === "CallExpression" && /(^|\.)JSON\.stringify$/.test(resolve(b.callee) || "")) return bodyObj(b.arguments[0], d + 1);
+    if (b.type === "NewExpression" && b.callee.name === "Blob" && b.arguments[0] && b.arguments[0].type === "ArrayExpression") return bodyObj(b.arguments[0].elements[0], d + 1);
+    if (b.type === "Identifier" && DOM_VARS.has(b.name)) return bodyObj(DOM_VARS.get(b.name)[0], d + 1);
+    return null;
+  }
+  function gradeOrmBody(n, what, route, body) {
+    const o = bodyObj(body);
+    const get = (x, k) => x && x.type === "ObjectExpression" ? (x.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
+    const seg = route.match(/\/web\/dataset\/call_kw\/([^/]+)(?:\/([^/?]+))?/);
+    let model = seg ? seg[1] : null, method = seg ? (seg[2] || null) : null, args = null;
+    const prm = get(o, "params") || o;
+    if (prm) {
+      model = lit(get(prm, "model")) ?? model;
+      method = lit(get(prm, "method")) ?? method;
+      args = get(prm, "args");
+      // /jsonrpc {service: 'object', method: 'execute(_kw)', args: [db, uid, pwd, model, method, args]}
+      if (/^execute(_kw)?$/.test(method || "") && args && args.type === "ArrayExpression" && args.elements.length >= 5) {
+        model = lit(args.elements[3]); method = lit(args.elements[4]); args = args.elements[5] || null;
+      }
+    }
+    if (!body) return;  // no payload: no model call is made
+    if (!o) {
+      add("medium", "js-raw-orm-request", n, `${what}() to the ORM endpoint ${route} with a body built at runtime: model/method undecidable, flagged.`);
+      return;
+    }
+    const first = args && args.type === "ArrayExpression" ? args.elements[0] : null;
+    if (/^(unlink|write|action_archive|toggle_active)$/.test(method || "") && first && emptySearch(first)) {
+      add("high", "js-mass-change", n, `${what}() ${method} over every record (ids from an unbounded search) through ${route}.`);
+    }
+    if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method))) {
+      add(method === null ? "medium" : "high", "js-sensitive-model", n, `${what}() ${method || "<runtime method>"} on ${model} through ${route} from the browser.`);
+    } else if (model && SECRET_MODELS.has(model)) {
+      add("medium", "js-sensitive-model", n, `${what}() reads ${model} through ${route} from the browser.`);
+    } else if (model === null || method === null) {
+      add("medium", "js-raw-orm-request", n, `${what}() to ${route} with a runtime model/method: undecidable, flagged.`);
+    }
+  }
   function resolve(n) {
     if (!n) return null;
     if (n.type === "Identifier") {
@@ -525,6 +732,20 @@ function auditJs(text) {
           add("low", "js-dynamic-request", n, "rpc() to a route built at runtime: undecidable, flagged.");
         }
       }
+      // CA9 H6: raw HTTP (fetch / XMLHttpRequest / sendBeacon / axios / $.ajax) to an ORM endpoint:
+      // the JSON body is graded with the same taxonomy as orm.* / rpc()
+      let rawUrl = null, rawBody = null, rawWhat = r;
+      const optProp = (o, k) => o && o.type === "ObjectExpression" ? (o.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
+      if (r === "fetch" || r === "navigator.sendBeacon") { rawUrl = a0; rawBody = r === "fetch" ? optProp(n.arguments[1], "body") : n.arguments[1]; }
+      else if (/(^|\.)(axios|http|ajax)\.(post|put|patch|request)$/.test(r) || /^(\$|jQuery)\.(post|ajax)$/.test(r)) {
+        if (a0 && a0.type === "ObjectExpression") { rawUrl = optProp(a0, "url"); rawBody = optProp(a0, "data") || optProp(a0, "body"); }
+        else { rawUrl = a0; rawBody = n.arguments[1]; }
+      } else if (r === "axios" && a0 && a0.type === "ObjectExpression") { rawUrl = optProp(a0, "url"); rawBody = optProp(a0, "data"); }
+      else if (last(r) === "send" && n.callee.type === "MemberExpression" && n.callee.object.type === "Identifier" && xhrOrm().has(n.callee.object.name)) {
+        rawUrl = xhrOrm().get(n.callee.object.name); rawBody = a0; rawWhat = "XMLHttpRequest.send";
+      }
+      const rawRoute = rawUrl && (rawUrl.type ? lit(rawUrl) : rawUrl);
+      if (rawRoute && ORM_ROUTE.test(rawRoute)) gradeOrmBody(n, rawWhat, rawRoute, rawBody);
     }
     if (n.type === "ImportExpression") {
       const k = urlKind(n.source);
@@ -667,8 +888,21 @@ function auditJs(text) {
       }
     }
     // H8: OWL inline templates (xml`...`): t-out of Markup renders raw HTML (Odoo 17+)
-    if (n.type === "TaggedTemplateExpression" && n.tag.type === "Identifier" && n.tag.name === "xml") {
-      const text = n.quasi.quasis.map((q) => q.value.cooked || "").join("${}");
+    // CA9 M2: `static template = T` with T an inline string/backtick template (not a template name)
+    const tplOf = (v, d = 0) => {
+      if (!v || d > 4) return null;
+      if (v.type === "Literal" && typeof v.value === "string") return /</.test(v.value) ? v.value : null;
+      if (v.type === "TemplateLiteral") { const t = v.quasis.map((q) => q.value.cooked || "").join("${}"); return /</.test(t) ? t : null; }
+      if (v.type === "Identifier" && DOM_VARS.has(v.name)) return tplOf(DOM_VARS.get(v.name)[0], d + 1);
+      if (v.type === "BinaryExpression" && v.operator === "+") { const a = tplOf(v.left, d + 1) ?? lit(v.left), b = tplOf(v.right, d + 1) ?? lit(v.right); return a !== null && b !== null && /</.test(a + b) ? a + b : null; }
+      return null;
+    };
+    const staticTpl = (n.type === "PropertyDefinition" || n.type === "AssignmentExpression") ?
+      (n.type === "PropertyDefinition" ? (!n.computed && n.key && (n.key.name || n.key.value) === "template" ? tplOf(n.value) : null)
+        : (n.left.type === "MemberExpression" && !n.left.computed && n.left.property.name === "template" ? tplOf(n.right) : null)) : null;
+    if ((n.type === "TaggedTemplateExpression" && n.tag.type === "Identifier" && n.tag.name === "xml") || staticTpl !== null) {
+      // CA9 M1: the template is XML: character references are decoded before any check
+      const text = decodeEntities(staticTpl !== null ? staticTpl : n.quasi.quasis.map((q) => q.value.cooked || "").join("${}"));
       for (const m of text.matchAll(/\bt-(out|esc|raw)\s*=\s*(["'])(.*?)\2/gs)) {
         const v = m[3];
         if (m[1] === "raw") { add("high", "owl-t-out", n, "t-raw renders unescaped HTML."); continue; }
@@ -997,7 +1231,7 @@ function emptySearch(node) {
   (function walk(x, d) {
     if (!x || typeof x !== "object" || found || d > 12) return;
     if (x.type === "Identifier" && EMPTY_VARS.has(x.name)) { found = true; return; }
-    const isEmpty = (a) => a && a.type === "ArrayExpression" && a.elements.length === 0;
+    const isEmpty = (a) => domTruth(a) === "T";
     const SEARCHES = /^(search|searchRead|search_read|webSearchRead|web_search_read)$/;
     if (x.type === "CallExpression" && x.callee) {
       const c0 = x.callee;
@@ -1005,7 +1239,7 @@ function emptySearch(node) {
       // orm.call(model, 'search', [[]]) / orm.call(model, 'search_read', [], {domain: []})
       if (nm === "call" && SEARCHES.test(lit(x.arguments[1]) || "")) {
         const a = x.arguments[2];
-        if (!a || isEmpty(a) || (a.type === "ArrayExpression" && isEmpty(a.elements[0]))) { found = true; return; }
+        if (!a || (a.type === "ArrayExpression" ? (a.elements.length === 0 || isEmpty(a.elements[0])) : false)) { found = true; return; }
       }
     }
     // rpc payload {model, method: 'search', args: [[]]} / kwargs {domain: []}
@@ -1015,7 +1249,7 @@ function emptySearch(node) {
       if (m && SEARCHES.test(lit(m) || "")) {
         const a = get("args"), kw = get("kwargs");
         const dom = kw && kw.type === "ObjectExpression" ? kw.properties.find((y) => y.key && (y.key.name || y.key.value) === "domain") : null;
-        if (dom ? isEmpty(dom.value) : (!a || isEmpty(a) || (a.type === "ArrayExpression" && isEmpty(a.elements[0])))) { found = true; return; }
+        if (dom ? isEmpty(dom.value) : (!a || (a.type === "ArrayExpression" && (a.elements.length === 0 || isEmpty(a.elements[0]))))) { found = true; return; }
       }
     }
     if (x.type === "CallExpression" && x.callee) {
@@ -1023,7 +1257,7 @@ function emptySearch(node) {
       const name = c.type === "MemberExpression" && c.property ? (c.property.name || c.property.value) : "";
       if (/^(search|searchRead|search_read|webSearchRead)$/.test(name || "")) {
         const dom = x.arguments[1];
-        if (!dom || (dom.type === "ArrayExpression" && dom.elements.length === 0)) { found = true; return; }
+        if (isEmpty(dom)) { found = true; return; }
       }
     }
     for (const k of Object.keys(x)) if (k !== "loc" && k !== "start" && k !== "end") {
