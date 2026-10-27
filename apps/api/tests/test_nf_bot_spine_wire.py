@@ -358,14 +358,15 @@ MOD, OLD, NEW = "x_spine_mod", b"a = 1\n", b"a = 2\n"
 KEY = "k" * 40
 
 
-def report(mh: str, version: int = 17, module: str = MOD) -> dict:
+def report(mh: str, version: int = 17, module: str = MOD, prior_hash: str | None = None) -> dict:
+    up = mtg.PASS if prior_hash else mtg.NA
     body = {
         "schema": mtg.SCHEMA,
         "module": module,
         "module_hash": mh,
         "version": version,
-        "prior_hash": None,
-        "checks": {c: {"status": mtg.NA if c == "upgrade" else mtg.PASS} for c in mtg.CHECKS},
+        "prior_hash": prior_hash,
+        "checks": {c: {"status": up if c == "upgrade" else mtg.PASS} for c in mtg.CHECKS},
         "verdict": mtg.PASS,
     }
     return body | {"signature": mtg._sign(body)}
@@ -406,7 +407,7 @@ def T3(S, monkeypatch):  # noqa: N802
     monkeypatch.setenv(mtg.KEY_ENV, KEY)
     flow, _ = S(17, design(17, item(*PART)))
     cs = change_set()
-    mh = mtg.module_hash({"models/m.py": OLD})
+    mh = mtg.module_hash({"models/m.py": NEW})  # the gated module is what gets written
     plan = sp.authoring_plan(
         Result(mh, [cs.id]),
         report(mh),
@@ -482,26 +483,112 @@ def test_t3_without_passing_gate_is_refused_at_submit(S, monkeypatch) -> None:
         )
 
 
-def test_owned_change_item_bound_to_change_set(T3, monkeypatch) -> None:
-    store, _plan, cs, mh = T3
-    p = sp.change_set_plan(
+PRIOR = mtg.module_hash({"models/m.py": OLD})
+
+
+def _cs_plan(cs, mh, rep=None, prior=PRIOR):
+    return sp.change_set_plan(
         cs,
-        report(mh),
+        rep if rep is not None else report(mh, prior_hash=prior),
         mh,
+        prior_hash=prior,
         connection_id="conn-a",
         db=FP,
         requested_by=BOT_LOGIN,
         snapshot_verified=True,
     )
+
+
+def test_owned_change_item_bound_to_change_set(T3, monkeypatch) -> None:
+    store, _plan, cs, mh = T3
+    p = _cs_plan(cs, mh)
+    assert p.values["prior_hash"] == PRIOR
     row = store.submit(p)
     assert row["tier"] == 3
     with pytest.raises(ap.ApprovalError):
         store.approve("conn-a", row["id"], BOT_LOGIN)
     store.approve("conn-a", row["id"], OWNER)
+    up = report(mh, prior_hash=PRIOR)
     monkeypatch.setattr(sp, "_t3_ready", lambda: True)
-    assert _apply(store, p, cs, mh)["models/m.py"] == NEW
+    assert _apply(store, p, cs, mh, gate_report=up)["models/m.py"] == NEW
+    other = change_set("other")
+    bad = [
+        ({"change_set": other, "approved_id": other.id}, "not-approved"),
+        ({"gate_report": report(mh)}, "gate"),  # fresh-install report used for an upgrade
+        ({"gate_report": report(mh, prior_hash="e" * 64)}, "gate"),  # other prior version
+    ]
+    for kw, code in bad:
+        with pytest.raises(sp.SpineError) as e:
+            _apply(store, p, cs, mh, **({"gate_report": up} | kw))
+        assert e.value.code == code, kw
+    with pytest.raises(sp.SpineError) as e:  # installed files drifted from the gated prior
+        sp.apply_t3(
+            store,
+            p,
+            files={"models/m.py": OLD + b"#x"},
+            gate_report=up,
+            module_hash=mh,
+            change_set=cs,
+            approved_id=cs.id,
+        )
+    assert e.value.code == "gate"
+
+
+def test_upgrade_plan_needs_prior_hash_and_bound_report(T3) -> None:
+    store, _plan, cs, mh = T3
     with pytest.raises(sp.SpineError):
-        _apply(store, p, change_set("other"), mh, approved_id=change_set("other").id)
+        _cs_plan(cs, mh, prior=None)
+    assert store.submit(_cs_plan(cs, mh, rep=report(mh)))["status"] == "refused"
+
+
+def test_t3_result_must_hash_to_gated_module(T3, monkeypatch) -> None:
+    store, _plan, cs, _mh = T3
+    wrong = mtg.module_hash({"models/m.py": OLD})  # gate ran on the pre-patch code
+    p = sp.authoring_plan(
+        Result(wrong, [cs.id]),
+        report(wrong),
+        connection_id="conn-a",
+        db=FP,
+        requested_by=BOT_LOGIN,
+        snapshot_verified=True,
+    )
+    store.approve("conn-a", store.submit(p)["id"], OWNER)
+    monkeypatch.setattr(sp, "_t3_ready", lambda: True)
+    with pytest.raises(sp.SpineError) as e:
+        _apply(store, p, cs, wrong)
+    assert e.value.code == "gate"
+
+
+def test_t3_apply_refused_when_kill_switch_on(T3, monkeypatch) -> None:
+    store, plan, cs, mh = T3
+    store.approve("conn-a", store.submit(plan)["id"], OWNER)
+    monkeypatch.setattr(sp, "_t3_ready", lambda: True)
+    monkeypatch.setattr(store.switch, "check", lambda db: gd.refusal_kill(db))
+    with pytest.raises(sp.SpineError) as e:
+        _apply(store, plan, cs, mh)
+    assert e.value.code == "killed"
+
+
+def test_t3_apply_refuses_non_plan_and_lower_tier(T3, monkeypatch) -> None:
+    store, plan, cs, mh = T3
+    monkeypatch.setattr(sp, "_t3_ready", lambda: True)
+
+    for p in (
+        plan.__dict__,
+        dataclasses.replace(plan, min_tier=2),
+        dataclasses.replace(plan, risk_class="R1"),
+    ):
+        with pytest.raises(sp.SpineError) as e:
+            sp.apply_t3(
+                store,
+                p,
+                files={"models/m.py": OLD},
+                gate_report=report(mh),
+                module_hash=mh,
+                change_set=cs,
+                approved_id=cs.id,
+            )
+        assert e.value.code == "refused"
 
 
 # ------------------------------------------------------------------ no side doors

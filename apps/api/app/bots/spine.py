@@ -560,17 +560,24 @@ def change_set_plan(
     gate_report: Any,
     module_hash: str,
     *,
+    prior_hash: str,
     connection_id: str,
     db: str,
     requested_by: str,
     snapshot_verified: bool,
 ) -> ap.Plan:
+    """An upgrade: module_hash is the patched module the gate ran, prior_hash the installed one."""
+    if not isinstance(prior_hash, str) or len(prior_hash) != 64:
+        raise SpineError("refused", "an upgrade needs the installed module's hash")
     f = cs.approval_plan()
-    ok = mtg.gate_passed(gate_report, module_hash, version=cs.version, module=cs.module)
+    ok = mtg.gate_passed(
+        gate_report, module_hash, version=cs.version, module=cs.module, prior_hash=prior_hash
+    )
     vals = {
         "module": cs.module,
         "version": cs.version,
         "module_hash": module_hash,
+        "prior_hash": prior_hash,
         "files": f["files"],
     }
     return _t3_plan(
@@ -602,27 +609,40 @@ def apply_t3(
 ) -> dict[str, bytes]:
     """Every check, in order, before any write; the first failure refuses. Returns the patched
     files only; installing them is not part of this card."""
-    if plan.task_id.split(":")[0] != "code" or plan.min_tier != 3:
+    if not isinstance(plan, ap.Plan) or plan.task_id.split(":")[0] != "code":
         raise SpineError("refused", "not a module-code approval item")
+    if plan.min_tier != 3 or plan.risk_class != T3_RISK:
+        raise SpineError("refused", "not a module-code approval item")
+    ref = store.switch.check(plan.db_fingerprint)
+    if ref is not None:
+        raise SpineError("killed", ref.text())
     a = store.approval_for(plan.db_fingerprint, plan.hash())
     if a.level != 3 or not a.approver:
         raise SpineError("not-approved", "module code needs an approved top-level decision")
     v = plan.values
     ver, mod = v.get("version"), v.get("module")
-    bound = plan.ids[0] if plan.task_id.endswith(":change") else None
-    want_hash = v.get("module_hash") if bound else plan.ids[0]
+    upgrade = plan.task_id.endswith(":change")
+    want_hash = v.get("module_hash") if upgrade else plan.ids[0]
+    prior = v.get("prior_hash") if upgrade else None
+    if upgrade and not (isinstance(prior, str) and len(prior) == 64):
+        raise SpineError("gate", "upgrade item carries no installed-module hash")
     if module_hash != want_hash:
         raise SpineError("gate", "module differs from the one approved")
-    if not mtg.gate_passed(gate_report, module_hash, version=ver, module=mod):
+    if not mtg.gate_passed(gate_report, module_hash, version=ver, module=mod, prior_hash=prior):
         raise SpineError("gate", "no passing, signed test-gate report for this exact module")
-    ids = [bound] if bound else list(v.get("change_set_ids") or [])
+    if upgrade and mtg.module_hash(files) != prior:
+        raise SpineError("gate", "installed module differs from the one the gate upgraded")
+    ids = [plan.ids[0]] if upgrade else list(v.get("change_set_ids") or [])
     if approved_id not in ids or not isinstance(change_set, oc.ChangeSet):
         raise SpineError("not-approved", "this change set was not approved")
     if change_set.id != approved_id or change_set.module != mod or change_set.version != ver:
         raise SpineError("not-approved", "change set differs from the approved one")
-    if not _t3_ready():
-        raise SpineError("t3-off", "module-code changes are switched off in this release")
     try:
-        return oc.apply_change_set(files, change_set, approved_id=approved_id)
+        out = oc.apply_change_set(files, change_set, approved_id=approved_id)  # pure, no write
     except oc.ChangeError as exc:
         raise SpineError("refused", str(exc)[:160]) from exc
+    if mtg.module_hash(out) != module_hash:
+        raise SpineError("gate", "result differs from the module the gate tested")
+    if not _t3_ready():
+        raise SpineError("t3-off", "module-code changes are switched off in this release")
+    return out
