@@ -3054,6 +3054,7 @@ def _record_checks(
     vals: dict[str, str],
     csv_row: bool = False,
     rid: str = "",
+    eval_code: bool = False,
 ) -> None:
     """Data-record rules shared by XML <record>, CSV rows and JSON/YAML data (column names:
     groups_id/id, model_id:id, ...). vals maps field name -> text / eval / ref.
@@ -3136,8 +3137,9 @@ def _record_checks(
             "Give the rule a real domain and groups.",
         )
     if model in _SERVER_CODE_MODELS | {"ir.server.object.lines"}:
-        if csv_row and v.get("code"):
-            _audit_py(c, path, v["code"].encode(), server_code=True)
+        if (csv_row or eval_code) and v.get("code"):
+            # CSV text, or an XML eval="'...'" string literal: same code path as <field>text (H10)
+            _audit_py(c, path, ("\n" * max(0, line - 1) + v["code"]).encode(), server_code=True)
         if v.get("evaluation_type") == "equation" and v.get("value"):
             _audit_py(c, path, ("\n" * max(0, line - 1) + v["value"]).encode(), server_code=True)
         if v.get("state") == "webhook" or v.get("webhook_url"):
@@ -3425,7 +3427,17 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                 )
         if el.tag == "record" and el.get("model"):
             vals = {}
+            eval_code = False
             for f in el.findall("field"):
+                if f.get("name") == "code" and f.get("eval"):
+                    try:
+                        lit = ast.literal_eval(f.get("eval"))
+                    except (ValueError, SyntaxError, MemoryError, RecursionError):
+                        lit = None
+                    if isinstance(lit, str):
+                        vals["code"] = lit
+                        eval_code = True
+                        continue
                 if f.get("name"):
                     inner = (f.text or "") + "".join(
                         ET.tostring(ch, encoding="unicode") if isinstance(ch.tag, str) else ""
@@ -3434,7 +3446,9 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     vals[f.get("name")] = (
                         f.get("eval") or f.get("ref") or f.get("search") or inner
                     )
-            _record_checks(c, path, xl.el(el), el.get("model"), vals, rid=el.get("id") or "")
+            _record_checks(
+                c, path, xl.el(el), el.get("model"), vals, rid=el.get("id") or "", eval_code=eval_code
+            )
             _fields_lines(
                 c, path, xl.el(el), vals.get("fields_lines", "") or vals.get("update_field_ids", "")
             )

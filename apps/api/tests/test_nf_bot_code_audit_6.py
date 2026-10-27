@@ -288,3 +288,22 @@ def test_h9_mail_server_data(host):
 def test_h9_mail_server_csv_and_python():
     assert L3 in codes({"data/ir.mail_server.csv": "id,name,smtp_host\nm,m,e.v\n"})
     assert ("sensitive-model-write", "high") in codes(py("self.env['ir.mail_server'].create({'name':'m','smtp_host':'e.v'})"))
+
+
+# ---------------------------------------------------------------- H10 eval-literal server code goes down the code path
+H10 = """<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code' eval="{e}"/></record>"""
+
+
+@pytest.mark.parametrize("e", [
+    "'env[\\'res.users\\'].search([]).unlink()'",
+    '"env[\'res.users\'].search([]).write({\'active\':False})"',
+    "'''env.cr.execute(\\'DELETE FROM res_users\\')'''",
+])
+def test_h10_eval_literal_code(e):
+    hi = {k for k, s in codes(X(H10.format(e=e))) if s == "high" and k != "sensitive-data-unapproved"}
+    assert hi, hi
+
+
+def test_h10_eval_literal_benign():
+    hi = {k for k, s in codes(X(H10.format(e="'records.action_done()'"))) if s == "high"}
+    assert not hi, hi
