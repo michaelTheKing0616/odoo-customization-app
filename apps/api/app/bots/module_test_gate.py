@@ -1096,7 +1096,7 @@ def read_harness(
 SMOKE_HARNESS = Path(__file__).resolve().parents[1] / "sandbox_harness" / "smoke.py"
 # Reviewed content of the harness. It lives outside app/bots (so the kill_audit raw-RPC ban on
 # app/bots stays unconditional); this pin is checked at gate start and again when it is sent.
-SMOKE_HARNESS_SHA256 = "ee1b54252e4b4a6b8be6cafa3d69a5c9bafdabfa5743b5c6db2f53d84571ac3b"
+SMOKE_HARNESS_SHA256 = "8d9ceef39edac5d43db48b2cf51c73098bc8f12484a16dbb2abed61fe6b8a9a8"
 
 
 def smoke_source() -> str:

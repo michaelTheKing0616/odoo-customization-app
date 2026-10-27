@@ -43,7 +43,9 @@ def values(uid, model):
     dv = ex(uid, ADMIN[1], model, 'default_get', [list(fg)])
     v = {}
     for f, a in fg.items():
-        if not a.get('required') or a.get('readonly') or dv.get(f) not in (None, False):
+        named = f == 'name' and a.get('type') == 'char'  # e.g. res.partner checks it in code
+        if (not a.get('required') and not named) or a.get('readonly') or (
+                dv.get(f) not in (None, False)):
             continue
         t = a.get('type')
         if t in FILL:
