@@ -28,7 +28,7 @@ HELPER = HELPER_DIR / "audit.mjs"
 HELPER_ID = "ingenium-code-audit-js/1"
 # sha256 pins: the helper source, its lockfile (exact versions + sha512 integrity of each
 # tarball) and the installed dependency tree (npm ci --ignore-scripts from that lockfile)
-HELPER_SHA256 = "b61bf4da58e9d3ec11e3ffb7fb8976d7dacbfec93a543e23b099faa75f6f746e"
+HELPER_SHA256 = "f84baf9d6049b40fc835aec873dba07122a7c2b9ae57b9a7400f6954754c8216"
 LOCK_SHA256 = "8ab8dad809a88374e66decbf38124363a682a38ea5ab68c48b3e4d2b4212e839"
 MODULES_SHA256 = "4dc4b9addaa413cf20481526c85a3cf1c503e1bbae2d547ab0ab0fc3e2fe170a"
 # Node 22+: the stable permission model (fs read limited to the private helper copy, no child

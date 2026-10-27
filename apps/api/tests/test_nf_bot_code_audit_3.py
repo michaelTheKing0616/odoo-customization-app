@@ -361,3 +361,19 @@ def test_reproducer_negative(name, run):
     got = run()
     # access-missing is the unrelated model-level ACL check for the probe model
     assert not {c for c, s in got if s in ("high", "medium") and c != "access-missing"}, got
+
+
+def test_stock_noise_negatives():
+    """Stock Odoo shapes seen in the noise run: no HIGH/MEDIUM."""
+    css = "[data-mimetype^='image'] { background: url(/web/static/img/i.svg); }\n"
+    css += ".a[type='x'] { background: url(data:image/svg+xml,abc); }\n"
+    got = js(css, "static/a.scss")
+    assert not {c for c, s in got if s in ("high", "medium")}, got
+    py = (
+        H
+        + "import importlib.metadata\nimport importlib.util\n\nv = importlib.metadata.version('x')\nimportlib.util.find_spec('x')\n"
+    )
+    got = audit({"models/a.py": py})
+    assert not {c for c, s in got if s in ("high", "medium")}, got
+    got = audit({"models/a.py": H + "import importlib\nimportlib.import_module(os.environ['M'])\n"})
+    assert ("dangerous-call", "high") in got

@@ -391,6 +391,10 @@ function auditCss(text, kind) {
           add("high", "css-exfiltration", n, "Attribute selector loads an external URL: leaks attribute values.");
         } else if (ext && runtime) {
           add("high", "css-exfiltration", n, "External url() built from runtime values (data exfiltration).");
+        } else if (/\[[^\]]*[\^$*]=/.test(sel) && /^\s*["']?\s*data:/i.test(u)) {
+          // inline data: URL: no request is made, nothing can leak
+        } else if (/\[[^\]]*[\^$*]=/.test(sel) && !runtime && !/[?#]/.test(u)) {
+          add("low", "css-exfiltration", n, "Attribute value-match selector loads a fixed same-origin URL (icons by type); a leak needs a per-value query, flagged LOW.");
         } else if (/\[[^\]]*[\^$*]=/.test(sel)) {
           add("medium", "css-exfiltration", n, "Attribute value-match selector loads a URL: leaks attribute values to the server log.");
         } else if (ext) {
