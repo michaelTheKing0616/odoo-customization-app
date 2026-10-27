@@ -116,7 +116,7 @@ def ok(task: str, **kw: Any) -> cl.Decision:
 
 def test_catalogue_rows_complete_and_traceable() -> None:
     rows, controls, sha = cl.catalogue()
-    assert len(rows) == 11930 and set(controls) == set(ru.CLASSES)
+    assert len(rows) == 11937 and set(controls) == set(ru.CLASSES)
     assert {c for c, _ in rows.values()} == set(ru.CLASSES)
     if CSV.exists():
         assert hashlib.sha256(CSV.read_bytes()).hexdigest() == sha
@@ -877,9 +877,17 @@ def test_mail_server_writes_floor_l2() -> None:
 
 @pytest.mark.parametrize("verb", ["write", "create", "unlink"])
 def test_mail_server_write_tasks_need_l2(verb) -> None:
-    # not a catalogue row today (classify refuses it); the floor holds if one is ever added
     assert cl._tier_floor(f"m:ir.mail_server:{verb}", ctx(17, "A")) == 2
     assert cl._tier_floor("m:ir.mail_server:export", ctx(17, "A")) == 1
+
+
+@pytest.mark.parametrize("v", [17, 18, 19, 20])
+@pytest.mark.parametrize("verb", ["change", "create", "delete", "mass-write", "import", "archive"])
+def test_mail_server_catalogue_rows_reach_l2(v, verb) -> None:
+    d = cl.classify(f"m:ir.mail_server:{verb}", ctx(v, "A"))
+    assert isinstance(d, cl.Decision), d
+    assert d.tier >= 2, d
+    assert cl._tier_floor(f"m:ir.mail_server:{verb}", ctx(v, "A")) >= 2
 
 
 def test_walker_path_cannot_write_settings_model() -> None:

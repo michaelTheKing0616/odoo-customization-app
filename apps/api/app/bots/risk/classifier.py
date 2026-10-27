@@ -64,7 +64,6 @@ class Decision:
         return {"class": self.cls, "controls": list(self.controls), "tier": f"L{self.tier}"}
 
 
-@lru_cache(maxsize=1)
 def cron_owner_row(task_id: str, version: Any) -> str | None:
     """The owning app stored on the catalogue row of scheduled action ``task_id`` for
     ``version`` (generated from the version catalogue; see gen_risk_rows.py)."""
@@ -76,6 +75,7 @@ def cron_owner_row(task_id: str, version: Any) -> str | None:
     return o if isinstance(o, str) and o else None
 
 
+@lru_cache(maxsize=1)
 def catalogue() -> tuple[dict[str, tuple[str, frozenset[int]]], dict[str, list[str]], str]:
     doc = json.loads(ROWS_FILE.read_text())
     rows: dict[str, tuple[str, frozenset[int]]] = {}
