@@ -98,6 +98,14 @@ class SessionAuthority:
             kind, login, session_id, uid, self._session_tag(kind, login, session_id, uid)
         )
 
+    def seal(self, rec: Mapping[str, Any]) -> str:
+        """MAC over a saved record (canonical JSON); the store file can't mint or edit one."""
+        msg = json.dumps(rec, sort_keys=True, separators=(",", ":"), default=str).encode()
+        return hmac.new(self._key, b"rec\0" + msg, hashlib.sha256).hexdigest()
+
+    def unsealed(self, rec: Mapping[str, Any], tag: Any) -> bool:
+        return isinstance(tag, str) and hmac.compare_digest(self.seal(rec), tag)
+
     def issue_human(self, *, login: str, session_id: str) -> Session:
         return self._issue(HUMAN, login, session_id, None)
 
@@ -255,17 +263,22 @@ class SpineDecisions(fl.Decisions):
                     self.store.approve(self.conn, r["id"], s.login)
                 except ap.ApprovalError as exc:
                     raise SpineError(exc.code, exc.message) from exc
-        self._put(
-            plan_id,
-            card,
-            {
-                "decision": "approve",
-                "actor": s.login,
-                "session": s.session_id[:8],
-                "level": max(int(r["tier"]) for r in rows),
-                "plans": [p.hash() for p in plans],
-            },
-        )
+        rec = {
+            "decision": "approve",
+            "actor": s.login,
+            "session": s.session_id[:8],
+            "level": max(int(r["tier"]) for r in rows),
+            "plans": [p.hash() for p in plans],
+        }
+        rec["seal"] = self.auth.seal(self._sealed(plan_id, card, rec))
+        self._put(plan_id, card, rec)
+
+    @staticmethod
+    def _sealed(plan_id: str, card: fl.StepCard, r: Mapping[str, Any]) -> dict[str, Any]:
+        keys = ("decision", "actor", "session", "level", "plans")
+        return {"plan": plan_id, "slot": card.slot, "hash": card.digest} | {
+            k: r.get(k) for k in keys
+        }
 
     def skip(self, plan_id: str, card: fl.StepCard, actor: Any) -> None:
         s = self.auth.verify(actor, HUMAN)
@@ -275,6 +288,8 @@ class SpineDecisions(fl.Decisions):
         r = self.get(plan_id, card)
         if not r or r.get("decision") != "approve" or r.get("hash") != card.digest:
             return None
+        if not self.auth.unsealed(self._sealed(plan_id, card, r), r.get("seal")):
+            return None  # edited or forged decision row (actor, session, level or plans)
         try:
             plans = self._plans(card)
         except SpineError:
@@ -293,7 +308,7 @@ class SpineDecisions(fl.Decisions):
         if any(a.level < 1 for a in got):
             return None
         humans = {a.approver for a in got if a.approver}
-        if len(humans) > 1:
+        if len(humans) > 1 or (humans and gd.norm(next(iter(humans))) != gd.norm(r.get("actor"))):
             return None
         return gd.Approval(min(a.level for a in got), next(iter(humans), None))
 

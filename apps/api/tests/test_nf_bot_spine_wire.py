@@ -634,3 +634,35 @@ def test_undo_auto_row_refused(S) -> None:
     with pytest.raises(sp.SpineError):
         flow.approve_undo(forged, owner(S))
     assert leads(o) == 1
+
+
+# ------------------------------------------------------------------ review: sealed decisions
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {"actor": OTHER},
+        {"session": "deadbeef"},
+        {"actor": OTHER, "session": "deadbeef"},
+        {"level": 9},
+        {"seal": "0" * 64},
+        {"seal": None},
+    ],
+)
+def test_edited_saved_decision_gives_nothing_to_run(S, edit) -> None:
+    flow, o = S(17, design(17, item(*LEAD)))
+    (c,) = flow.cards()
+    flow.dec.approve("p1", c, owner(S))
+    path = Path(flow.dec.path)
+    d = json.loads(path.read_text())
+    d["p1"][c.slot].update(edit)
+    path.write_text(json.dumps(d))
+    st = flow.run()["steps"][0]
+    assert st["status"] == fl.BLOCKED and leads(o) == 0, st
+
+
+def test_sealed_decision_still_runs(S) -> None:
+    flow, o = S(17, design(17, item(*LEAD)))
+    (c,) = flow.cards()
+    flow.dec.approve("p1", c, owner(S))
+    assert json.loads(Path(flow.dec.path).read_text())["p1"][c.slot]["seal"]
+    assert flow.run()["steps"][0]["status"] == fl.EXECUTED and leads(o) == 1
