@@ -54,13 +54,15 @@ def _mutate(col: str, value: str, cls: str = "R1") -> bytes:
 # ------------------------------------------------------------------ schema / happy path
 def test_loads_full_catalogue() -> None:
     cat = L.load()
-    assert len(cat.tasks) == 11929 == len(cat.index)
-    assert Counter(t.tier for t in cat.tasks) == {"T1": 6840, "T2": 4729, "T3": 360}
+    assert len(cat.tasks) == 11937 == len(cat.index)
+    assert Counter(t.tier for t in cat.tasks) == {"T1": 6848, "T2": 4729, "T3": 360}
     assert {t.risk_class for t in cat.tasks} == set(L.CLASS_PROFILE)
     assert all(t.versions <= L.VERSIONS and "audit" in t.controls for t in cat.tasks)
     t = L.by_id("b:account.account:action_open_related_taxes")
     assert t and t.risk_class == "R2W" and t.versions == frozenset({17, 18, 19, 20})
     assert L.by_id("b:nope:nope") is None
+    assert L.by_id("cron:Lunch: send automatic email to {supplier}")  # runtime-templated name
+    assert len([t for t in cat.tasks if t.object == "ir.mail_server"]) == 7
     assert 0 < len(L.tasks_for_version(17)) < len(cat.tasks)
     with pytest.raises(L.CatalogueError):
         L.tasks_for_version(16)
@@ -76,7 +78,7 @@ def test_task_is_immutable() -> None:
 def test_meta_pins_data() -> None:
     meta = json.loads(L.META_FILE.read_text())
     assert meta["sha256"] == hashlib.sha256(RAW).hexdigest()
-    assert meta["rows"] == 11929 and tuple(meta["columns"]) == L.COLUMNS
+    assert meta["rows"] == 11937 and tuple(meta["columns"]) == L.COLUMNS
 
 
 def test_same_source_as_risk_classifier() -> None:
@@ -202,7 +204,7 @@ def _patch(
             RAW, {"sha256": hashlib.sha256(RAW).hexdigest(), "rows": 11928}, id="row-count"
         ),
         pytest.param(
-            RAW + b"x", {"sha256": hashlib.sha256(RAW).hexdigest(), "rows": 11929}, id="appended"
+            RAW + b"x", {"sha256": hashlib.sha256(RAW).hexdigest(), "rows": 11937}, id="appended"
         ),
     ],
 )
@@ -238,4 +240,4 @@ def test_import_rejects_bad_source_without_touching_data(
     finally:
         monkeypatch.undo()
         L.load.cache_clear()
-    assert len(L.load().tasks) == 11929
+    assert len(L.load().tasks) == 11937

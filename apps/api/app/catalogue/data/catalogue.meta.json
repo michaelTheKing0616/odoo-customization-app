@@ -1,7 +1,7 @@
 {
  "source": "catalogue.csv",
- "sha256": "fe99ac08073cf27a2d6a1cd4c68114f4fde6c66b746b31e08696ce88ef9cfcbc",
- "rows": 11929,
+ "sha256": "523a1eb0f22246d3cc96b015f97c42e56cf1ba4ffae12e1275752a336f9302fd",
+ "rows": 11937,
  "columns": [
   "id",
   "area",
