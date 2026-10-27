@@ -538,3 +538,41 @@ def test_enterprise_map_does_not_touch_unknown_or_community_models():
     r = C.availability(17, "enterprise", ["base"], "x.nowhere.model")
     assert r.status == "unknown" and r.module is None
     assert C.availability(17, "community", ["base"], "res.partner").status == "installed-ok"
+
+
+# ---- round 8 VERSION-CAPS 9: the generator writes its own provenance (no stamping)
+
+
+def _gen():
+    import importlib.util
+    import pathlib
+
+    p = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "gen_versioncaps.py"
+    spec = importlib.util.spec_from_file_location("gen_vc_r8", p)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_generator_write_carries_its_own_provenance(tmp_path, monkeypatch):
+    import gzip
+    import json
+
+    gen = _gen()
+    monkeypatch.setattr(gen, "OUT", tmp_path)
+    monkeypatch.setattr(gen, "image_id", lambda v: "sha256:abc")
+    out = gen.write({"major": 17, "modules": {}, "models": {}}, "2026-10-27")
+    p = json.loads(gzip.decompress(out.read_bytes()))["provenance"]
+    assert p["major"] == 17 and p["generated"] == "2026-10-27" and p["image_id"] == "sha256:abc"
+    assert "stamped" not in p
+
+
+def test_generator_refuses_supplied_provenance_and_stamp_mode(tmp_path, monkeypatch):
+    gen = _gen()
+    monkeypatch.setattr(gen, "OUT", tmp_path)
+    with pytest.raises(ValueError):
+        gen.write({"major": 17, "provenance": {"stamped": "x"}}, "2026-10-27")
+    with pytest.raises(SystemExit):
+        gen.main(["17", "--stamp-only"])
+    with pytest.raises(ValueError):
+        gen.write({"major": 17}, "not-a-date")

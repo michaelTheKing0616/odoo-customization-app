@@ -8,11 +8,10 @@ bisecting batches so one failing or conflicting module never blocks the rest (re
 ir.model.fields.selection. Output is sorted, compact, gzip (mtime 0) -> deterministic.
 
     python scripts/gen_versioncaps.py 17 20 [--port-base 18300] [--keep] [--date YYYY-MM-DD]
-    python scripts/gen_versioncaps.py 17 18 19 20 --stamp-only --date 2026-10-26
 
 Every file carries ``provenance`` (version, edition, generation date, source image + local image
-id, base version, generator, RPC sources); the loader refuses a file without it.
-``--stamp-only`` adds provenance to existing files without a rerun (marked ``stamped``).
+id, base version, generator, RPC sources); the loader refuses a file without it. The generator
+writes it itself in the same step as the data (``write``); nothing is stamped afterwards.
 """
 
 from __future__ import annotations
@@ -203,7 +202,8 @@ def refresh_depends(b: Box) -> Path:
     for n, m in caps["modules"].items():
         m["depends"] = deps.get(n, [])
     check_depends(caps["modules"])
-    return write(caps)
+    caps.pop("provenance", None)  # this run re-reads depends: it writes its own provenance
+    return write(caps, datetime.date.today().isoformat(), "depends refreshed from the apps list")
 
 
 def read_caps(b: Box, failed: list[str]) -> dict:
@@ -283,7 +283,7 @@ def image_id(v: int) -> str:
     return sh("docker", "image", "inspect", f"odoo:{v}", "--format", "{{.Id}}").strip()
 
 
-def provenance(caps: dict, date: str, stamped: bool = False) -> dict:
+def provenance(caps: dict, date: str, method: str = "") -> dict:
     datetime.date.fromisoformat(date)  # refuse a malformed date
     p = {
         "major": caps["major"],
@@ -294,16 +294,17 @@ def provenance(caps: dict, date: str, stamped: bool = False) -> dict:
         "base_version": caps.get("base_version"),
         "generator": GENERATOR,
         "sources": SOURCES,
-        "method": "public XML-RPC on a disposable sandbox with every installable Community module",
+        "method": method
+        or "public XML-RPC on a disposable sandbox with every installable Community module",
     }
-    if stamped:
-        p["stamped"] = (
-            "provenance added after generation; image_id is the local image at stamp time"
-        )
     return p
 
 
-def write(caps: dict) -> Path:
+def write(caps: dict, date: str, method: str = "") -> Path:
+    """Write the catalogue with the provenance of THIS run (never stamped onto old data)."""
+    if "provenance" in caps:
+        raise ValueError("provenance is written by the generator run, not supplied")
+    caps = {**caps, "provenance": provenance(caps, date, method)}
     OUT.mkdir(parents=True, exist_ok=True)
     p = OUT / f"caps_{caps['major']}.json.gz"
     raw = json.dumps(caps, sort_keys=True, separators=(",", ":")).encode()
@@ -318,16 +319,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--port-base", type=int, default=18300)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--depends-only", action="store_true", help="refresh depends in existing files")
-    ap.add_argument("--stamp-only", action="store_true", help="add provenance to existing files")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     a = ap.parse_args(argv)
-    if a.stamp_only:
-        for v in a.versions:
-            p = OUT / f"caps_{v}.json.gz"
-            caps = json.loads(gzip.decompress(p.read_bytes()))
-            caps["provenance"] = provenance(caps, a.date, stamped=True)
-            print(f"[{v}] stamped {write(caps)}", flush=True)
-        return 0
     for v in a.versions:
         b = Box(v, a.port_base + v)
         try:
@@ -337,8 +330,7 @@ def main(argv: list[str]) -> int:
                 continue
             failed = install_all(b, log=lambda s, v=v: print(f"[{v}]{s}", flush=True))
             caps = read_caps(b, failed)
-            caps["provenance"] = provenance(caps, a.date)
-            p = write(caps)
+            p = write(caps, a.date)
             print(f"[{v}] wrote {p} failed={failed}", flush=True)
         finally:
             if not a.keep:
