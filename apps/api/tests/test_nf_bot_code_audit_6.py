@@ -570,3 +570,14 @@ def test_probe_default_unparsed():
 def test_probe_default_plain_ok(field, jv):
     c = codes(_dflt(field, jv))
     assert ("privilege-default", "high") not in c and ("default-value-unaudited", "high") not in c
+
+
+# ---------------------------------------------------------------- probe m-md
+@pytest.mark.parametrize("body", ["<script>alert(1)</script>", "<img src=x onerror=alert(1)>", "[x](javascript:alert(1))", "<iframe src='//e.v'></iframe>"])
+def test_probe_md_active(body):
+    for n in ("README.md", "doc/index.md", "static/description/x.md"):
+        assert ("doc-active-content", "medium") in codes({n: "# t\n" + body + "\n"}), n
+
+
+def test_probe_md_plain_ok():
+    assert not has({"README.md": "# t\n[link](https://odoo.com) **bold**\n"}, "doc-active-content", "medium")

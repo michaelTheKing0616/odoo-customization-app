@@ -4255,12 +4255,13 @@ def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
                 "Use http(s) links only.",
             )
     if low.endswith(".md") and _ACTIVE.search(text.encode()):
+        m = _ACTIVE.search(text.encode())
         c.add(
-            LOW,
+            MEDIUM,  # m-md: README.md raw HTML is rendered by Apps/GitHub (same rule as .rst)
             "doc-active-content",
             path,
-            0,
-            "Markdown with raw HTML/script or javascript: links (dangerous where rendered).",
+            text.encode()[: m.start()].count(b"\n") + 1,
+            "Markdown with raw HTML/script or javascript: links (rendered by Apps/GitHub).",
             "Remove raw HTML and javascript: links.",
         )
     if low.endswith(".json"):
