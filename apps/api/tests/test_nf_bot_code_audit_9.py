@@ -252,3 +252,10 @@ def test_m3_decoded_external_request(body):
 
 def test_m3_benign_decoded_local_silent():
     assert not _sev(_js("await fetch(atob('L3dlYi9pbWFnZQ=='));"), "js-external-request")  # '/web/image'
+
+
+def test_h4_batched_search_is_bounded():
+    # stock mail/models/mail_push.py: cron cleans one batch, not the table
+    body = "recs = self.sudo().search_fetch([], ['payload'], limit=50)\nrecs.unlink()"
+    assert not _sev(_m(body), "mass-change")
+    assert _sev(_m("self.env['res.partner'].search([(1, '=', 1)], limit=None).unlink()"), "mass-change")

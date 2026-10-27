@@ -1607,6 +1607,9 @@ def _mass_search_mod(x: ast.AST, names: dict | None = None) -> bool:
         return False
     if x.func.attr not in ("search", "search_fetch"):
         return _mass_search_mod(x.func.value, names)
+    lim = next((k.value for k in x.keywords if k.arg == "limit"), None)
+    if lim is not None and not (isinstance(lim, ast.Constant) and lim.value in (None, 0, False)):
+        return False  # a batch (limit=N) is bounded: stock mail cron search_fetch([], limit=batch_size)
     dom = x.args[0] if x.args else next((k.value for k in x.keywords if k.arg == "domain"), None)
     return _domain_truth(dom, names) == "T"
 
