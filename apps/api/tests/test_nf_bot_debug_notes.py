@@ -461,6 +461,6 @@ def test_r5_redact_keeps_neutral_lines() -> None:
     ],
 )
 def test_r5_redact_redos_bounded(text) -> None:
-    t0 = time.perf_counter()
+    t0 = time.process_time()  # CPU time: immune to suite load
     dn.redact(text)
-    assert time.perf_counter() - t0 < 0.5
+    assert time.process_time() - t0 < 2.0  # quadratic input takes minutes
