@@ -669,6 +669,8 @@ def strip_stock_inherit_junk_fields(draft: dict[str, Any]) -> list[str]:
                     isinstance(f, dict)
                     and str(f.get("name")) == "x_status"
                     and str(f.get("ttype")) == "selection"
+                    # A curated pack's own stock-first-reviewed status (fleet Rental Status) stays.
+                    and f.get("source") != "pack_seed"
                 )
             ]
             notes.append(f"stock_first: demoted stock-host workflow chrome on {mid}")
