@@ -757,3 +757,22 @@ def _r5(method_body: str) -> ca.Report:
         "    def go(self, f=None, rows=()):\n" + method_body
     )
     return _r5_files({"models/x.py": src})
+
+
+@pytest.mark.parametrize("v", [17, 18, 19])
+def test_clean_req2mod_module_audits_clean_at_its_own_version(v):
+    """Regression for the round 5 report: the clean generated module has no HIGH/MEDIUM finding."""
+    import copy
+
+    from module_generator import build_module_zip
+    from test_nf_bot_req2mod import ASSETS, BASE
+
+    from app.bots import req2mod as rm
+
+    r = rm.build(copy.deepcopy(ASSETS), version=v, installed_modules=BASE, technical_name="x_clean")
+    rep = ca.audit(build_module_zip(r.spec), version=v, owned_names={"x_clean"})
+    bad = [(f.severity, f.code) for f in rep.findings if f.severity in (ca.HIGH, ca.MEDIUM)]
+    assert bad == []
+    if v != 17:
+        wrong = ca.audit(build_module_zip(r.spec), version=17, owned_names={"x_clean"})
+        assert {f.code for f in wrong.findings} & {"version-list", "version-manifest"}
