@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -1139,6 +1139,144 @@ def read_smoke(raw: bytes | None) -> tuple[str, str, dict[str, str]]:
     return PASS, f"smoke ok: {counts}", roles
 
 
+_MODEL_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+")
+_COL_RE = re.compile(r"[a-z_][a-z0-9_]{0,62}")
+_LOGIN_RE = re.compile(r"smoke_[0-9]{1,10}")
+_SEQ_OK = "true"
+
+
+def _pos_int(x: Any) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool) and 0 < x < 2**31
+
+
+def smoke_facts(raw: bytes | None) -> tuple[dict, dict] | None:
+    """The harness's own trail (ids it created/kept/unlinked) and role users, strictly typed.
+    None = unreadable (fail closed)."""
+    try:
+        d = json.loads(raw.decode())  # type: ignore[union-attr]
+        trail, users = d["trail"], d["role_users"]
+        assert isinstance(trail, dict) and isinstance(users, dict)
+        for m, t in trail.items():
+            assert _MODEL_RE.fullmatch(m) and set(t) == {"kept", "field", "gone"}
+            assert _pos_int(t["kept"]) and _pos_int(t["gone"]) and t["kept"] != t["gone"]
+            assert t["field"] is None or _COL_RE.fullmatch(t["field"])
+        for u in users.values():
+            assert set(u) == {"uid", "login", "gid", "model"}
+            assert _pos_int(u["uid"]) and _pos_int(u["gid"]) and _LOGIN_RE.fullmatch(u["login"])
+            assert _MODEL_RE.fullmatch(u["model"]) and u["login"] == f"smoke_{u['gid']}"
+    except Exception:  # noqa: BLE001
+        return None
+    return trail, users
+
+
+def sql_smoke_record(model: str, kept: int, field: str | None, gone: int) -> str:
+    """-- gate:smokedb: the kept record is there (with the written value), the unlinked one is
+    gone, and the id sequence really passed it (it was created). Table must be a plain table."""
+    t = model.replace(".", "_")
+    assert _COL_RE.fullmatch(t) and _pos_int(kept) and _pos_int(gone)
+    written = (
+        f'(SELECT count(*) FROM public."{t}" WHERE id = {kept} '
+        f"AND position('smoke2' in \"{field}\"::text) > 0)::text"
+        if field and _COL_RE.fullmatch(field)
+        else "'1'"
+    )
+    return (
+        "-- gate:smokedb\n"
+        "SELECT 'm', (SELECT c.relkind::text FROM pg_catalog.pg_class c JOIN "
+        "pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' "
+        f"AND c.relname = '{t}'), "
+        f'(SELECT count(*) FROM public."{t}" WHERE id = {kept})::text, {written}, '
+        f'(SELECT count(*) FROM public."{t}" WHERE id = {gone})::text, '
+        "(pg_catalog.pg_sequence_last_value(pg_catalog.pg_get_serial_sequence("
+        f"'public.\"{t}\"', 'id')::regclass) >= {gone})::text;\n"
+    )
+
+
+def sql_smoke_role(uid: int, login: str, gid: int, model: str) -> str:
+    """-- gate:smokerole: the role user exists, is active, holds the group (incl. implied
+    groups), and the access rows in the database grant it each permission."""
+    assert _pos_int(uid) and _pos_int(gid) and _LOGIN_RE.fullmatch(login)
+    assert _MODEL_RE.fullmatch(model)
+    perms = ", ".join(
+        f"coalesce(bool_or(a.perm_{p}), false)::text" for p in ("read", "write", "create", "unlink")
+    )
+    return (
+        "-- gate:smokerole\n"
+        "WITH RECURSIVE g(id) AS (SELECT r.gid FROM public.res_groups_users_rel r "
+        f"WHERE r.uid = {uid} UNION SELECT i.hid FROM public.res_groups_implied_rel i "
+        "JOIN g ON i.gid = g.id) "
+        f"SELECT 'u', (SELECT count(*) FROM public.res_users WHERE id = {uid} "
+        f"AND login = '{login}' AND active)::text, "
+        f"(SELECT count(*) FROM g WHERE id = {gid})::text, {perms} "
+        "FROM public.ir_model_access a JOIN public.ir_model m ON m.id = a.model_id "
+        f"WHERE m.model = '{model}' AND a.active "
+        "AND (a.group_id IS NULL OR a.group_id IN (SELECT id FROM g));\n"
+    )
+
+
+def verify_smoke_db(
+    psql: Callable[[str, int], list[list[str]] | None],
+    raw: bytes | None,
+    smoked: Iterable[str],
+    roles: list,
+) -> tuple[str, str, dict[str, str]]:
+    """Re-read every smoke fact from the smoke database (trusted read-only role). Returns
+    (status, detail, per-role 'ok' or reason). Fail closed: missing trail or unreadable -> not
+    PASS; a fact the database contradicts -> FAIL."""
+    facts = smoke_facts(raw)
+    if facts is None:
+        return FAIL, "smoke trail unreadable", {}
+    trail, users = facts
+    bad: list[str] = []
+    unread: list[str] = []
+    for m in sorted(smoked):
+        t = trail.get(m)
+        if t is None:
+            bad.append(f"{m}: no smoke trail")
+            continue
+        rows = psql(sql_smoke_record(m, t["kept"], t["field"], t["gone"]), 6)
+        if rows is None or len(rows) != 1:
+            unread.append(m)
+            continue
+        _, kind, kept, wrote, gone, seq = rows[0]
+        if kind != "r":
+            bad.append(f"{m}: not a plain table ({kind or 'missing'})")
+        elif kept != "1":
+            bad.append(f"{m}: created record not in the database")
+        elif wrote != "1":
+            bad.append(f"{m}: written value not in the database")
+        elif gone != "0":
+            bad.append(f"{m}: unlinked record still in the database")
+        elif seq != _SEQ_OK:
+            bad.append(f"{m}: second record was never created")
+    role_db: dict[str, str] = {}
+    for m, gr, perms in roles:
+        key = f"{m}|{gr}"
+        u = users.get(key)
+        if u is None:
+            role_db[key] = "no role user recorded"
+            continue
+        rows = psql(sql_smoke_role(u["uid"], u["login"], u["gid"], u["model"]), 7)
+        if rows is None or len(rows) != 1:
+            role_db[key] = "role rows unreadable"
+            continue
+        _, exists, member, *got = rows[0]
+        if exists != "1" or member != "1":
+            role_db[key] = "role user or group membership not in the database"
+            continue
+        miss = [
+            op
+            for op, want, g_ in zip(("read", "write", "create", "unlink"), perms, got, strict=False)
+            if want and g_ != "true"
+        ]
+        role_db[key] = "ok" if not miss else "database grants no " + ", ".join(miss)
+    if bad:
+        return FAIL, "smoke db read-back: " + "; ".join(bad[:8]), role_db
+    if unread:
+        return UNVERIFIED, "smoke db read-back unreadable: " + ", ".join(unread[:8]), role_db
+    return PASS, f"db read-back {len(trail)} model(s)", role_db
+
+
 # ---------------------------------------------------------------- gate
 
 
@@ -1655,7 +1793,21 @@ def _sandbox_checks(
         if not ok_s:
             checks["smoke"] = Check(FAIL, f"smoke database install: {why_s}", _tail(r.output))
         else:
-            st_s, det_s, role_res = read_smoke(sb.smoke(new_dir, roles))
+            raw_s = sb.smoke(new_dir, roles)
+            st_s, det_s, role_res = read_smoke(raw_s)
+            if st_s == PASS:
+                smoked = json.loads(raw_s.decode())["models"]  # type: ignore[union-attr]
+                st_v, det_v, role_db = verify_smoke_db(
+                    lambda q, n: sb.psql(sb.db_smoke, q, fields=n),
+                    raw_s,
+                    [m for m, v in smoked.items() if v == "ok"],
+                    roles,
+                )
+                st_s, det_s = (st_s, f"{det_s}; {det_v}") if st_v == PASS else (st_v, det_v)
+                role_res = {
+                    k: (v if role_db.get(k) == "ok" else f"db: {role_db.get(k, 'not checked')}")
+                    for k, v in role_res.items()
+                }
             checks["smoke"] = Check(st_s, det_s)
         # (3b) the module's own tests: ADVISORY only (they run inside the module's process);
         # stock run (log line) AND harness run (own report, gate-owned canaries)

@@ -42,6 +42,17 @@ def role_spec(q=NEW, v=17):
     return g.role_spec_from(r.spec, MOD)
 
 
+def trail(models=("x.asset",)):
+    return {m: {"kept": 41, "field": "name", "gone": 42} for m in models}
+
+
+def role_users(cfg):
+    return {
+        f"{m}|{gr}": {"uid": 50 + i, "login": f"smoke_{60 + i}", "gid": 60 + i, "model": "x.asset"}
+        for i, (m, gr, _p) in enumerate(cfg["roles"])
+    }
+
+
 def ids(n=10, extra=()):
     return ",".join(map(str, [*range(1, n + 1), *extra]))
 
@@ -82,6 +93,12 @@ class Fake:
                 return g.RunResult(1, "ERROR")
             rows = o.get("access_rows") or self._spec_rows()
             return self._out(rows + o.get("access_extra", []))
+        if "gate:smokedb" in sql:
+            if o.get("smokedb") is None and "smokedb" in o:
+                return g.RunResult(1, "ERROR")
+            return self._out([o.get("smokedb", ["m", "r", "1", "1", "0", "true"])])
+        if "gate:smokerole" in sql:
+            return self._out([o.get("smokerole", ["u", "1", "1", "true", "true", "true", "true"])])
         if "gate:tables" in sql:
             return self._out([[t] for t in g.COUNT_TABLES])
         if "gate:schema" in sql:
@@ -145,6 +162,8 @@ class Fake:
             "crons": {},
             "roles": {f"{m}|{gr}": "ok" for m, gr, _p in cfg["roles"]},
             "errors": [],
+            "trail": trail(),
+            "role_users": role_users(cfg),
         }
 
     def run(self, argv, *, stdin=None, timeout=900):
@@ -928,6 +947,8 @@ def _sm(**kw):
             "crons": {},
             "roles": {f"{m}|{gr}": "ok" for m, gr, _p in cfg["roles"]},
             "errors": [],
+            "trail": trail(),
+            "role_users": role_users(cfg),
         }
         for k, v in kw.items():
             rep[k] = v(cfg) if callable(v) else v
@@ -1055,3 +1076,57 @@ def test_smoke_harness_is_never_imported_and_pinned_to_sandbox():
     for bad in ({"host": "client.example.com"}, {"db": "production"}):
         with pytest.raises(AssertionError):
             g.smoke_script({**cfg, **bad})
+
+
+# ---- round 8 GATE 1: smoke facts are re-read from the smoke database (trusted read role)
+
+
+@pytest.mark.parametrize(
+    "over, smoke, access, why",
+    [
+        ({"smokedb": ["m", "r", "0", "0", "0", "true"]}, g.FAIL, g.FAIL, "created record not"),
+        ({"smokedb": ["m", "r", "1", "0", "0", "true"]}, g.FAIL, g.FAIL, "written value not"),
+        ({"smokedb": ["m", "r", "1", "1", "1", "true"]}, g.FAIL, g.FAIL, "still in the database"),
+        ({"smokedb": ["m", "r", "1", "1", "0", "false"]}, g.FAIL, g.FAIL, "never created"),
+        ({"smokedb": ["m", "v", "1", "1", "0", "true"]}, g.FAIL, g.FAIL, "not a plain table"),
+        ({"smokedb": ["m", "", "1", "1", "0", "true"]}, g.FAIL, g.FAIL, "missing"),
+        ({"smokedb": None}, g.UNVERIFIED, g.UNVERIFIED, "unreadable"),
+        ({"smokedb": ["m", "r", "1"]}, g.UNVERIFIED, g.UNVERIFIED, "unreadable"),  # framing
+        ({"smoke": _sm(trail={})}, g.FAIL, g.FAIL, "no smoke trail"),
+        ({"smoke": _sm(trail={"x.asset": {"kept": 1, "field": "a;b", "gone": 2}})}, g.FAIL,
+         g.FAIL, "trail unreadable"),
+        ({"smoke": _sm(trail={"x.asset": {"kept": 1, "field": None, "gone": 1}})}, g.FAIL,
+         g.FAIL, "trail unreadable"),
+        ({"smoke": _sm(role_users={})}, g.PASS, g.FAIL, "smoke ok"),
+        ({"smokerole": ["u", "0", "1", "true", "true", "true", "true"]}, g.PASS, g.FAIL, ""),
+        ({"smokerole": ["u", "1", "0", "true", "true", "true", "true"]}, g.PASS, g.FAIL, ""),
+        ({"smokerole": ["u", "1", "1", "false", "false", "false", "false"]}, g.PASS, g.FAIL, ""),
+    ],
+)  # fmt: skip
+def test_smoke_db_readback_fails_closed(tmp_path, over, smoke, access, why):
+    rep, mh = gate(tmp_path, **over)
+    assert rep.checks["smoke"].status == smoke, rep.checks["smoke"]
+    assert why in rep.checks["smoke"].detail
+    assert rep.checks["access"].status == access, rep.checks["access"]
+    if access == g.FAIL and smoke == g.PASS:
+        assert "db:" in rep.checks["access"].detail
+    assert not passed(rep, mh)
+
+
+def test_smoke_db_readback_pass_names_it(tmp_path):
+    rep, mh = gate(tmp_path)
+    assert "db read-back 1 model(s)" in rep.checks["smoke"].detail
+    assert rep.checks["access"].status == g.PASS and passed(rep, mh)
+
+
+def test_smoke_sql_is_pinned_and_quoted():
+    q = g.sql_smoke_record("x.asset", 4, "name", 5)
+    assert 'public."x_asset"' in q and "relkind" in q and "pg_sequence_last_value" in q
+    assert "'1'" in g.sql_smoke_record("x.asset", 4, None, 5)
+    for bad in (("x.asset; drop", 1, None, 2), ("x.asset", 0, None, 2), ("x.asset", True, None, 2)):
+        with pytest.raises(AssertionError):
+            g.sql_smoke_record(*bad)
+    r = g.sql_smoke_role(7, "smoke_9", 9, "x.asset")
+    assert "res_groups_implied_rel" in r and "perm_unlink" in r
+    with pytest.raises(AssertionError):
+        g.sql_smoke_role(7, "admin' or '1", 9, "x.asset")

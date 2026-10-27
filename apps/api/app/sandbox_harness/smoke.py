@@ -9,7 +9,9 @@ C = json.loads(__CFG__)
 URL = 'http://%s:8069/jsonrpc' % C['host']
 DB, M, ADMIN = C['db'], C['module'], ('admin', 'admin')
 out = {'models': {}, 'views': {}, 'actions': {}, 'menus': {}, 'crons': {}, 'roles': {},
-       'errors': []}
+       'errors': [], 'trail': {}, 'role_users': {}}
+# trail / role_users: what this harness did, by id. The gate re-reads each fact from the
+# smoke database with its trusted read-only role; the module server's replies are not trusted.
 def rpc(service, method, *args):
     body = json.dumps({'jsonrpc': '2.0', 'method': 'call', 'id': 1, 'params': {
         'service': service, 'method': method, 'args': list(args)}}).encode()
@@ -37,7 +39,7 @@ FILL = {'char': 'smoke', 'text': 'smoke', 'html': '<p>smoke</p>', 'integer': 1, 
         'datetime': '2026-01-01 00:00:00'}
 def values(uid, model):
     fg = ex(uid, ADMIN[1], model, 'fields_get', [],
-            {'attributes': ['type', 'required', 'readonly', 'relation', 'selection']})
+            {'attributes': ['type', 'required', 'readonly', 'relation', 'selection', 'store']})
     dv = ex(uid, ADMIN[1], model, 'default_get', [list(fg)])
     v = {}
     for f, a in fg.items():
@@ -57,23 +59,33 @@ def values(uid, model):
             return None, fg, 'skip: cannot fill required %s field %s' % (t, f)
     return v, fg, ''
 def crud(uid, model):
+    # record K: create, write, kept (the gate reads it back); record G: create, unlink (gone)
     v, fg, why = values(uid, model)
     if v is None:
         return why
-    rid = ex(uid, ADMIN[1], model, 'create', [v])
-    rid = rid[0] if isinstance(rid, list) else rid
+    def mk(vals):
+        rid = ex(uid, ADMIN[1], model, 'create', [vals])
+        return rid[0] if isinstance(rid, list) else rid
+    rid = mk(v)
     if not isinstance(rid, int) or not ex(uid, ADMIN[1], model, 'read', [[rid], ['id']]):
         return 'create/read failed'
     wf = next((f for f, a in sorted(fg.items()) if a.get('type') == 'char'
-               and not a.get('readonly') and f not in ('display_name',)), None)
+               and not a.get('readonly') and a.get('store', True)
+               and f not in ('display_name',)), None)
     if wf:
         ex(uid, ADMIN[1], model, 'write', [[rid], {wf: 'smoke2'}])
         got = ex(uid, ADMIN[1], model, 'read', [[rid], [wf]])
         if not got or got[0].get(wf) != 'smoke2':
             return 'write not read back'
-    ex(uid, ADMIN[1], model, 'unlink', [[rid]])
-    if ex(uid, ADMIN[1], model, 'search', [[['id', '=', rid]]]):
+    vb = {f: (x + '_b' if isinstance(x, str) and fg[f].get('type') in ('char', 'text') else x)
+          for f, x in v.items()}
+    gone = mk(vb)
+    if not isinstance(gone, int):
+        return 'second create failed'
+    ex(uid, ADMIN[1], model, 'unlink', [[gone]])
+    if ex(uid, ADMIN[1], model, 'search', [[['id', '=', gone]]]):
         return 'unlink left the record'
+    out['trail'][model] = {'kept': rid, 'field': wf, 'gone': gone}
     return 'ok'
 def guard(bucket, key, fn):
     try:
@@ -153,6 +165,8 @@ def main():
             u = users[gid]
             if not u:
                 return 'role user login failed'
+            out['role_users'][key] = {'uid': u, 'login': 'smoke_%d' % gid, 'gid': gid,
+                                      'model': model}
             bad = []
             for op, want in zip(('read', 'write', 'create', 'unlink'), perms):
                 try:
