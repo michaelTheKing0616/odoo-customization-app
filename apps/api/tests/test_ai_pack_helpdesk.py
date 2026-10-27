@@ -100,11 +100,15 @@ def test_helpdesk_finish_does_not_reattach_project() -> None:
     assert "x_employee_id" not in names
     assert "x_project_id" not in names
     assert "x_purchase_order_id" not in names
-    line = next(m for m in closed["models"] if m.get("model") == "x_ticket_time_line")
+    # Stock-first pack review: time lines are stock account.analytic.line (hours + note
+    # are stock unit_amount/name), linked back to the ticket; no parallel x_ticket_time_line.
+    assert "x_ticket_time_line" not in ids
+    line = next(m for m in closed["models"] if m.get("model") == "account.analytic.line")
+    assert line.get("mode") == "inherit"
     line_names = {str(f.get("name")) for f in (line.get("fields") or []) if isinstance(f, dict)}
-    assert "x_hours" in line_names
-    assert "x_note" in line_names
+    assert "x_ticket_id" in line_names
     assert "x_status" not in line_names
+    assert not any(str(m.get("model")) == "x_tickets" for m in closed["models"])
     preview = ((closed.get("_generation_engine") or {}).get("form_preview"))
     assert preview
 

@@ -823,7 +823,11 @@ def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -
     display, slug = naming_from_residual(text)
     want_mid = f"x_{slug}" if slug and not slug.startswith("x_") else (slug or "")
     models = [m for m in (draft.get("models") or []) if isinstance(m, dict) and m.get("model")]
-    header = next((m for m in models if want_mid and str(m.get("model")) == want_mid), None)
+    # "tickets" must hit an existing x_ticket header, not spawn a parallel x_tickets.
+    want_ids = {want_mid, want_mid[:-1]} if want_mid.endswith("s") else {want_mid}
+    header = next((m for m in models if want_mid and str(m.get("model")) in want_ids), None)
+    if header is not None:
+        want_mid = str(header.get("model"))
     proposals: list[Proposal] = []
     if header is None:
         mid = want_mid or "x_custom"
@@ -867,6 +871,14 @@ def ensure_residual_must_do_fields(draft: dict[str, Any], *, prompt: str = "") -
                         existing.update({k: v for k, v in row.items() if k != "name"})
                         notes.append(f"must_do: upgraded {name} to {row.get('ttype')}")
                     break
+                continue
+            # Same concept already on the header (x_requester_id→hr.employee, x_status): no twin.
+            rel = str(row.get("relation") or "")
+            if row.get("ttype") == "many2one" and rel and any(
+                f.get("ttype") == "many2one" and str(f.get("relation") or "") == rel for f in fields
+            ):
+                continue
+            if name in {"x_state", "x_status"} and have & {"x_state", "x_status"}:
                 continue
             payload = {k: v for k, v in row.items() if k != "name"}
             payload["model"] = mid
