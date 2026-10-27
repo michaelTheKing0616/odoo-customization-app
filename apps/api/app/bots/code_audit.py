@@ -3523,7 +3523,9 @@ def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         )
     if tag == "script" and not lit and not dyn:
         typ = (el.get("type") or "text/javascript").lower()
-        if "json" in typ or "template" in typ:
+        if _data_script(c, path, xl.el(el), typ, "".join(el.itertext())):
+            return
+        if "template" in typ:
             return
         # QWeb output inside the script (<t t-esc/>) becomes a neutral identifier that is
         # valid both inside a string literal and as an expression; line breaks are kept.
@@ -3555,6 +3557,50 @@ def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
             return
         line0 = xl.line(xl._tag_span(el)[1] + 1)
         c.web.append((f"{path}#script@{line0}", path, line0, "js", js))
+
+
+_JSON_SCRIPT = re.compile(r"^\s*(?:importmap|speculationrules|application/(?:[\w.+-]+\+)?json|text/json)\s*$")
+
+
+def _data_script(c: _Ctx, path: str, line: int, typ: str, text: str) -> bool:
+    """<script type="importmap|speculationrules|*json"> holds JSON the browser never runs as
+    code: parse it as JSON (unparsable: fail closed). An import map remaps every module
+    specifier and speculation rules prefetch URLs, so a remote target in either is graded."""
+    if not _JSON_SCRIPT.match(typ or ""):
+        return False
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except ValueError as e:
+        c.add(HIGH, "web-unaudited", path, line, f"Cannot parse, unaudited ({typ} is not JSON: {str(e)[:80]}).",
+              "Ship valid JSON in the script element.")
+        return True
+    kind = typ.strip()
+    if kind not in ("importmap", "speculationrules"):
+        return True  # plain JSON data block: inert
+    urls: list[str] = []
+
+    def walk(x: Any) -> None:
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if isinstance(k, str) and kind == "importmap":
+                    urls.append(k)
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+        elif isinstance(x, str):
+            urls.append(x)
+
+    walk(data)
+    for u in urls:
+        if re.match(r"\s*(?:[a-z][a-z0-9+.-]*:|//|\\\\)", u, re.I) and not re.match(r"\s*(?:/(?!/)|\./|\.\./)", u):
+            if re.match(r"\s*(?:https?:)?//", u, re.I) or re.match(r"\s*(?:javascript|data|blob):", u, re.I):
+                c.add(HIGH if kind == "importmap" else MEDIUM, "markup-external-resource", path, line,
+                      f"<script type={kind}> points at {u[:80]}: "
+                      + ("module imports are loaded from it." if kind == "importmap" else "the browser prefetches it."),
+                      "Map modules to bundled, same-origin paths only.")
+                break
+    return True
 
 
 _READ_ONLY_CALLS = frozenset(
@@ -5044,7 +5090,7 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
                 "Ship static documents without scripts.",
             )
             code = "".join(el.itertext())
-            if code.strip():
+            if code.strip() and not _data_script(c, path, ln, (el.get("type") or "").lower(), code):
                 c.web.append((f"{path}#script@{ln}", path, ln, "js", code))
         elif tag == "style":
             css = "".join(el.itertext())

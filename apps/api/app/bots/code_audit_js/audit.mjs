@@ -892,7 +892,7 @@ function auditJs(text) {
     const tplOf = (v, d = 0) => {
       if (!v || d > 4) return null;
       if (v.type === "Literal" && typeof v.value === "string") return /</.test(v.value) ? v.value : null;
-      if (v.type === "TemplateLiteral") { const t = v.quasis.map((q) => q.value.cooked || "").join("${}"); return /</.test(t) ? t : null; }
+      if (v.type === "TemplateLiteral") { const t = v.quasis.map((q) => q.value.cooked || "").join("__owl_interp__"); return /</.test(t) ? t : null; }
       if (v.type === "Identifier" && DOM_VARS.has(v.name)) return tplOf(DOM_VARS.get(v.name)[0], d + 1);
       if (v.type === "BinaryExpression" && v.operator === "+") { const a = tplOf(v.left, d + 1) ?? lit(v.left), b = tplOf(v.right, d + 1) ?? lit(v.right); return a !== null && b !== null && /</.test(a + b) ? a + b : null; }
       return null;
@@ -902,7 +902,7 @@ function auditJs(text) {
         : (n.left.type === "MemberExpression" && !n.left.computed && n.left.property.name === "template" ? tplOf(n.right) : null)) : null;
     if ((n.type === "TaggedTemplateExpression" && n.tag.type === "Identifier" && n.tag.name === "xml") || staticTpl !== null) {
       // CA9 M1: the template is XML: character references are decoded before any check
-      const text = decodeEntities(staticTpl !== null ? staticTpl : n.quasi.quasis.map((q) => q.value.cooked || "").join("${}"));
+      const text = decodeEntities(staticTpl !== null ? staticTpl : n.quasi.quasis.map((q) => q.value.cooked || "").join("__owl_interp__"));
       for (const m of text.matchAll(/\bt-(out|esc|raw)\s*=\s*(["'])(.*?)\2/gs)) {
         const v = m[3];
         if (m[1] === "raw") { add("high", "owl-t-out", n, "t-raw renders unescaped HTML."); continue; }
@@ -926,7 +926,9 @@ function auditJs(text) {
           // OWL scope lookups: bare reserved names (class) read ctx, `{ this }` shorthand
           .replace(/(^|[^.\w$'"])class\b(?!\s*:)/g, "$1ctx_class")
           .replace(/([{,]\s*)this(\s*[,}])/g, "$1this: this$2")
-          .replace(/[\s;]+$/, "");
+          .replace(/[\s;]+$/, "")
+          // a bare reserved word is a component method looked up on ctx (t-on-click="delete")
+          .replace(/^\s*(delete|default|new|void|typeof|in|instanceof|do|if|for|while|switch|case|return|var|let|const|function|catch|try|finally|throw|with|yield|export|import|super|enum|extends|debugger|continue|break|else|class)\s*$/, "ctx_$1");
         const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + owlOps(a1 || a2) + "}") + "`" : owlOps(m[3]);
         if (DEPTH < 2) {
           DEPTH++;

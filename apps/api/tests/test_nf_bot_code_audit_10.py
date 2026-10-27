@@ -58,3 +58,60 @@ def test_sibling_addon_image_resolved(tmp_path):
 def test_svg_file_ref_is_audited_as_active_content():
     files = {"data/d.xml": _rec("image_1920", "x/static/img/a.svg"), "static/img/a.svg": b"<svg onload='x()'/>"}
     assert any(s in ("high", "medium") for c, s in codes(files, MANX) if c != "data-file-unaudited")
+
+
+# ---------------------------------------------------------------- (B) JSON script types parsed as JSON
+def _html(typ, body):
+    return {"static/t/index.html": f'<html><head><script type="{typ}">{body}</script></head><body></body></html>'}
+
+
+def _sev(files, code):
+    return {s for c, s in codes(files) if c == code}
+
+
+@pytest.mark.parametrize("typ,body", [
+    ("importmap", '{"imports": {"@odoo/hoot": "/web/static/lib/hoot/hoot.js",\n "@odoo/owl": "../owl.js"}}'),  # stock hoot
+    ("application/json", '{"a": [1, "https://x.example/"]}'),  # inert data block
+    ("application/ld+json", '{"@context": "https://schema.org"}'),
+])
+def test_json_script_audited(typ, body):
+    f = _html(typ, body)
+    assert not _sev(f, "web-unaudited") and not _sev(f, "markup-external-resource")
+
+
+@pytest.mark.parametrize("typ,body", [
+    ("importmap", '{"imports": {"@odoo/owl": "https://evil.example/owl.js"}}'),
+    ("importmap", '{"scopes": {"/": {"a": "//evil.example/a.js"}}}'),
+    ("importmap", '{"imports": {"a": "data:text/javascript,alert(1)"}}'),
+])
+def test_remote_importmap_high(typ, body):
+    assert "high" in _sev(_html(typ, body), "markup-external-resource")
+
+
+@pytest.mark.parametrize("typ", ["importmap", "application/json", "speculationrules"])
+def test_invalid_json_script_fails_closed(typ):
+    assert "high" in _sev(_html(typ, "{imports: alert(1)}"), "web-unaudited")
+
+
+def test_qweb_importmap_graded():
+    f = {"views/v.xml": '<odoo><template id="t"><script type="importmap">{"imports":{"a":"//e.example/a.js"}}</script></template></odoo>'}
+    assert "high" in _sev(f, "markup-external-resource")
+
+
+# ---------------------------------------------------------------- (C) OWL template expressions
+def _owl(src):
+    return {"static/src/a.js": "import { Component, xml } from '@odoo/owl';\n" + src + "\n"}
+
+
+@pytest.mark.parametrize("tpl", [
+    '<div t-attf-class="o-${X.name} {{ state.on and \'on\' }}"/>',  # stock hoot_side_bar: outer ${} in xml``
+    '<button t-on-click="delete"/>',  # stock website edit_menu
+    '<button t-on-click="default"/><i t-att-class="new"/>',
+])
+def test_owl_expr_audited(tpl):
+    assert not _sev(_owl("const X = {name: 'a'};\nclass A extends Component { static template = xml`" + tpl + "`; }"), "owl-expr-unaudited")
+
+
+@pytest.mark.parametrize("tpl", ['<b t-on-click="a ) ) +"/>', '<b t-att-x="delete delete"/>'])
+def test_unparsable_owl_expr_fails_closed(tpl):
+    assert _sev(_owl("class A extends Component { static template = xml`" + tpl + "`; }"), "owl-expr-unaudited")
