@@ -307,3 +307,56 @@ def test_h10_eval_literal_code(e):
 def test_h10_eval_literal_benign():
     hi = {k for k, s in codes(X(H10.format(e="'records.action_done()'"))) if s == "high"}
     assert not hi, hi
+
+
+# ---------------------------------------------------------------- H8 named finding, H11-H13, H16
+def test_h8_named_public_core_access():
+    assert has(X(H8_XML.format(g="public", p="write")), "public-core-access")
+    assert has({"security/ir.model.access.csv": H8_CSV.format(m="base.model_res_partner", g="portal", w=1)}, "public-core-access")
+    assert not has({"security/ir.model.access.csv": H8_CSV.format(m="base.model_res_partner", g="portal", w=0)}, "public-core-access")
+
+
+@pytest.mark.parametrize("k,val", [
+    ("custom_code_head", "&lt;script src='https://e.v/x.js'&gt;&lt;/script&gt;"),
+    ("custom_code_footer", "&lt;img src=x onerror=alert(1)&gt;"),
+    ("custom_code_head", "&lt;iframe src='//e.v'&gt;&lt;/iframe&gt;"),
+])
+def test_h11_custom_code_markup(k, val):
+    assert has(X(f"<record id='w' model='website'><field name='{k}'>{val}</field></record>"), "stored-web-script")
+
+
+def test_h11_plain_text_not_script():
+    assert not has(X("<record id='w' model='website'><field name='custom_code_head'>hello</field></record>"), "stored-web-script")
+
+
+@pytest.mark.parametrize("f,t", [("/web/login", "/shop"), ("/a", "https://e.v/login"), ("/a", "//e.v/x"), ("/web/signup", "/b")])
+def test_h12_rewrite_hijack(f, t):
+    assert has(X(f"<record id='r' model='website.rewrite'><field name='name'>r</field><field name='url_from'>{f}</field><field name='url_to'>{t}</field></record>"), "rewrite-hijack")
+
+
+def test_h12_rewrite_local_ok():
+    assert not has(X("<record id='r' model='website.rewrite'><field name='name'>r</field><field name='url_from'>/a</field><field name='url_to'>/b</field></record>"), "rewrite-hijack")
+
+
+@pytest.mark.parametrize("d", ["{'groups_id':[(4,ref('base.group_system'))]}", "{'share': False}", "{'group_ids': [(6,0,[1])]}"])
+def test_h13_alias_privilege(d):
+    for m in ("mail.alias", "a.a"):
+        assert has(X(f"<record id='al' model='{m}'><field name='alias_name'>x</field><field name='alias_defaults'>{d}</field></record>"), "alias-privilege")
+
+
+def test_h13_alias_plain_ok():
+    assert not has(X("<record id='al' model='mail.alias'><field name='alias_name'>x</field><field name='alias_defaults'>{'priority': '1'}</field></record>"), "alias-privilege")
+
+
+@pytest.mark.parametrize("m,u", [
+    ("ir.actions.act_url", "javascript:alert(document.cookie)"),
+    ("ir.actions.act_url", " JavaScript:alert(1)"),
+    ("website.menu", "javascript:alert(1)"),
+    ("website.menu", "data:text/html,&lt;script&gt;x&lt;/script&gt;"),
+])
+def test_h16_script_urls(m, u):
+    assert has(X(f"<record id='u' model='{m}'><field name='name'>u</field><field name='url'>{u}</field></record>"), "script-url")
+
+
+def test_h16_relative_url_ok():
+    assert not has(X("<record id='u' model='website.menu'><field name='name'>u</field><field name='url'>/shop</field></record>"), "script-url")

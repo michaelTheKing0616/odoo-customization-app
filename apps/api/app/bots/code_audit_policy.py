@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import html
 import re
 from typing import Callable
 
@@ -329,6 +330,8 @@ def data_record_policy(
     """Grade one data record (XML/CSV/JSON/YAML). vals maps field -> text/eval/ref."""
     v = {k.split("/")[0].split(":")[0]: (x or "").strip() for k, x in vals.items()}
     rid = (vals.get("id") or vals.get("__id__") or "").strip()
+    for code, msg, fix in specific_findings(model, v, module):
+        add(sev_high, code, path, line, msg, fix)
     hit_fields = sorted(k for k in v if k in _FIELD_ANY_MODEL and v[k])
     if model not in SENSITIVE_MODELS and not hit_fields:
         return
@@ -353,6 +356,41 @@ def data_record_policy(
         "Use an approved shape (own-model access/rule, own group, single-method cron on an own"
         " model, inert view, relative URL) or get L3 approval for this record.",
     )
+
+
+_URL_FIELDS = frozenset({"url", "url_to", "url_from", "website_url", "redirect_url", "button_url"})
+_BAD_SCHEME = re.compile(r"^\s*(?:javascript|data|vbscript)\s*:", re.I)
+_EXTERNAL = re.compile(r"^\s*(?:[a-z][\w+.-]*:)?//", re.I)
+_LOGIN_PATHS = re.compile(r"^\s*/(?:web/(?:login|signup|reset_password|session)|odoo/login|my/security)\b", re.I)
+
+
+def specific_findings(model: str, v: dict[str, str], module: str = "") -> list[tuple[str, str, str]]:
+    """Named HIGH findings that fire on top of the deny-by-default grade (no shape can
+    approve them): H8 public core access, H11 stored script, H12 rewrite phishing,
+    H13 alias privilege, H16 script URLs."""
+    out: list[tuple[str, str, str]] = []
+    if model == "ir.model.access" and _PUBLIC.search(v.get("group_id", "")):
+        if any(v.get(f"perm_{p}", "") in ("1", "True", "true") for p in ("write", "create", "unlink")):
+            if not _own_model_ref(v.get("model_id", ""), module):
+                out.append(("public-core-access", "Public/portal group gets write/create/unlink on a core model.",
+                            "Grant public/portal read only, on your own models."))
+    for k in ("custom_code_head", "custom_code_footer", "custom_code_body"):
+        if v.get(k) and _SCRIPT.search(html.unescape(v[k])):
+            out.append(("stored-web-script", f"{k} injects script/markup into every website page.",
+                        "Ship assets in the module bundle; leave custom code to the site admin."))
+    if model == "website.rewrite" and (
+        _EXTERNAL.search(v.get("url_to", "")) or _LOGIN_PATHS.search(v.get("url_from", ""))
+    ):
+        out.append(("rewrite-hijack", "website.rewrite sends users to another host or captures the login page.",
+                    "Redirect only between your own relative pages."))
+    ad = v.get("alias_defaults", "")
+    if ad and (_PRIV_KEYS.search(ad) or _ADMIN.search(ad)):
+        out.append(("alias-privilege", "alias_defaults sets privilege fields: inbound mail creates privileged records.",
+                    "Keep alias_defaults to plain business fields."))
+    for k in _URL_FIELDS:
+        if _BAD_SCHEME.search(html.unescape(v.get(k, ""))):
+            out.append(("script-url", f"{model}.{k} is a javascript:/data: URL.", "Use relative http(s) URLs."))
+    return out
 
 
 def python_write_needs_l3(model: str) -> bool:
