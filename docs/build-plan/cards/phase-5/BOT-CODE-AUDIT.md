@@ -70,3 +70,9 @@ All items fixed with a dedicated test each in `tests/test_nf_bot_code_audit_6.py
 - Undecidable inputs are flagged, never passed: non-JSON ir.default (`default-value-unaudited`), unresolved LESS interpolation (`css-dynamic-url`), unparsed expressions and non-UTF-8 web files (unbaselinable), flow non-convergence (`FlowIncomplete`, audit fails).
 - `odoo.http.request` attribute writes are treated as per-request state except identity/session-auth keys (`session-auth-write` HIGH); web's own login controller therefore reports 6 HIGH by design.
 - Tooling: no ruff/rg/timeout on the dev Mac; lint not run.
+
+### CODE-AUDIT-6 verification (2026-10-27 WAT)
+- Audit suites 1/3/4/4_probes/5: 698 passed; audit_6: 236 passed.
+- test_nf_bot_* forward 5362 passed / 200 skipped; reverse 5362 passed / 200 skipped.
+- gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed. bl_08: 4 passed.
+- Stale 97 ids: 68 passed, 28 failed, 1 gone. 27 are AI-generator behaviour assertions (generator last changed in da79fe37, outside this audit work; none import code_audit). 1 is b0_iso, which needs PG on 5433 (environment).
