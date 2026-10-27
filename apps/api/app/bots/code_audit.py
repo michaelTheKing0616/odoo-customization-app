@@ -1443,16 +1443,172 @@ _SERVER_DML = re.compile(
 )
 
 
-def _mass_search(x: ast.AST) -> bool:
-    """search() with no domain or an empty literal domain: every record of the model."""
+# Domain truth: T = matches every record, F = matches none, C = really constrained.
+_ALWAYS_SET = frozenset({"id", "create_date", "write_date", "create_uid", "write_uid"})
+
+
+def _lit(n: ast.AST):
+    if isinstance(n, ast.Constant):
+        return True, n.value
+    if isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.USub) and isinstance(n.operand, ast.Constant) and isinstance(n.operand.value, (int, float)):
+        return True, -n.operand.value
+    if isinstance(n, (ast.List, ast.Tuple)):
+        vals = [_lit(e) for e in n.elts]
+        return (all(v[0] for v in vals), [v[1] for v in vals])
+    s = _fold_str(n)
+    return (s is not None, s)
+
+
+def _leaf_truth(leaf: list) -> str:
+    """One (left, op, right) leaf: T/F when it holds for every / no record whatever the data."""
+    (lk, left), (ok, op), (rk, right) = (_lit(e) for e in leaf)
+    if not ok or not isinstance(op, str):
+        return "C"
+    op = op.strip().lower()
+    if lk and rk and not isinstance(left, str):  # (1,'=',1) / (0,'=',1): literal on both sides
+        try:
+            return "T" if {"=": left == right, "==": left == right, "!=": left != right, "<>": left != right,
+                           ">": left > right, ">=": left >= right, "<": left < right, "<=": left <= right}.get(op, None) else "F"
+        except TypeError:
+            return "C"
+    if not (lk and isinstance(left, str) and rk):
+        return "C"
+    fld = left.split(".")[0]
+    if fld in _ALWAYS_SET:  # never NULL; ids are positive
+        if op in ("!=", "<>") and right in (False, None, 0, -1):
+            return "T"
+        if op in ("!=", "<>") and fld == "id" and isinstance(right, int) and not isinstance(right, bool) and right <= 0:
+            return "T"
+        if fld == "id" and isinstance(right, (int, float)) and not isinstance(right, bool) and ((op == ">" and right < 1) or (op == ">=" and right <= 1)):
+            return "T"
+        if op == "not in" and isinstance(right, list) and all(v in (False, None, 0) for v in right):
+            return "T"
+    if op == "not in" and right == []:
+        return "T"
+    if op == "in" and right == []:
+        return "F"
+    if fld == "active" and op == "in" and isinstance(right, list) and True in right and False in right:
+        return "T"
+    return "C"
+
+
+def _domain_truth(dom: ast.AST | None, names: dict | None = None, depth: int = 0) -> str:
+    """T when a domain provably matches every record (empty, tautologies such as
+    ('id','!=',0) / (1,'=',1) / '|' over a tautology, built through local names, module
+    constants, helper returns, expression.AND/OR or list concatenation); F when it matches
+    nothing; C when it carries a real condition or is a runtime value we cannot see."""
+    names = names or {}
+    if dom is None:
+        return "T"
+    if depth > 8:
+        return "C"
+    if isinstance(dom, ast.Name) and dom.id in names:
+        vals = {_domain_truth(v, names, depth + 1) for v in names[dom.id]}
+        return vals.pop() if len(vals) == 1 else "C"
+    if isinstance(dom, ast.Call):
+        fn = _dotted(dom.func) if isinstance(dom.func, (ast.Name, ast.Attribute)) else ""
+        last = fn.rsplit(".", 1)[-1]
+        if last in ("AND", "OR") and dom.args and isinstance(dom.args[0], (ast.List, ast.Tuple)):
+            parts = [_domain_truth(e, names, depth + 1) for e in dom.args[0].elts]
+            if last == "AND":
+                return "F" if "F" in parts else ("T" if all(p == "T" for p in parts) else "C")
+            return "T" if "T" in parts else ("F" if parts and all(p == "F" for p in parts) else "C")
+        if last in ("Domain", "list", "tuple") and len(dom.args) == 1:
+            return _domain_truth(dom.args[0], names, depth + 1)
+        if isinstance(dom.func, ast.Name) and dom.func.id in names:  # same-module helper: its returns
+            return _domain_truth(ast.Name(id=dom.func.id), names, depth + 1)
+        if isinstance(dom.func, ast.Attribute) and isinstance(dom.func.value, ast.Name) and dom.func.value.id in ("self", "cls") and dom.func.attr in names:
+            return _domain_truth(ast.Name(id=dom.func.attr), names, depth + 1)
+        return "C"
+    if isinstance(dom, ast.Attribute) and dom.attr == "TRUE" and _dotted(dom).endswith("Domain.TRUE"):
+        return "T"
+    if isinstance(dom, ast.Attribute) and dom.attr == "FALSE" and _dotted(dom).endswith("Domain.FALSE"):
+        return "F"
+    if isinstance(dom, ast.BinOp) and isinstance(dom.op, ast.Add):  # list concatenation is an implicit AND
+        a, b = _domain_truth(dom.left, names, depth + 1), _domain_truth(dom.right, names, depth + 1)
+        return "F" if "F" in (a, b) else ("T" if a == b == "T" else "C")
+    if not isinstance(dom, (ast.List, ast.Tuple)):
+        return "C"
+    terms: list = []
+    for e in dom.elts:
+        if isinstance(e, ast.Constant) and e.value in ("&", "|", "!"):
+            terms.append(e.value)
+        elif isinstance(e, (ast.List, ast.Tuple)) and len(e.elts) == 3:
+            terms.append(_leaf_truth(list(e.elts)))
+        elif isinstance(e, ast.Starred):
+            terms.append(_domain_truth(e.value, names, depth + 1))
+        else:
+            return "C"
+
+    pos = 0
+
+    def take() -> str:
+        nonlocal pos
+        if pos >= len(terms):
+            raise ValueError
+        t = terms[pos]
+        pos += 1
+        if t == "!":
+            v = take()
+            return {"T": "F", "F": "T"}.get(v, "C")
+        if t in ("&", "|"):
+            a, b = take(), take()
+            if t == "&":
+                return "F" if "F" in (a, b) else ("T" if a == b == "T" else "C")
+            return "T" if "T" in (a, b) else ("F" if a == b == "F" else "C")
+        return t
+
+    out = "T"
+    try:
+        while pos < len(terms):
+            v = take()
+            out = "F" if "F" in (out, v) else ("T" if out == v == "T" else "C")
+    except ValueError:
+        return "C"
+    return out
+
+
+def _domain_names(tree: ast.AST) -> dict:
+    """name -> assigned values (and function name -> returned values) across a module."""
+    names: dict[str, list] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Name):
+                    names.setdefault(t.id, []).append(n.value)
+        elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.value is not None:
+            names.setdefault(n.target.id, []).append(n.value)
+        elif isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+            names.setdefault(n.target.id, []).append(ast.BinOp(left=ast.List(elts=[]), op=ast.Add(), right=n.value))
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            rets = [r.value for r in ast.walk(n) if isinstance(r, ast.Return) and r.value is not None]
+            if rets:
+                names.setdefault(n.name, []).extend(rets)
+    for n in ast.walk(tree):  # a name that is also a parameter / loop target / mutated is a runtime value
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("append", "extend", "insert", "__iadd__") and isinstance(n.func.value, ast.Name):
+            names.pop(n.func.value.id, None)
+        elif isinstance(n, ast.Subscript) and isinstance(n.ctx, ast.Store) and isinstance(n.value, ast.Name):
+            names.pop(n.value.id, None)
+        elif isinstance(n, ast.arg):
+            names.pop(n.arg, None)
+        elif isinstance(n, (ast.For, ast.comprehension, ast.With)):
+            for t in ast.walk(getattr(n, "target", n)):
+                if isinstance(t, ast.Name) and isinstance(n, (ast.For, ast.comprehension)):
+                    names.pop(t.id, None)
+    return names
+
+
+def _mass_search_mod(x: ast.AST, names: dict | None = None) -> bool:
+    """search() whose domain provably matches every record of the model: none, empty,
+    or a tautology (CODE-AUDIT-9 H4) — unbounded unless constrained by a real condition."""
     if not (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)):
         return False
-    if x.func.attr not in ("search", "with_context", "sudo", "with_user", "browse"):
+    if x.func.attr not in ("search", "with_context", "sudo", "with_user", "browse", "search_fetch"):
         return False
-    if x.func.attr != "search":
-        return _mass_search(x.func.value)
+    if x.func.attr not in ("search", "search_fetch"):
+        return _mass_search_mod(x.func.value, names)
     dom = x.args[0] if x.args else next((k.value for k in x.keywords if k.arg == "domain"), None)
-    return dom is None or (isinstance(dom, (ast.List, ast.Tuple)) and not dom.elts)
+    return _domain_truth(dom, names) == "T"
 
 
 _UNBOUNDED_DML = re.compile(
@@ -1481,6 +1637,11 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) 
     unbounded DELETE/TRUNCATE/DROP is HIGH."""
     hook = (lambda _ln: True) if server else _hook_lines(path, tree)
     where = "Stored server code" if server else "Hook/migration code"
+    _dn = _domain_names(tree)
+
+    def _mass_search(x: ast.AST) -> bool:  # noqa: F811 - module domain names bound in
+        return _mass_search_mod(x, _dn)
+
     mass_vars = {
         t.id
         for n in ast.walk(tree)
@@ -1725,6 +1886,13 @@ def _fold_str(n: ast.AST) -> str | None:
     if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
         a, b = _fold_str(n.left), _fold_str(n.right)
         return a + b if a is not None and b is not None else None
+    if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mult):  # 'a' * 200000 padding (L1)
+        for sv, iv in ((n.left, n.right), (n.right, n.left)):
+            t = _fold_str(sv)
+            if t is not None and isinstance(iv, ast.Constant) and isinstance(iv.value, int) and not isinstance(iv.value, bool):
+                k = max(0, iv.value)
+                return t * min(k, 64) + ("\u2026" if k > 64 else "")  # bounded: padding never matters to the grade
+        return None
     if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod):
         a, b = _fold_str(n.left), _fold_str(n.right)
         try:
