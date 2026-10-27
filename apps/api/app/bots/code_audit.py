@@ -86,6 +86,7 @@ _ASSET_EXT = (
     ".pot",
 )
 MAX_INDEX_FINDINGS = 20
+MAX_PO_TOTAL = 120_000_000  # translations are audited too, on their own budget
 _DB_CALLS = frozenset({"search", "search_count", "browse", "read", "search_read", "read_group"})
 FOREIGN_HINT = "Audit only: report to the module's maintainer; Ingenium never edits foreign code."
 
@@ -134,11 +135,16 @@ def _safe_rel(name: str) -> str:
     return str(p)
 
 
+def _is_po(rel: str) -> bool:
+    return rel.lower().endswith((".po", ".pot"))
+
+
 def _is_asset(rel: str) -> bool:
     """Skip only non-code assets: any .py is audited wherever it lives, and so are XML
-    templates under static/ (OWL), JavaScript and stylesheets (code_audit_web)."""
+    templates under static/ (OWL), JavaScript, stylesheets, SVG/HTML documents
+    (code_audit_web) and translations (translated template terms render as markup)."""
     low = rel.lower()
-    if low.endswith(".py") or web.web_kind(rel):
+    if low.endswith(".py") or web.web_kind(rel) or _is_po(rel):
         return False
     parts = rel.split("/")
     if "static" in parts[:-1] and low.endswith(".xml"):
@@ -151,7 +157,9 @@ def _check_name(rel: str) -> None:
         raise SourceError("reserved file name .module_dir in source")
 
 
-def _from_zip(data: bytes, skip_assets: bool = False) -> dict[str, bytes]:
+def _from_zip(
+    data: bytes, skip_assets: bool = False, oversized: list[str] | None = None
+) -> dict[str, bytes]:
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as e:
@@ -160,7 +168,7 @@ def _from_zip(data: bytes, skip_assets: bool = False) -> dict[str, bytes]:
     if len(infos) > MAX_FILES:
         raise SourceError("too many files")
     out: dict[str, bytes] = {}
-    total = 0
+    total = po_total = 0
     for i in infos:
         if i.is_dir():
             continue
@@ -170,15 +178,23 @@ def _from_zip(data: bytes, skip_assets: bool = False) -> dict[str, bytes]:
             raise SourceError(f"symlink in archive: {rel}")
         if skip_assets and _is_asset(rel):
             continue
-        if i.file_size > MAX_FILE or (
-            i.compress_size and i.file_size / i.compress_size > MAX_RATIO
-        ):
+        if i.compress_size and i.file_size / i.compress_size > MAX_RATIO:
+            raise SourceError(f"file too large or over-compressed: {rel}")
+        if i.file_size > MAX_FILE and oversized is not None:
+            oversized.append(rel)  # reported HIGH unaudited; the rest is still audited
+            continue
+        if i.file_size > MAX_FILE:
             raise SourceError(f"file too large or over-compressed: {rel}")
         with zf.open(i) as fh:
             body = fh.read(MAX_FILE + 1)
         if len(body) > MAX_FILE:
             raise SourceError(f"file too large: {rel}")
-        total += len(body)
+        if _is_po(rel):
+            po_total += len(body)
+            if po_total > MAX_PO_TOTAL:
+                raise SourceError("archive too large")
+        else:
+            total += len(body)
         if total > MAX_TOTAL:
             raise SourceError("archive too large")
         if rel in out:
@@ -187,11 +203,13 @@ def _from_zip(data: bytes, skip_assets: bool = False) -> dict[str, bytes]:
     return out
 
 
-def _from_dir(root: Path, skip_assets: bool = False) -> dict[str, bytes]:
+def _from_dir(
+    root: Path, skip_assets: bool = False, oversized: list[str] | None = None
+) -> dict[str, bytes]:
     if root.is_symlink() or not root.is_dir():
         raise SourceError("source directory missing or a symlink")
     out: dict[str, bytes] = {}
-    total = 0
+    total = po_total = 0
     stack = [(root, 0)]
     while stack:
         d, depth = stack.pop()
@@ -210,30 +228,41 @@ def _from_dir(root: Path, skip_assets: bool = False) -> dict[str, bytes]:
             _check_name(rel)
             if skip_assets and _is_asset(rel):
                 continue
+            if st.st_size > MAX_FILE and oversized is not None:
+                oversized.append(rel)
+                continue
             if st.st_size > MAX_FILE:
                 raise SourceError(f"file too large: {p.relative_to(root)}")
-            total += st.st_size
-            if total > MAX_TOTAL or len(out) >= MAX_FILES:
+            if _is_po(rel):
+                po_total += st.st_size
+            else:
+                total += st.st_size
+            if total > MAX_TOTAL or po_total > MAX_PO_TOTAL or len(out) >= MAX_FILES:
                 raise SourceError("source too large")
             out[rel] = p.read_bytes()
     return out
 
 
 def load_tree(
-    src: bytes | Path, *, skip_assets: bool = False
+    src: bytes | Path, *, skip_assets: bool = False, oversized: list[str] | None = None
 ) -> tuple[dict[str, bytes], str | None]:
-    """Return (module-relative files, top folder or None). The folder name never enters files."""
+    """Return (module-relative files, top folder or None). The folder name never enters files.
+    With `oversized`, files over MAX_FILE are listed there (top folder kept) instead of
+    refusing the whole tree."""
     if isinstance(src, (bytes, bytearray)):
-        files = _from_zip(bytes(src), skip_assets)
+        files = _from_zip(bytes(src), skip_assets, oversized)
     elif isinstance(src, Path):
-        files = _from_dir(src, skip_assets)
+        files = _from_dir(src, skip_assets, oversized)
     else:
         raise SourceError("source must be zip bytes or a directory path")
     top = None
-    tops = {f.split("/", 1)[0] for f in files}
-    if len(tops) == 1 and all("/" in f for f in files):
+    every = [*files, *(oversized or [])]
+    tops = {f.split("/", 1)[0] for f in every}
+    if len(tops) == 1 and all("/" in f for f in every):
         top = tops.pop()
         files = {f.split("/", 1)[1]: b for f, b in files.items()}
+        if oversized:
+            oversized[:] = [f.split("/", 1)[1] for f in oversized]
     return files, top
 
 
@@ -278,10 +307,40 @@ def _parse_xml_lines(body: bytes) -> Any:
     try:
         root = etree.fromstring(body, parser)
     except etree.XMLSyntaxError as e:
-        raise ValueError(str(e)[:200]) from e
+        root = _reparse_python_codec(body, parser, e)
     if root.getroottree().docinfo.doctype:
         raise ValueError("DTD/entities are not allowed")
     return root
+
+
+_XML_DECL_ENC = re.compile(
+    rb"""^(\xef\xbb\xbf)?<\?xml[^>]*?encoding\s*=\s*["']([A-Za-z0-9._-]+)["']"""
+)
+
+
+def _reparse_python_codec(body: bytes, parser: Any, err: Exception) -> Any:
+    """libxml2 builds without iconv reject aliases such as 'latin-1'. When Python knows the
+    declared codec, decode with it (strict) and parse the text with the declaration's encoding
+    dropped; any other failure is the original parse error (reported HIGH, never skipped)."""
+    import codecs
+
+    from lxml import etree
+
+    m = _XML_DECL_ENC.match(body)
+    if not m or "encoding" not in str(err).lower():
+        raise ValueError(str(err)[:200]) from err
+    try:
+        codecs.lookup(m.group(2).decode())
+        text = body.decode(m.group(2).decode())
+    except (LookupError, UnicodeDecodeError) as e:
+        raise ValueError(str(err)[:200]) from e
+    text = re.sub(
+        r"""^(\ufeff)?(<\?xml[^>]*?)\s+encoding\s*=\s*["'][^"']*["']""", r"\2", text, count=1
+    )
+    try:
+        return etree.fromstring(text.encode("utf-8"), parser)
+    except etree.XMLSyntaxError as e:
+        raise ValueError(str(e)[:200]) from e
 
 
 class _XLines:
@@ -382,6 +441,8 @@ class _Ctx:
         self.prod_tests: set[str] = set()  # test-dir files production code imports or loads
         self.text_fields: frozenset[str] = flow.USER_TEXT
         self.db_helpers: dict[str, str] = {}
+        self.flow_pt: frozenset[str] = frozenset()  # module-wide passthrough functions
+        self.flow_sinks: dict[str, tuple[str, str]] = {}  # module-wide sink helpers
         # (key, file, first line, kind, text) for code_audit_web: files and inline <script>s
         self.web: list[tuple[str, str, int, str, str]] = []
 
@@ -852,6 +913,64 @@ def _resolved_danger(call: ast.Call, res: flow.Resolver) -> str:
     return ""
 
 
+def _danger_refs(c: _Ctx, path: str, tree: ast.AST, res: flow.Resolver) -> None:
+    """Dangerous callables used as values (stored in a list/dict/attribute, passed as a
+    callback, returned) and introspection escapes (__subclasses__, __globals__, frames)."""
+    parent: dict[int, ast.AST] = {}
+    for p in ast.walk(tree):
+        for ch in ast.iter_child_nodes(p):
+            parent[id(ch)] = p
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Attribute) and (n.attr in _INTRO_HIGH or n.attr in _INTRO_LOW):
+            hi = n.attr in _INTRO_HIGH
+            c.add(
+                HIGH if hi else LOW,
+                "dangerous-call" if hi else "introspection",
+                path,
+                n.lineno,
+                f"Reaches {n.attr} (object-graph walk to builtins/frames: sandbox escape)."
+                if hi
+                else f"Reads {n.attr} (class hierarchy introspection).",
+                "Remove interpreter introspection from module code.",
+            )
+        if not isinstance(n, (ast.Name, ast.Attribute)) or not isinstance(n.ctx, ast.Load):
+            continue
+        up = parent.get(id(n))
+        if isinstance(up, ast.Attribute) or (isinstance(up, ast.Call) and up.func is n):
+            continue  # part of a longer chain, or the call itself (checked as a call)
+        if any(isinstance(a, ast.ExceptHandler) for a in _ancestors(n, parent)) and not isinstance(
+            up, ast.Call
+        ):
+            continue  # except socket.timeout: a type, not a call target
+        d = res.expr(n)
+        raw = _chain(n)
+        last = d.rsplit(".", 1)[-1]
+        if (
+            d in _DANGER_EXACT
+            or (
+                d.startswith(_DANGER_PREFIX)
+                and last[:1].islower()
+                and last not in ("timeout", "error", "gaierror", "herror", "path")
+            )
+            or (isinstance(n, ast.Name) and n.id in ("eval", "exec", "compile", "__import__"))
+        ):
+            c.add(
+                HIGH,
+                "dangerous-call",
+                path,
+                n.lineno,
+                f"{raw or d} ({d}) is used as a value (stored, passed or returned): it can be"
+                " called later under another name.",
+                "Remove it; Odoo modules must not shell out, import dynamically or reach builtins.",
+            )
+
+
+def _ancestors(n: ast.AST, parent: dict[int, ast.AST]):
+    while id(n) in parent:
+        n = parent[id(n)]
+        yield n
+
+
 def _sql_has_variable(n: ast.AST, safe: frozenset[str] = frozenset()) -> bool:
     """True when a formatted query interpolates anything except literals or the model table."""
     if isinstance(n, ast.JoinedStr):
@@ -963,10 +1082,145 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
     return out, safe_of
 
 
-def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
+# security core: writes here change who may do what, or run code later
+SENSITIVE_MODELS = frozenset(
+    {
+        "res.users",
+        "res.groups",
+        "ir.rule",
+        "ir.model.access",
+        "ir.config_parameter",
+        "ir.cron",
+        "ir.actions.server",
+        "ir.module.module",
+        "res.users.apikeys",
+        "ir.model.data",
+        "ir.mail_server",
+        "auth.totp.device",
+        "base.automation",
+        "ir.ui.view",
+    }
+)
+_SENSITIVE_WRITES = frozenset(
+    {
+        "write",
+        "create",
+        "unlink",
+        "copy",
+        "set_param",
+        "_set_password",
+        "toggle_active",
+        "action_archive",
+        "action_unarchive",
+        "button_install",
+        "button_immediate_install",
+        "button_immediate_upgrade",
+        "button_uninstall",
+        "button_immediate_uninstall",
+        "method_direct_trigger",
+        "run",
+    }
+)
+_INTRO_HIGH = frozenset(
+    {
+        "__subclasses__",
+        "__globals__",
+        "__code__",
+        "__closure__",
+        "f_globals",
+        "f_locals",
+        "f_builtins",
+        "f_back",
+        "gi_frame",
+        "cr_frame",
+        "ag_frame",
+        "tb_frame",
+    }
+)
+_INTRO_LOW = frozenset({"__mro__", "__bases__", "__base__"})
+_SERVER_CODE_MODELS = frozenset({"ir.actions.server", "ir.cron", "base.automation"})
+_SUPERUSER = re.compile(r"^(?:1|SUPERUSER_ID|.*\.SUPERUSER_ID|.*user_root.*|.*user_admin.*)$")
+
+
+def _elevating(n: ast.AST, malias: dict[str, str]) -> str:
+    """Why call n runs with elevated rights: sudo() (also through an alias),
+    with_user(superuser), env(su=True) / Environment(..., su=True)."""
+    if not isinstance(n, ast.Call):
+        return ""
+    name = flow.call_name(n, malias)
+    if name == "sudo":
+        return "sudo()"
+    if name == "with_user" and n.args and _SUPERUSER.match(ast.unparse(n.args[0])):
+        return "with_user(superuser)"
+    if any(k.arg == "su" and _const(k.value) is True for k in n.keywords):
+        return "su=True"
+    if name in ("Environment", "env") and len(n.args) >= 2:
+        if _SUPERUSER.match(ast.unparse(n.args[1])):
+            return "Environment(superuser)"
+    return ""
+
+
+def _sensitive_writes(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
+    """ORM writes on the security core; HIGH when the receiver runs elevated."""
+    model_vars: dict[str, str] = {}
+    elev_vars: set[str] = set()
+
+    def model_of(x: ast.AST) -> str:
+        for y in ast.walk(x):
+            if (
+                isinstance(y, ast.Subscript)
+                and _chain(y.value).endswith("env")
+                and isinstance(_const(y.slice), str)
+            ):
+                return _const(y.slice)
+            if isinstance(y, ast.Name) and y.id in model_vars:
+                return model_vars[y.id]
+        return ""
+
+    def elevated(x: ast.AST) -> str:
+        for y in ast.walk(x):
+            if why := _elevating(y, malias):
+                return why
+            if isinstance(y, ast.Name) and y.id in elev_vars:
+                return f"{y.id} (elevated)"
+        return ""
+
+    for _ in range(2):
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Assign) and len(n.targets) == 1:
+                t = n.targets[0]
+                if isinstance(t, ast.Name):
+                    if m := model_of(n.value):
+                        model_vars[t.id] = m
+                    if elevated(n.value):
+                        elev_vars.add(t.id)
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
+            continue
+        if n.func.attr not in _SENSITIVE_WRITES:
+            continue
+        model = model_of(n.func.value)
+        if model not in SENSITIVE_MODELS:
+            continue
+        why = elevated(n.func.value)
+        cfg = model == "ir.config_parameter"
+        sev = (MEDIUM if cfg else HIGH) if why else (LOW if cfg else MEDIUM)
+        c.add(
+            sev,
+            "sensitive-model-write",
+            path,
+            n.lineno,
+            f"{model}.{n.func.attr}()" + (f" with {why}" if why else "") + ": changes the"
+            " security core (users, groups, rules, access, parameters, scheduled code).",
+            "Do not change security records from module code; if required, check the"
+            " caller's rights explicitly and never with sudo().",
+        )
+
+
+def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
     try:
-        text = body.decode("utf-8-sig")
-        tree = ast.parse(text, filename=path)
+        # bytes: the parser honours a PEP 263 coding cookie and a BOM, like Python itself
+        tree = ast.parse(body, filename=path)
     except (SyntaxError, UnicodeDecodeError, ValueError, RecursionError, MemoryError) as e:
         c.add(
             HIGH,
@@ -1061,12 +1315,36 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
     )
     aliases = _aliases(tree)
     res = flow.Resolver(tree, _ALIAS_ROOTS)
+    malias = flow.method_aliases(tree)
     local_sql, sql_safe = _local_sql(tree)
+    tar = any(v.split(".")[0] == "tarfile" for v in res.alias.values())
+    params = {
+        a.arg
+        for f in ast.walk(tree)
+        if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for a in [*f.args.args, *f.args.kwonlyargs, f.args.kwarg, f.args.vararg]
+        if a is not None and a.arg not in ("self", "cls")
+    }
+    _danger_refs(c, path, tree, res)
+    _sensitive_writes(c, path, tree, malias)
+    if server_code:
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.Import, ast.ImportFrom)):
+                c.add(
+                    HIGH,
+                    "server-code-import",
+                    path,
+                    n.lineno,
+                    "Stored server code imports a module (safe_eval forbids it; an attempt to"
+                    " reach the interpreter).",
+                    "Use only the evaluation context (env, model, records, time, datetime).",
+                )
     for n in ast.walk(tree):
         if not isinstance(n, ast.Call):
             continue
         fn = n.func
-        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+        name = flow.call_name(n, malias)
+        aliased = isinstance(fn, ast.Name) and fn.id in malias
         ln = getattr(n, "lineno", 0)
         danger = _py_danger(n, aliases) or _resolved_danger(n, res)
         if danger:
@@ -1097,22 +1375,42 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 "Use odoo.tools.safe_eval with a minimal context, or remove.",
             )
         elif name == "safe_eval":
+            arg = n.args[0] if n.args else None
+            caller = arg is not None and any(
+                isinstance(x, ast.Name) and x.id in params for x in ast.walk(arg)
+            )
             c.add(
-                LOW,
+                MEDIUM if caller else LOW,
                 "safe-eval",
                 path,
                 ln,
-                "safe_eval of stored text.",
+                "safe_eval of a caller-supplied expression (a parameter)."
+                if caller
+                else "safe_eval of stored text.",
                 "Make sure only trusted users can edit the evaluated text.",
             )
-        elif name == "sudo":
+        elif why := _elevating(n, malias):
             c.add(
                 LOW,
                 "sudo",
                 path,
                 ln,
-                "sudo() bypasses access rights and record rules.",
+                f"{why} bypasses access rights and record rules.",
                 "Limit to the smallest read needed and check the caller's rights first.",
+            )
+        elif (
+            name in ("extractall", "extract")
+            and tar
+            and not any(k.arg == "filter" for k in n.keywords)
+        ):
+            c.add(
+                MEDIUM,
+                "archive-extract",
+                path,
+                ln,
+                f"tarfile {name}() without filter=: members can write outside the target"
+                " (../, absolute paths, links).",
+                "Pass filter='data' (Python 3.12+), or validate every member path first.",
             )
         elif (
             name == "SQL"
@@ -1130,7 +1428,11 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
             )
         elif (
             name in _SQL_CALLS
-            and (isinstance(fn, ast.Attribute) or name in ("execute_values", "execute_batch"))
+            and (
+                isinstance(fn, (ast.Attribute, ast.Call))
+                or aliased
+                or name in ("execute_values", "execute_batch")
+            )
             and len(n.args) > _SQL_CALLS[name]
         ):
             q = local_sql.get(id(n), n.args[_SQL_CALLS[name]])
@@ -1152,7 +1454,11 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                     "Raw SQL bypasses the ORM, access rights and caches.",
                     "Use the ORM, or flush and invalidate around the query.",
                 )
-        elif name == "Markup" and n.args and not isinstance(n.args[0], ast.Constant):
+        elif (
+            (name == "Markup" or flow._markup_call(res, n))
+            and n.args
+            and not isinstance(n.args[0], ast.Constant)
+        ):
             c.add(
                 MEDIUM,
                 "unsafe-markup",
@@ -1266,7 +1572,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
     _tamper_scan(c, path, tree)
     sqli = {f.line for f in c.f if f.file == path and f.code == "sql-injection"}
     for h in (
-        flow.taint_hits(tree, c.text_fields, res)
+        flow.taint_hits(tree, c.text_fields, res, c.flow_pt, c.flow_sinks)
         + flow.loop_hits(tree, c.db_helpers)
         + flow.dynamic_hits(tree, res)
     ):
@@ -1334,28 +1640,148 @@ _RESOURCE_TAGS = {
 _JS_SAFE_OUT = re.compile(r"json\.dumps|json_dumps|\btojson\b|^\s*(?:int|float|bool)\(")
 
 
-def _in_js_string(line: str) -> bool:
-    """Whether the end of `line` (script text so far on this line) is inside a JS string."""
-    q, i = "", 0
-    while i < len(line):
-        ch = line[i]
-        if q:
+def _js_ctx(text: str) -> str:
+    """Lexical context at the end of `text` (all script text so far, every line): "code",
+    a quote char when inside a string ("'", '"', "`"), or "comment". Template literals are
+    tracked across lines; ${...} inside one is code."""
+    st: list[str] = []  # stack: quote chars and "${" frames
+    i, n = 0, len(text)
+    mode = "code"
+    while i < n:
+        ch = text[i]
+        if mode == "line":
+            if ch == "\n":
+                mode = "code"
+        elif mode == "block":
+            if text.startswith("*/", i):
+                mode, i = "code", i + 1
+        elif st and st[-1] in "'\"`":
+            q = st[-1]
             if ch == "\\":
                 i += 1
             elif ch == q:
-                q = ""
-        elif ch in "'\"`":
-            q = ch
-        elif line.startswith("//", i):
-            return False
+                st.pop()
+            elif q == "`" and text.startswith("${", i):
+                st.append("{")
+                i += 1
+            elif ch == "\n" and q != "`":
+                st.pop()  # unterminated string ends at the line (a syntax error in JS)
+        else:
+            if text.startswith("//", i):
+                mode = "line"
+            elif text.startswith("/*", i):
+                mode = "block"
+            elif ch in "'\"`":
+                st.append(ch)
+            elif ch == "{" and st:
+                st.append("(")
+            elif ch == "}" and st and st[-1] in "({":
+                st.pop()
         i += 1
-    return bool(q)
+    if mode != "code":
+        return "comment"
+    return st[-1] if st and st[-1] in "'\"`" else "code"
+
+
+def _in_js_string(line: str) -> bool:
+    return _js_ctx(line) in ("'", '"', "`")
+
+
+def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str) -> None:
+    """Inline event handlers, runtime URLs, srcdoc, external form targets, meta refresh."""
+    base = a.removeprefix("t-att-").removeprefix("t-attf-")
+    dyn = base != a
+    if re.fullmatch(r"on[a-z]{3,30}", base):
+        c.add(
+            HIGH if dyn else MEDIUM,
+            "qweb-inline-handler",
+            path,
+            xl.el(el, a),
+            f"{a} is an inline event handler"
+            + (" built from data" if dyn else "")
+            + ": script in markup (CSP-unsafe, injection point).",
+            "Use an OWL handler (t-on-click) or a JS event listener.",
+        )
+    if base == "srcdoc":
+        c.add(
+            HIGH if dyn else MEDIUM,
+            "qweb-srcdoc",
+            path,
+            xl.el(el, a),
+            f"{a} renders an HTML document inside the frame (same origin, unescaped).",
+            "Load a fixed route in the iframe instead.",
+        )
+    elif dyn and base in ("href", "src", "action", "formaction", "xlink:href", "data"):
+        fixed = a.startswith("t-attf-") and re.match(r"\s*(?:/|#|https?:|mailto:|tel:)", val)
+        if not fixed:
+            c.add(
+                LOW,
+                "qweb-dynamic-url",
+                path,
+                xl.el(el, a),
+                f"{a} is a URL decided at runtime: QWeb does not block javascript: URLs here"
+                " (flagged).",
+                "Start the URL with a fixed path (/...) or validate the scheme in Python.",
+            )
+    tag = xl._local(el)
+    if tag == "form" and a == "action" and _EXT_URL.search(val):
+        c.add(
+            MEDIUM,
+            "qweb-external-form",
+            path,
+            xl.el(el, a),
+            f"Form posts to an external host ({val[:80]}).",
+            "Post to this server's routes only.",
+        )
+    if tag == "meta" and base == "content" and (el.get("http-equiv") or "").lower() == "refresh":
+        if dyn or re.search(r"url\s*=\s*['\"]?\s*(?:https?:)?//", val, re.I):
+            c.add(
+                MEDIUM,
+                "qweb-meta-refresh",
+                path,
+                xl.el(el, a),
+                "meta refresh redirects to an external or runtime URL.",
+                "Redirect in the controller to a fixed local route.",
+            )
+
+
+def _rebuild(el: Any) -> tuple[str, list[tuple[Any, str, str]]]:
+    """Element text with each child replaced by a neutral identifier (line breaks kept);
+    returns the text and the (child, output attribute, text before it) for QWeb outputs."""
+    from lxml import etree
+
+    parts = [el.text or ""]
+    outs = []
+    for ch in el:
+        raw = etree.tostring(ch, with_tail=False, encoding="unicode")
+        oa = next((k for k in ("t-out", "t-esc", "t-raw") if ch.get(k)), None)
+        if oa:
+            outs.append((ch, oa, "".join(parts)))
+        parts.append("__qweb__" + "\n" * raw.count("\n"))
+        parts.append(ch.tail or "")
+    return "".join(parts), outs
 
 
 def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
-    """External or computed script/style/frame sources in templates, and inline <script>
-    bodies (handed to the JS parser like any static file)."""
+    """External or computed script/style/frame sources in templates, and inline <script> and
+    <style> bodies (handed to the JS / CSS parser like any static file)."""
     tag = xl._local(el)
+    if tag == "style" and (el.text or len(el)):
+        css, outs = _rebuild(el)
+        for ch, oa, _ in outs:
+            c.add(
+                MEDIUM,
+                "qweb-style-injection",
+                path,
+                xl.el(ch, oa),
+                f"{oa} writes into a stylesheet: HTML escaping does not stop CSS injection"
+                " (url(), @import, selectors).",
+                "Pass values as CSS custom properties set from validated data, or as classes.",
+            )
+        if css.strip():
+            line0 = xl.line(xl._tag_span(el)[1] + 1)
+            c.web.append((f"{path}#style@{line0}", path, line0, "css", css))
+        return
     attr = _RESOURCE_TAGS.get(tag)
     if not attr:
         return
@@ -1386,40 +1812,95 @@ def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         if "json" in typ or "template" in typ:
             return
         # QWeb output inside the script (<t t-esc/>) becomes a neutral identifier that is
-        # valid both inside a string literal and as an expression; line breaks are kept
-        from lxml import etree
-
-        parts = [el.text or ""]
-        for ch in el:
-            raw = etree.tostring(ch, with_tail=False, encoding="unicode")
-            out_attr = next((k for k in ("t-out", "t-esc", "t-raw") if ch.get(k)), None)
-            if (
-                out_attr
-                and not _in_js_string("".join(parts).rsplit("\n", 1)[-1])
-                and not _JS_SAFE_OUT.search(ch.get(out_attr))
-            ):
-                c.add(
-                    MEDIUM,
-                    "qweb-script-injection",
-                    path,
-                    xl.el(ch, out_attr),
-                    f"{out_attr} writes into script code outside a string: HTML escaping does"
-                    " not stop JavaScript injection.",
-                    "Emit json.dumps(value) (or put the value in a data- attribute).",
-                )
-            parts.append("__qweb__" + "\n" * raw.count("\n"))
-            parts.append(ch.tail or "")
-        js = "".join(parts)
+        # valid both inside a string literal and as an expression; line breaks are kept.
+        # The lexical context is computed over the whole script (multi-line strings,
+        # template literals, comments), not per line.
+        js, outs = _rebuild(el)
+        for ch, out_attr, before in outs:
+            if _JS_SAFE_OUT.search(ch.get(out_attr)):
+                continue
+            ctx = _js_ctx(before)
+            where = {
+                "code": "script code outside a string",
+                "`": "a template literal (${...} is not escaped)",
+                "comment": "a comment (a newline or */ ends it)",
+            }.get(ctx, "a string literal (a trailing backslash or U+2028 can break out)")
+            c.add(
+                LOW if ctx in ("'", '"') else MEDIUM,
+                "qweb-script-injection",
+                path,
+                xl.el(ch, out_attr),
+                f"{out_attr} writes into {where}: HTML escaping does not stop JavaScript"
+                " injection.",
+                "Emit json.dumps(value) (or put the value in a data- attribute).",
+            )
         if not js.strip():
             return
         line0 = xl.line(xl._tag_span(el)[1] + 1)
         c.web.append((f"{path}#script@{line0}", path, line0, "js", js))
 
 
+_READ_ONLY_CALLS = frozenset(
+    {"search", "search_read", "read", "browse", "search_count", "name_search", "exists"}
+)
+
+
+def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
+    """Server action / cron / automation code (audited with the Python rules), <function>
+    calls and <delete> at install or update."""
+    tag = el.tag if isinstance(el.tag, str) else ""
+    parent = el.getparent()
+    if (
+        tag == "field"
+        and el.get("name") == "code"
+        and parent is not None
+        and parent.get("model") in _SERVER_CODE_MODELS
+        and (el.text or "").strip()
+    ):
+        raw = el.text
+        lead = raw[: len(raw) - len(raw.lstrip())]
+        line = xl.body(el, len(lead))
+        _audit_py(c, path, ("\n" * (line - 1) + raw.strip()).encode(), server_code=True)
+    if tag == "function":
+        m, fn = el.get("model") or "", el.get("name") or ""
+        sens = m in SENSITIVE_MODELS and fn not in _READ_ONLY_CALLS
+        c.add(
+            HIGH if sens else LOW,
+            "xml-function-call",
+            path,
+            xl.el(el, "name" if el.get("name") else None),
+            f"<function> calls {m}.{fn}() at every install/update"
+            + (" on the security core." if sens else "."),
+            "Use data records or a reviewed migration; never change security records this way.",
+        )
+    if tag == "delete":
+        m, rid = el.get("model") or "", el.get("id") or ""
+        if m in SENSITIVE_MODELS:
+            sev, why = HIGH, f"deletes {m} records (security core)"
+        elif el.get("search"):
+            sev, why = MEDIUM, f"deletes every {m} record matching a domain"
+        elif "." in rid and rid.split(".", 1)[0] != c.module:
+            sev, why = MEDIUM, f"deletes {rid}, which belongs to another module"
+        else:
+            return
+        c.add(
+            sev,
+            "xml-delete",
+            path,
+            xl.el(el),
+            f"<delete> {why} at install/update.",
+            "Delete only this module's own records, by xmlid.",
+        )
+
+
 def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
     try:
         root = _parse_xml_lines(body)
-        text = body.decode("utf-8", "replace")
+        enc = root.getroottree().docinfo.encoding or "utf-8"
+        try:
+            text = body.decode(enc)
+        except (LookupError, UnicodeDecodeError):
+            text = body.decode("utf-8", "replace")
         xl = _XLines(text)
     except _XmlUnavailable as e:
         c.add(HIGH, "xml-unaudited", path, 0, f"Cannot parse, unaudited ({e}).", "Install lxml.")
@@ -1456,9 +1937,12 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
             )
         for attr in ("ref", "parent", "action", "inherit_id", "groups"):
             val = el.get(attr)
+            if attr == "action" and not re.fullmatch(r"[\w.]+", val or ""):
+                continue  # an HTML form/URL action, not an xmlid (checked by _qweb_attr_checks)
             if val and attr != "groups":
                 c.refs.append((val, path, xl.el(el, attr)))
         for a, val in el.attrib.items():
+            _qweb_attr_checks(c, path, xl, el, a, val)
             if a.startswith("t-") and a != "t-name" and _QWEB_ORM.search(val):
                 c.add(
                     MEDIUM,
@@ -1543,6 +2027,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     "Use only field names and literals in domains, contexts and evals.",
                 )
         _qweb_resources(c, path, xl, el)
+        _xml_operations(c, path, xl, el)
         if (
             el.tag == "field"
             and el.get("name") in ("domain", "context", "code")
@@ -1658,15 +2143,30 @@ _WEB_FIX = {
 
 def _audit_web(c: _Ctx) -> None:
     """JS and stylesheets through the pinned parser helper; fail closed per file."""
-    todo = [w for w in c.web if w[3] not in ("unparseable", "inert")]
+    todo = [
+        (k, f, ln, "js" if kind == "tryjs" else kind, t)
+        for k, f, ln, kind, t in c.web
+        if kind not in ("unparseable", "inert", "foreign")
+    ]
+    tried = {k for k, _, _, kind, _ in c.web if kind == "tryjs"}
     for _, file, line, _, _ in (w for w in c.web if w[3] == "inert"):
         c.add(
             INFO,
             "web-unaudited",
             file,
             line,
-            "Cannot parse, unaudited: Odoo's asset bundles never load this file type.",
-            "Ship only the built JavaScript, or review this file by hand.",
+            "Type declarations only (.d.ts): no runtime code to audit.",
+            "Nothing to do.",
+        )
+    for _, file, line, _, _ in (w for w in c.web if w[3] == "foreign"):
+        c.add(
+            LOW,
+            "web-unaudited",
+            file,
+            line,
+            "Cannot parse, unaudited: a build-step source Odoo's asset bundles never load"
+            " (only its compiled output would run).",
+            "Ship the compiled JavaScript/CSS in the module, or review this file by hand.",
         )
     for _, file, line, _, _ in (w for w in c.web if w[3] == "unparseable"):
         c.add(
@@ -1682,8 +2182,9 @@ def _audit_web(c: _Ctx) -> None:
         r = res.get(key) if isinstance(res, dict) else None
         if r is None or not r.get("ok"):
             why = res if isinstance(res, str) else (r or {}).get("error", "no result")
+            typed = key in tried and isinstance(res, dict)  # TypeScript/JSX syntax: not loaded
             c.add(
-                HIGH,
+                LOW if typed else HIGH,
                 "web-unaudited",
                 file,
                 line0 + max(int((r or {}).get("line") or 1), 1) - 1,
@@ -1702,6 +2203,149 @@ def _audit_web(c: _Ctx) -> None:
                 line0 + max(int(f.get("line") or 1), 1) - 1,
                 str(f.get("msg", ""))[:300],
                 _WEB_FIX.get(code, "Review this code by hand."),
+            )
+
+
+_PO_RISK = re.compile(
+    r"<\s*(?:script|iframe|object|embed|base|meta|form|svg)\b|\bon[a-z]{3,30}\s*=|"
+    r"javascript\s*:|\bt-(?:raw|out|esc)\s*=",
+    re.I,
+)
+
+
+def _po_entries(text: str):
+    """(msgid, msgstr, msgstr line) for each entry of a .po file."""
+    msgid, msgstr, cur, line = [], [], None, 0
+    for i, ln in enumerate(text.splitlines(), 1):
+        t = ln.strip()
+        if t.startswith("msgid "):
+            if msgstr:
+                yield "".join(msgid), "".join(msgstr), line
+            msgid, msgstr, cur = [t[6:].strip().strip('"')], [], "id"
+        elif t.startswith("msgid_plural "):
+            msgid.append(t[13:].strip().strip('"'))
+            cur = "id"
+        elif t.startswith("msgstr"):
+            msgstr.append(t.split(" ", 1)[1].strip().strip('"') if " " in t else "")
+            cur, line = "str", line or i
+            line = i if len(msgstr) == 1 else line
+        elif t.startswith('"') and cur:
+            (msgid if cur == "id" else msgstr).append(t.strip('"'))
+    if msgstr:
+        yield "".join(msgid), "".join(msgstr), line
+
+
+def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
+    """Translated template terms render as markup: a translation must not add script,
+    event handlers or javascript: URLs its source text does not have."""
+    text = body.decode("utf-8", "replace")
+    for msgid, msgstr, line in _po_entries(text):
+        src = {m.group(0).lower() for m in _PO_RISK.finditer(msgid)}
+        new = [m.group(0) for m in _PO_RISK.finditer(msgstr) if m.group(0).lower() not in src]
+        if new:
+            c.add(
+                HIGH,
+                "po-markup-injection",
+                path,
+                line,
+                f"Translation adds {new[0]!r} that the source term does not contain: rendered as"
+                " markup in templates (stored XSS).",
+                "Translate text only; keep the source term's markup unchanged.",
+            )
+
+
+def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
+    """SVG / HTML documents served from static/: scripts, handlers and javascript: URLs run
+    in the server's origin when the file is opened."""
+    try:
+        from lxml import etree
+    except ImportError:
+        c.add(
+            HIGH,
+            "web-unaudited",
+            path,
+            0,
+            "Cannot parse, unaudited (lxml missing).",
+            "Install lxml.",
+        )
+        return
+    try:
+        if kind == "svg":
+            if b"<!ENTITY" in body.upper():
+                raise ValueError("entities are not allowed")
+            parser = etree.XMLParser(
+                resolve_entities=False, no_network=True, load_dtd=False, huge_tree=False
+            )
+        else:
+            parser = etree.HTMLParser(no_network=True, remove_comments=True, remove_pis=True)
+        root = etree.fromstring(body, parser)
+    except (ValueError, etree.XMLSyntaxError) as e:
+        c.add(
+            HIGH,
+            "web-unaudited",
+            path,
+            0,
+            f"Cannot parse, unaudited ({str(e)[:120]}).",
+            "Fix the file, or remove it.",
+        )
+        return
+    if root is None:
+        return
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        tag = el.tag.rsplit("}", 1)[-1].lower()
+        ln = el.sourceline or 1
+        for a, val in el.attrib.items():
+            an = a.rsplit("}", 1)[-1].lower()
+            if re.fullmatch(r"on[a-z]{3,30}", an):
+                c.add(
+                    HIGH if kind == "svg" else MEDIUM,
+                    "markup-inline-handler",
+                    path,
+                    ln,
+                    f"{tag} {an}= runs script when the {kind.upper()} file is opened.",
+                    "Remove event handlers from static documents.",
+                )
+            if an in ("href", "src", "action", "formaction", "data") and _JS_URL.search(val):
+                c.add(
+                    HIGH, "markup-js-url", path, ln, f"{an} holds a javascript: URL.", "Remove it."
+                )
+            if an in ("href", "src") and tag in ("script", "iframe", "use", "image", "link"):
+                if _EXT_URL.search(val):
+                    c.add(
+                        HIGH if tag in ("script", "iframe") else MEDIUM,
+                        "markup-external-resource",
+                        path,
+                        ln,
+                        f"<{tag}> loads from an external host ({val[:80]}).",
+                        "Bundle the resource with the module.",
+                    )
+        if tag == "script":
+            if kind == "svg":
+                c.add(
+                    HIGH,
+                    "markup-script",
+                    path,
+                    ln,
+                    "SVG contains a <script>: it runs in the server's origin when opened.",
+                    "Ship SVG images without scripts.",
+                )
+            code = "".join(el.itertext())
+            if code.strip():
+                c.web.append((f"{path}#script@{ln}", path, ln, "js", code))
+        elif tag == "style":
+            css = "".join(el.itertext())
+            if css.strip():
+                c.web.append((f"{path}#style@{ln}", path, ln, "css", css))
+        elif tag == "foreignobject" and kind == "svg":
+            c.add(
+                MEDIUM,
+                "markup-script",
+                path,
+                ln,
+                "SVG embeds HTML (foreignObject).",
+                "Ship plain vector images.",
             )
 
 
@@ -2011,7 +2655,7 @@ def _is_test(rel: str) -> bool:
 def _py_imports(rel: str, body: bytes, module: str, files: dict[str, bytes]) -> set[str]:
     """Module-local .py files imported by ``rel`` (relative or odoo.addons.<module> imports)."""
     try:
-        tree = ast.parse(body.decode("utf-8-sig"))
+        tree = ast.parse(body)
     except (SyntaxError, UnicodeDecodeError, ValueError, RecursionError, MemoryError):
         return set()
     here = rel.split("/")[:-1]
@@ -2077,6 +2721,33 @@ def _prod_tests(files: dict[str, bytes], module: str, manifest: dict[str, Any] |
     return out
 
 
+def _module_flow(
+    files: dict[str, bytes],
+) -> tuple[frozenset[str], dict[str, tuple[str, str]]]:
+    """Cross-file taint summaries: functions returning (a transform of) a parameter, and
+    functions passing a parameter into a sink, over every Python file of the module."""
+    trees = []
+    for p, b in sorted(files.items()):
+        if p.endswith(".py"):
+            try:
+                t = ast.parse(b)
+            except (SyntaxError, ValueError, RecursionError, MemoryError):
+                continue
+            trees.append((t, flow.Resolver(t, _ALIAS_ROOTS)))
+    pt: frozenset[str] = frozenset()
+    for _ in range(3):
+        new = pt
+        for t, r in trees:
+            new = new | flow.passthrough_functions(t, r, new)
+        if new == pt:
+            break
+        pt = new
+    sinks: dict[str, tuple[str, str]] = {}
+    for t, r in trees:
+        sinks.update(flow.sink_summaries(t, r, pt))
+    return pt, sinks
+
+
 def _module_index(files: dict[str, bytes]) -> tuple[frozenset[str], dict[str, str]]:
     """Module-wide facts for the flow checks: user-text field names (Char/Text/Html) and
     helpers that reach the database."""
@@ -2084,7 +2755,7 @@ def _module_index(files: dict[str, bytes]) -> tuple[frozenset[str], dict[str, st
     for p, b in files.items():
         if p.endswith(".py"):
             try:
-                trees[p] = ast.parse(b.decode("utf-8-sig"))
+                trees[p] = ast.parse(b)
             except (SyntaxError, UnicodeDecodeError, ValueError, RecursionError, MemoryError):
                 continue  # reported as parse-error by _audit_py
     text = set(flow.USER_TEXT)
@@ -2111,8 +2782,9 @@ def audit(
         return Report(
             False, None, False, False, None, error=f"Odoo version must be one of {VERSIONS}"
         )
+    big: list[str] = []
     try:
-        files, top = load_tree(src, skip_assets=True)
+        files, top = load_tree(src, skip_assets=True, oversized=big)
     except SourceError as e:
         return Report(False, None, False, False, version, error=str(e))
     except Exception as e:  # noqa: BLE001 - fail closed
@@ -2125,10 +2797,21 @@ def audit(
     owned = isinstance(owned_names, (list, tuple, set, frozenset)) and name in set(owned_names)
     c = _Ctx(files, version, owned)
     c.module = name
+    for rel in big:
+        c.add(
+            HIGH,
+            "file-unaudited",
+            rel,
+            0,
+            f"Cannot audit, unaudited: file is over {MAX_FILE // 1_000_000} MB (the rest of the"
+            " module was audited).",
+            "Split or remove the file (generated bundles, data dumps), then audit again.",
+        )
     try:
         manifest = _audit_manifest(c)
         c.prod_tests = _prod_tests(files, name, manifest)
         c.text_fields, c.db_helpers = _module_index(files)
+        c.flow_pt, c.flow_sinks = _module_flow(files)
         for path in sorted(files):
             body = files[path]
             try:
@@ -2138,10 +2821,23 @@ def audit(
                     _audit_xml(c, path, body)
                 elif path.endswith(".csv"):
                     _audit_csv(c, path, body)
+                elif _is_po(path):
+                    _audit_po(c, path, body)
+                elif web.web_kind(path) in ("svg", "html"):
+                    _audit_markup_file(c, path, body, web.web_kind(path))
                 elif web.web_kind(path):
-                    c.web.append(
-                        (path, path, 1, web.web_kind(path), body.decode("utf-8", "replace"))
-                    )
+                    kind = web.web_kind(path)
+                    text, note = web.decode(body, kind)
+                    if note:
+                        c.add(
+                            MEDIUM,
+                            "web-encoding",
+                            path,
+                            1,
+                            f"File is {note}; Odoo's asset bundles decode UTF-8.",
+                            "Save the file as UTF-8.",
+                        )
+                    c.web.append((path, path, 1, kind, text))
             except (RecursionError, MemoryError) as e:
                 c.add(
                     HIGH,

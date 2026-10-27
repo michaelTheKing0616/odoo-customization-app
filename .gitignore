@@ -10,6 +10,7 @@ venv/
 
 # Node
 node_modules/
+apps/api/app/bots/code_audit_js/node.pin.json
 .next/
 .next-build
 .next-e2e

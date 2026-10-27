@@ -211,9 +211,12 @@ def test_hostile_archives_refused(files, root, mode, needle):
 
 def test_zip_bomb_and_limits(monkeypatch):
     bomb = zbytes({"__manifest__.py": "{}", "big.txt": "0" * 3_000_000})
-    assert (
-        "too large" in ca.audit(bomb, version=17).error
-        or "over-compressed" in ca.audit(bomb, version=17).error
+    r = ca.audit(bomb, version=17)
+    # one oversized file is reported HIGH unaudited; the rest of the module is still audited
+    assert "over-compressed" in r.error or (
+        r.ok
+        and ("high", "file-unaudited", "big.txt")
+        in {(f.severity, f.code, f.file) for f in r.findings}
     )
     monkeypatch.setattr(ca, "MAX_RATIO", 1_000_000)
     monkeypatch.setattr(ca, "MAX_FILE", 10_000_000)
@@ -447,7 +450,7 @@ def test_r2_b3_tests_dir_capped_low_and_static_skipped():
             "tests/test_x.py": "def t(cr, c):\n    cr.execute('SELECT ' + c)\n",
             "static/img/big.png": "x" * 3_000_000,
             "static/src/x.xml": "<t t-name='a'><div attrs=\"{'a': 1}\"/></t>",
-            "i18n/fr.po": "y" * 3_000_000,
+            "i18n/fr.po": 'msgid "Save"\nmsgstr "Enregistrer"\n',
         }
     )
     r = ca.audit(zbytes(files), version=17)
@@ -945,8 +948,11 @@ def _codes(r, file=None):
 
 
 def test_web_oversized_js_fails_closed():
-    r = _web({"static/src/big.js": "x" * 3_000_000})
-    assert not r.ok and "big.js" in r.error
+    r = _web({"static/src/big.js": "x" * 3_000_000, "static/src/b.js": "eval(x)\n"})
+    got = {(f.code, f.file, f.severity) for f in r.findings}
+    # the oversized file is HIGH unaudited and every other file is still audited
+    assert r.ok and ("file-unaudited", "static/src/big.js", "high") in got
+    assert ("js-eval", "static/src/b.js", "high") in got
 
 
 @pytest.mark.parametrize(
@@ -1005,9 +1011,40 @@ def test_web_parse_error_unaudited():
 
 
 def test_web_no_parser_type_unaudited():
-    r = _web({"static/src/a.ts": "let a: number = 1;\n", "static/src/b.sass": "a\n  b: c\n"})
+    r = _web(
+        {
+            "static/src/a.ts": "let a: number = 1;\n",
+            "static/src/b.sass": "a\n  b: c\n",
+            "static/src/c.d.ts": "declare const a: number;\n",
+            "static/src/d.styl": "a\n  b c\n",
+            "static/src/e.jsx": "eval(x)\n",
+        }
+    )
     sev = {f.file: f.severity for f in r.findings if f.code == "web-unaudited"}
-    assert sev == {"static/src/a.ts": "info", "static/src/b.sass": "high"}
+    assert sev == {
+        "static/src/a.ts": "low",
+        "static/src/b.sass": "high",
+        "static/src/c.d.ts": "info",
+        "static/src/d.styl": "low",
+    }
+    # a .jsx/.ts file that is plain JavaScript is audited with the JS rules
+    assert ("js-eval", "high") in {
+        (f.code, f.severity) for f in r.findings if f.file.endswith("e.jsx")
+    }
+
+
+@pytest.mark.parametrize(
+    "el",
+    [
+        "<script>\nvar a = \"<t t-esc='v'/>\";\n</script>",
+        "<script>\nvar a = 'x\\' <t t-esc=\"v\"/>';\n</script>",
+    ],
+)
+def test_xml_script_output_in_string_is_low(el):
+    src = f"<odoo>\n<template id='a'>\n{el}\n</template>\n</odoo>\n"
+    assert [g[0] for g in _xml(src) if g[0] == "qweb-script-injection"] == ["qweb-script-injection"]
+    r = ca.audit(zbytes(_tree(**{"views/t.xml": src})), version=17)
+    assert {f.severity for f in r.findings if f.code == "qweb-script-injection"} == {"low"}
 
 
 @pytest.mark.parametrize(
@@ -1413,9 +1450,7 @@ def test_xml_script_context_and_style(el, code, line):
 @pytest.mark.parametrize(
     "el",
     [
-        "<script>\nvar a = \"<t t-esc='v'/>\";\n</script>",
         "<script>\nvar a = <t t-out='json.dumps(v)'/>;\n</script>",
-        "<script>\nvar a = 'x\\' <t t-esc=\"v\"/>';\n</script>",
         "<div style='background: url(/web/static/a.png)'/>",
     ],
 )

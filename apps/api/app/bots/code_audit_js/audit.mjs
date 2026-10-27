@@ -27,12 +27,39 @@ const GLOBALS = new Set(["window", "globalThis", "self", "top", "parent", "frame
 const SECRET = /token|secret|passw|api[_-]?key|session|csrf|auth(?!or)|bearer|jwt/i;
 const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|textContent)$/;
 
+// constant string value, folding "a" + "b" and `a${"b"}` (so window["ev" + "al"] is eval)
 function lit(n) {
   if (!n) return null;
   if (n.type === "Literal" && typeof n.value === "string") return n.value;
-  if (n.type === "TemplateLiteral" && n.expressions.length === 0) return n.quasis[0].value.cooked;
+  if (n.type === "TemplateLiteral") {
+    let s = n.quasis[0].value.cooked;
+    for (let i = 0; i < n.expressions.length; i++) {
+      const e = lit(n.expressions[i]);
+      if (e === null) return null;
+      s += e + n.quasis[i + 1].value.cooked;
+    }
+    return s;
+  }
+  if (n.type === "BinaryExpression" && n.operator === "+") {
+    const a = lit(n.left), b = lit(n.right);
+    return a !== null && b !== null ? a + b : null;
+  }
   return null;
 }
+
+// does this expression read document.cookie anywhere (exfiltration through a URL or body)
+function readsCookie(n) {
+  let hit = false;
+  if (!n) return false;
+  walk.full(n, (x) => {
+    if (x.type === "MemberExpression" && ((!x.computed && x.property.name === "cookie") ||
+        lit(x.property) === "cookie")) hit = true;
+  });
+  return hit;
+}
+const HTTP_VERB = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/i;
+const LOADERS = new Set(["loadJS", "loadCSS", "loadBundle", "loadAssets", "loadLibs", "getScript", "$.getScript", "jQuery.getScript"]);
+const JQ_HTML = new Set(["html", "append", "prepend", "after", "before", "replaceWith", "wrap", "wrapAll", "wrapInner"]);
 
 // "external" | "dynamic" | "local" for a URL argument
 function urlKind(n) {
@@ -72,10 +99,29 @@ function auditJs(text) {
   // aliases: const e = eval; const { write } = document; const w = window; let f = fetch
   const alias = new Map();
   const markupNames = new Set(["markup", "Markup"]);
+  const elems = new Map(); // variable -> created element tag (script, iframe, img, ...)
+  const elemOf = (init) => {
+    if (!init) return null;
+    if (init.type === "NewExpression" && init.callee.type === "Identifier" && init.callee.name === "Image") return "img";
+    if (init.type === "CallExpression" && /(^|\.)createElement$/.test(resolve(init.callee) || "")) {
+      const t = lit(init.arguments[0]);
+      return t === null ? "?" : t.toLowerCase();
+    }
+    if (init.type === "Identifier" && elems.has(init.name)) return elems.get(init.name);
+    return null;
+  };
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init) {
       const r = resolve(n.init);
       if (r) alias.set(n.id.name, r);
+      const t = elemOf(n.init);
+      if (t) elems.set(n.id.name, t);
+    }
+    if (n.type === "AssignmentExpression" && n.operator === "=" && n.left.type === "Identifier") {
+      const r = resolve(n.right);
+      if (r && !alias.has(n.left.name)) alias.set(n.left.name, r);
+      const t = elemOf(n.right);
+      if (t) elems.set(n.left.name, t);
     }
     if (n.type === "VariableDeclarator" && n.id.type === "ObjectPattern" && n.init) {
       const base = resolve(n.init);
@@ -110,17 +156,65 @@ function auditJs(text) {
       return obj ? `${obj}.${prop}` : `?.${prop}`;
     }
     if (n.type === "ChainExpression") return resolve(n.expression);
+    if (n.type === "SequenceExpression") return resolve(n.expressions[n.expressions.length - 1]); // (0, eval)
+    if (n.type === "ParenthesizedExpression") return resolve(n.expression);
     if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && !n.callee.computed
         && n.callee.property.name === "bind") return resolve(n.callee.object);
     return null;
   }
   const last = (r) => (r || "").split(".").pop();
+  // something loaded from a URL: script/iframe code, or an image/link beacon
+  function loadSink(n, tag, val, prop) {
+    if (!val) return;
+    if (readsCookie(val)) { add("high", "js-cookie-leak", n, `${tag || "element"}.${prop} URL carries document.cookie.`); return; }
+    if (prop === "srcdoc") { if (lit(val) === null) add("medium", "js-html-sink", n, "srcdoc set from non-constant HTML."); return; }
+    if (!tag) return;
+    const k = urlKind(val);
+    const code = ["script", "iframe", "frame", "object", "embed", "?"].includes(tag);
+    if (k === "external") add(code ? "high" : "medium", code ? "js-script-load" : "js-external-request", n,
+      `<${tag}> ${prop} points at an external host.`);
+    else if (k === "dynamic" && code) add("medium", "js-script-load", n, `<${tag}> ${prop} built at runtime: undecidable, flagged.`);
+    else if (k === "dynamic") add("low", "js-dynamic-request", n, `<${tag}> ${prop} built at runtime: destination undecidable, flagged.`);
+  }
   walk.full(ast, (n) => {
     if (n.type === "CallExpression" || n.type === "NewExpression") {
       const r = resolve(n.callee) || "";
       const a0 = n.arguments[0];
       if (r === "?dynamic") {
-        add("low", "js-dynamic-call", n, "Call through a computed global name: target undecidable, flagged.");
+        add("medium", "js-dynamic-call", n, "Call through a computed global name (could be eval): target undecidable, flagged.");
+      }
+      // Function reached through constructor chains: [].constructor.constructor(code)
+      if (last(r) === "constructor" && n.arguments.length) {
+        const deep = /constructor\.constructor$|getPrototypeOf|\?\.constructor$/.test(r) ||
+          (n.callee.type === "MemberExpression" && n.callee.object.type === "MemberExpression" &&
+           (n.callee.object.computed ? lit(n.callee.object.property) : n.callee.object.property.name) === "constructor");
+        add(deep ? "high" : "medium", "js-eval", n, deep
+          ? "Function constructor reached through .constructor.constructor: compiles code from a string."
+          : "Calls a .constructor with arguments: may be the Function constructor, flagged.");
+      }
+      if (["createContextualFragment", "parseFromString"].includes(last(r)) && a0 && lit(a0) === null &&
+          (last(r) !== "parseFromString" || !/xml/i.test(lit(n.arguments[1]) || "html"))) {
+        add("medium", "js-html-sink", n, `${last(r)}() of non-constant HTML builds live markup.`);
+      }
+      if (n.callee.type === "MemberExpression" && JQ_HTML.has(last(r)) && a0 && lit(a0) === null &&
+          (last(r) === "html" || /^(\$|jQuery)$|^\$\w|\.\$el$|^\$el$/.test((resolve(n.callee.object) || (n.callee.object.type === "CallExpression" ? resolve(n.callee.object.callee) : "")) || "")) &&
+          !["FunctionExpression", "ArrowFunctionExpression"].includes(a0.type)) {
+        add("medium", "js-html-sink", n, `jQuery .${last(r)}() of non-constant content parses it as HTML.`);
+      }
+      if (LOADERS.has(r) || LOADERS.has(last(r))) {
+        const k = urlKind(a0);
+        if (k !== "local") add(k === "external" ? "high" : "medium", "js-script-load", n,
+          `${last(r)}() loads ${k === "external" ? "code from an external host" : "a URL built at runtime (undecidable, flagged)"}.`);
+      }
+      if (last(r) === "setAttribute" && n.callee.type === "MemberExpression" &&
+          ["src", "href", "srcdoc"].includes((lit(a0) || "").toLowerCase())) {
+        const t = elemOf(n.callee.object) || (n.callee.object.type === "Identifier" ? elems.get(n.callee.object.name) : null);
+        loadSink(n, t, n.arguments[1], lit(a0).toLowerCase());
+      }
+      if (["fetch", "navigator.sendBeacon", "WebSocket", "EventSource", "$.ajax", "$.get", "$.post",
+           "jQuery.ajax", "window.open", "open", "rpc"].includes(r) || last(r) === "open" ||
+          last(r) === "send" || last(r) === "rpc") {
+        if (n.arguments.some(readsCookie)) add("high", "js-cookie-leak", n, `${r || "request"}() sends document.cookie.`);
       }
       if (r === "eval") add("high", "js-eval", n, "eval() runs arbitrary code.");
       if (r === "Function") add("high", "js-eval", n, "Function(...) compiles code from a string.");
@@ -147,7 +241,8 @@ function auditJs(text) {
         "window.open", "open", "location.assign", "location.replace"]);
       let urlArg = null, what = r;
       if (net.has(r)) urlArg = a0;
-      else if (last(r) === "open" && n.arguments.length >= 2 && /xhr|request|XMLHttpRequest/i.test(r)) urlArg = n.arguments[1];
+      else if (last(r) === "open" && n.arguments.length >= 2 &&
+               (/xhr|request|XMLHttpRequest/i.test(r) || HTTP_VERB.test(lit(a0) || ""))) urlArg = n.arguments[1];
       if (urlArg !== null || (net.has(r) && !a0 && r !== "open" && r !== "window.open")) {
         const k = a0 && a0.type === "ObjectExpression" ? "dynamic" : urlKind(urlArg);
         if (k === "external") add("high", "js-external-request", n, `${what}() to an external URL.`);
@@ -214,6 +309,18 @@ function auditJs(text) {
     if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression") {
       const r = resolve(n.left) || "";
       const prop = last(r);
+      if (["src", "href", "srcdoc", "data"].includes(prop)) {
+        const o = n.left.object;
+        const t = elemOf(o) || (o.type === "Identifier" ? elems.get(o.name) : null);
+        loadSink(n, t, n.right, prop);
+      }
+      if (/(^|\.)location(\.href)?$/.test(r) && !/\.(hash|search|pathname)$/.test(r)) {
+        const s = lit(n.right);
+        if (s !== null && /^\s*javascript:/i.test(s)) add("high", "js-eval", n, "Navigates to a javascript: URL.");
+        else if (s === null && urlKind(n.right) === "dynamic") add("medium", "js-open-redirect", n,
+          "location set from a runtime value: open redirect or javascript: navigation, flagged.");
+        if (readsCookie(n.right)) add("high", "js-cookie-leak", n, "Navigation URL carries document.cookie.");
+      }
       if ((prop === "innerHTML" || prop === "outerHTML") && lit(n.right) === null) {
         add("medium", "js-html-sink", n, `${prop} assigned non-constant HTML.`);
       }
@@ -272,6 +379,10 @@ function auditCss(text, kind) {
       if (prop === "behavior" || prop === "-moz-binding") add("high", "css-expression", n, `${prop} loads script.`);
       if (/javascript:/i.test(v)) add("high", "css-expression", n, "javascript: URL in CSS.");
       const urls = [...v.matchAll(/url\(\s*([^)]*)\)/gi)].map((m) => m[1]);
+      // image-set("a.png" 1x) / -webkit-image-set: bare strings are URLs too
+      for (const m of v.matchAll(/image-set\(([^)]*(?:\([^)]*\)[^)]*)*)\)/gi)) {
+        for (const q of m[1].matchAll(/(["'])(.*?)\1/g)) urls.push(q[2]);
+      }
       for (const u of urls) {
         const sel = n.parent && n.parent.selector ? n.parent.selector : "";
         const ext = EXT.test(u);
@@ -280,6 +391,8 @@ function auditCss(text, kind) {
           add("high", "css-exfiltration", n, "Attribute selector loads an external URL: leaks attribute values.");
         } else if (ext && runtime) {
           add("high", "css-exfiltration", n, "External url() built from runtime values (data exfiltration).");
+        } else if (/\[[^\]]*[\^$*]=/.test(sel)) {
+          add("medium", "css-exfiltration", n, "Attribute value-match selector loads a URL: leaks attribute values to the server log.");
         } else if (ext) {
           add("medium", "css-external-url", n, "url() loads from an external host.");
         } else if (runtime && /^\s*["']?\s*(var\(|attr\()/.test(u)) {
