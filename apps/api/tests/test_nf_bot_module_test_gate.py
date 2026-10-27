@@ -1035,3 +1035,23 @@ def test_harness_and_cp_allow_list(tmp_path):
     for argv in bad:
         with pytest.raises(g.GateError):
             g.validate_argv(argv, T7)
+
+
+def test_smoke_harness_is_never_imported_and_pinned_to_sandbox():
+    app = Path(g.__file__).resolve().parents[1]
+    for p in app.rglob("*.py"):
+        assert "sandbox_harness" not in "".join(
+            ln for ln in p.read_text().splitlines() if ln.lstrip().startswith(("import", "from"))
+        ), p
+    cfg = {
+        "host": "ws-0123456789ab-s1",
+        "db": "dbs_0123456789abcdef",
+        "module": MOD,
+        "pw": "p" * 32,
+        "ready": "/var/tmp/0123456789abcdef.ready",
+        "out": "/var/tmp/0123456789abcdef.json",
+        "roles": [],
+    }
+    for bad in ({"host": "client.example.com"}, {"db": "production"}):
+        with pytest.raises(AssertionError):
+            g.smoke_script({**cfg, **bad})
