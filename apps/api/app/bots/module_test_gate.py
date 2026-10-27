@@ -683,7 +683,14 @@ def sql_state(module: str) -> str:
     return f"-- gate:state\nSELECT state FROM public.ir_module_module WHERE name = '{module}';\n"
 
 
-SECVALS_GUARDED = ("ir.model.access", "ir.rule", "res.groups")
+SECVALS_GUARDED = (
+    "ir.model.access",
+    "ir.rule",
+    "res.groups",
+    "res.users",
+    "ir.config_parameter",
+    "ir.cron",
+)
 
 
 def sql_secvals(module: str, max_uid: int | None = None) -> str:
@@ -718,6 +725,21 @@ def sql_secvals(module: str, max_uid: int | None = None) -> str:
         f"ORDER BY x.uid) FROM public.res_groups_users_rel x WHERE x.gid = g.id{mu}), '')), "
         f"{own('res.groups', 'g.id')} FROM public.res_groups g\n"
         "UNION ALL\n"
+        # users: every column (the password hash too: compared, never printed: only md5 leaves
+        # the database) and group membership; login bookkeeping left out
+        f"SELECT 'S', u.id::text, md5((to_jsonb(u) {strip})::text || '|' || COALESCE(("
+        "SELECT string_agg(x.gid::text, ',' ORDER BY x.gid) FROM public.res_groups_users_rel x "
+        f"WHERE x.uid = u.id), '')), {own('res.users', 'u.id')} FROM public.res_users u"
+        f"{'' if max_uid is None else f' WHERE u.id <= {int(max_uid)}'}\n"
+        "UNION ALL\n"
+        f"SELECT 'P', p.id::text, md5((to_jsonb(p) {strip})::text), "
+        f"{own('ir.config_parameter', 'p.id')} FROM public.ir_config_parameter p\n"
+        "UNION ALL\n"
+        # scheduled actions: run bookkeeping (next/last call, failure counters) left out
+        f"SELECT 'C', c.id::text, md5((to_jsonb(c) {strip} - 'nextcall' - 'lastcall' "
+        "- 'failure_count' - 'first_failure_date')::text), "
+        f"{own('ir.cron', 'c.id')} FROM public.ir_cron c\n"
+        "UNION ALL\n"
         "SELECT 'U', COALESCE(max(id), 0)::text, '', '0' FROM public.res_users\n"
         "UNION ALL\n"
         "SELECT 'F', d.model || ':' || d.res_id::text, d.module || '.' || d.name, '1' "
@@ -733,7 +755,7 @@ def _secvals(rows) -> dict | None:
         return None
     out: dict = {"v": {}, "own": set(), "f": [], "u": None}
     for k, i, h, o in rows:
-        if k in ("A", "R", "G"):
+        if k in _SECVAL_NAMES:
             out["v"][(k, i)] = h
             if o == "1":
                 out["own"].add((k, i))
@@ -746,7 +768,14 @@ def _secvals(rows) -> dict | None:
     return out if out["u"] is not None else None
 
 
-_SECVAL_NAMES = {"A": "access row", "R": "record rule", "G": "group"}
+_SECVAL_NAMES = {
+    "A": "access row",
+    "R": "record rule",
+    "G": "group",
+    "S": "user",
+    "P": "system parameter",
+    "C": "scheduled action",
+}
 
 
 def secvals_diff(v0, v1) -> list[str]:
@@ -774,7 +803,10 @@ def _secvals_check(sb, db: str, mod: str, v0) -> tuple[str, str]:
     bad = secvals_diff(v0, v1)
     if bad:
         return FAIL, "stock security edited: " + "; ".join(bad[:10])
-    return PASS, f"{len(v0['v'])} pre-existing access/rule/group value(s) unchanged"
+    return (
+        PASS,
+        f"{len(v0['v'])} pre-existing security value(s) unchanged",
+    )
 
 
 def sql_access(module: str, after: Mapping[str, int] | None = None) -> str:

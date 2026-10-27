@@ -103,6 +103,7 @@ class Fake:
             if o.get("secvals_rc"):
                 return g.RunResult(1, "ERROR")
             base = [["A", "1", "a1", "0"], ["R", "1", "r1", "0"], ["G", "1", "g1", "0"]]
+            base += [["S", "2", "s1", "0"], ["P", "1", "p1", "0"], ["C", "1", "c1", "0"]]
             base.append(["U", "2", "", "0"])
             if self.state.get(db) == "installed" and "secvals_after" in o:
                 return self._out(o["secvals_after"])
@@ -1237,6 +1238,9 @@ _SV_BASE = [
     ["A", "1", "a1", "0"],
     ["R", "1", "r1", "0"],
     ["G", "1", "g1", "0"],
+    ["S", "2", "s1", "0"],
+    ["P", "1", "p1", "0"],
+    ["C", "1", "c1", "0"],
     ["U", "2", "", "0"],
 ]
 
@@ -1252,9 +1256,12 @@ def test_secvals_unchanged_passes(tmp_path):
     [
         ([["A", "1", "aX", "0"], *_SV_BASE[1:]], "access row id 1 changed"),
         ([_SV_BASE[0], ["R", "1", "rX", "0"], *_SV_BASE[2:]], "record rule id 1 changed"),
-        ([*_SV_BASE[:2], ["G", "1", "gX", "0"], _SV_BASE[3]], "group id 1 changed"),
+        ([*_SV_BASE[:2], ["G", "1", "gX", "0"], *_SV_BASE[3:]], "group id 1 changed"),
         ([*_SV_BASE[1:]], "access row id 1 removed"),
         ([*_SV_BASE, ["F", "ir.rule:1", "demo.x", "1"]], "another module's record"),
+        ([*_SV_BASE[:3], ["S", "2", "sX", "0"], *_SV_BASE[4:]], "user id 2 changed"),
+        ([*_SV_BASE[:4], ["P", "1", "pX", "0"], *_SV_BASE[5:]], "system parameter id 1 changed"),
+        ([*_SV_BASE[:5], ["C", "1", "cX", "0"], *_SV_BASE[6:]], "scheduled action id 1 changed"),
     ],
 )
 def test_secvals_foreign_change_fails_install(tmp_path, after, needle):
