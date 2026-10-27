@@ -454,3 +454,13 @@ def test_m4_passthrough_converges_under_cap():
 def test_m6_unbaselinable(code):
     import app.bots.code_audit as ca
     assert ca.unbaselinable(code)
+
+
+# ---------------------------------------------------------------- M5 one test-tamper per line
+@pytest.mark.parametrize("call", ["os.unlink(p)", "os.listdir(p)", "os.remove(p); os.rmdir(p)"])
+def test_m5_test_tamper_once_per_line(call):
+    import tests.test_nf_bot_code_audit_5 as t5
+    f = {"controllers/c.py": "import os\nfrom odoo import http\nclass C(http.Controller):\n    def f(self, p):\n        " + call + "\n"}
+    r = t5.run(f)
+    lines = [x.line for x in r.findings if x.code == "test-tamper"]
+    assert lines and len(lines) == len(set(lines))

@@ -550,6 +550,10 @@ class _Ctx:
             sev = LOW if _SEV_RANK[sev] < _SEV_RANK[LOW] else sev  # test code never loads in prod
         if not self.owned:
             fix = f"{FOREIGN_HINT} Suggested fix: {fix}"
+        if code == "test-tamper" and any(  # M5: one test-tamper per line (two scanners hit os.*)
+            x.code == code and x.file == file and x.line == int(line or 0) for x in self.f
+        ):
+            return
         self.f.append(Finding(sev, code, file, int(line or 0), msg, fix))
 
 
