@@ -1753,6 +1753,9 @@ def _odoo_imports(tree: ast.AST) -> dict[str, str]:
     return out
 
 
+_SESSION_AUTH = frozenset({"uid", "pre_uid", "session_token", "login", "db", "pre_login"})
+
+
 def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
     """H2/H3/H5/H6 of review 5: non-literal setattr on an imported Odoo class, assignments
     into odoo.http/odoo.service internals, literal DML on core tables anywhere, and asyncio
@@ -1782,6 +1785,17 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
         for t in targets:
             if isinstance(t, ast.Attribute):
                 o = origin(t.value)
+                if o == "odoo.http.request" or o.startswith("odoo.http.request."):
+                    # per-request state (request.pricelist, session.debug) is not a patch; the
+                    # identity of the request is: session uid/token/db/login, request env/uid
+                    sess = o == "odoo.http.request.session"
+                    if (sess and t.attr in _SESSION_AUTH) or (o == "odoo.http.request" and t.attr in ("session", "env", "uid")):
+                        c.add(HIGH, "session-auth-write", path, n.lineno,
+                              f"Assigns {o}.{t.attr}: sets who the request is authenticated as.",
+                              "Authenticate through request.session.authenticate(); never set identity by hand.")  # fmt: skip
+                    continue
+                if "thread_local" in o:
+                    continue  # per-thread bookkeeping (odoo.service.server.thread_local)
                 if o.startswith(("odoo.http", "odoo.service", "odoo.addons.base.models.ir_http")):
                     c.add(HIGH, "core-patch", path, n.lineno,
                           f"Assigns {o}.{t.attr}: patches Odoo's HTTP/auth/service internals at import.",
@@ -3477,7 +3491,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                 )
             if a == "context" and el.tag != "record":
                 pk = re.search(
-                    r"""['"]default_(groups_id|group_ids|implied_ids|share|password|login|company_ids|"""
+                    r"""['"]default_(groups_id|group_ids|implied_ids|share|password|company_ids|"""
                     r"""sel_groups_\w+|in_group_\w+|user_ids|users)['"]\s*:""",
                     val,
                 )

