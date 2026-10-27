@@ -6,6 +6,7 @@ import ast
 import copy
 import io
 import json
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -130,12 +131,42 @@ class Fake:
             (Path(host) / path.rsplit("/", 1)[1]).write_text(xml)
         return g.RunResult(0, "")
 
+    def smoke_report(self, cfg):
+        sm = self.over.get("smoke", "auto")
+        if callable(sm):
+            return sm(cfg)
+        if sm != "auto":
+            return sm
+        return {
+            "models": {"x.asset": "ok"},
+            "views": {"x.asset": "ok"},
+            "actions": {"1": "ok"},
+            "menus": {"1": "ok"},
+            "crons": {},
+            "roles": {f"{m}|{gr}": "ok" for m, gr, _p in cfg["roles"]},
+            "errors": [],
+        }
+
     def run(self, argv, *, stdin=None, timeout=900):
         g.validate_argv(argv, self.tmp)
         self.calls.append(list(argv))
         o = self.over
         if "boom" in o:
             raise RuntimeError("x")
+        if argv[1] == "exec" and argv[3] == "test":
+            return g.RunResult(0, "")
+        if argv[1] == "cp":
+            rep = self.smoke_report(self.smoke_cfg)
+            if rep is None:
+                return g.RunResult(1, "no such file")
+            Path(argv[3]).write_text(rep if isinstance(rep, str) else json.dumps(rep))
+            return g.RunResult(0, "")
+        if argv[1] == "run" and any(a.endswith("-s1") for a in argv):
+            return g.RunResult(o.get("server_rc", 0), "")
+        if argv[1] == "run" and argv[-2:] == ["python3", "-"]:
+            line = stdin.split("C = json.loads(", 1)[1].split("\n", 1)[0][:-1]
+            self.smoke_cfg = json.loads(ast.literal_eval(line))
+            return g.RunResult(0, "")
         if argv[1] == "exec" and "psql" in argv:
             if argv[6] == g.PG_ADMIN:
                 return g.RunResult(o.get("setup_rc", 0), "")
@@ -161,6 +192,9 @@ class Fake:
             return g.RunResult(0, out.replace("{db}", db))
         args = argv[argv.index("-d") + 2 :]
         target = args[args.index("-i") + 1] if "-i" in args else ""
+        if target.startswith("base") and self.mod in target.split(","):  # smoke database
+            self.state[db] = o.get("smoke_state", "installed")
+            return g.RunResult(o.get("smoke_install_rc", 0), LOADED)
         if target.startswith("base"):
             return g.RunResult(o.get("baseline_rc", 0), LOADED)
         key = "upgrade_out" if "-u" in args else "install_out"
@@ -378,7 +412,8 @@ ACC = "test_access_x_asset_keeper ok\n"
 def test_each_check_fails_closed(tmp_path, over, check, status):
     rep, mh = gate(tmp_path, **over)
     assert rep.checks[check].status == status, rep.checks[check]
-    assert not passed(rep, mh)
+    # r7: the module's own tests are advisory; every deciding check fails closed
+    assert passed(rep, mh) is (check in g.ADVISORY)
 
 
 def test_install_failure_skips_dependents_and_classifies(tmp_path):
@@ -405,7 +440,7 @@ def test_audit_failure_skips_sandbox(tmp_path):
     assert all(rep.checks[c].status == g.SKIPPED for c in g.CHECKS[1:])
 
 
-def test_module_without_tests_or_roles_fails(tmp_path):
+def test_module_without_tests_is_advisory_only(tmp_path):
     fs = {p: b for p, b in files(NEW).items() if not p.startswith("tests/")}
     rep = g.run_gate(
         fs,
@@ -415,7 +450,9 @@ def test_module_without_tests_or_roles_fails(tmp_path):
         tmp_root=str(tmp_path),
         role_spec=role_spec(),
     )
-    assert rep.checks["tests"].status == g.FAIL and rep.checks["access"].status == g.FAIL
+    assert rep.checks["tests"].status == g.FAIL  # advisory: recorded, does not decide
+    assert rep.checks["smoke"].status == g.PASS and rep.checks["access"].status == g.PASS
+    assert passed(rep, g.module_hash(fs))
 
 
 @pytest.mark.parametrize(
@@ -633,7 +670,12 @@ def test_allow_list_accepts_gate_commands(tmp_path):
     g.validate_argv(OK_SHELL, T)
     assert ["docker", "network", "create", "--internal"] == fake.calls[0][:4]
     runs = [c for c in fake.calls if c[1] == "run" and "odoo:17" in c]
-    assert runs and all(set(g.ODOO_HARDEN) <= set(c) for c in runs)
+    mod_runs = [c for c in runs if c[-2:] != ["python3", "-"]]
+    h_runs = [c for c in runs if c[-2:] == ["python3", "-"]]
+    assert mod_runs and all(set(g.ODOO_HARDEN) <= set(c) for c in mod_runs)
+    assert len(h_runs) == 1 and set(g.HARNESS_HARDEN) <= set(h_runs[0])
+    assert "--read-only" not in h_runs[0] and not any(a in h_runs[0] for a in ("-e", "-v"))
+    assert any(c[1] == "cp" for c in fake.calls)
 
 
 def test_real_runner_needs_live(monkeypatch):
@@ -692,7 +734,12 @@ def test_per_run_database_names_are_random(tmp_path):
     a, b = Fake(tmp_path), Fake(tmp_path)
     for f in (a, b):
         g.run_gate(files(NEW), module=MOD, version=17, runner=f, tmp_root=str(tmp_path))
-    dbs = [{c[c.index("-d") + 1] for c in f.calls if "odoo:17" in c} for f in (a, b)]
+
+    def db_of(c):
+        rest = c[c.index("odoo:17") + 1 :]
+        return rest[rest.index("-d") + 1]
+
+    dbs = [{db_of(c) for c in f.calls if "odoo:17" in c and c[-1] != "-"} for f in (a, b)]
     assert dbs[0] and not dbs[0] & dbs[1]
     assert all(g.DB_RE.fullmatch(d) for d in dbs[0] | dbs[1])
 
@@ -866,3 +913,125 @@ def test_harness_script_paths_are_strict():
 
 def test_t3_preconditions_document_sandbox_detection():
     assert any("detectable" in x for x in g.T3_SWITCH_PRECONDITIONS)
+
+
+# ---- round 7 A: gate-written smoke tests decide; the module's own tests are advisory
+
+
+def _sm(**kw):
+    def f(cfg):
+        rep = {
+            "models": {"x.asset": "ok"},
+            "views": {},
+            "actions": {},
+            "menus": {},
+            "crons": {},
+            "roles": {f"{m}|{gr}": "ok" for m, gr, _p in cfg["roles"]},
+            "errors": [],
+        }
+        for k, v in kw.items():
+            rep[k] = v(cfg) if callable(v) else v
+        return rep
+
+    return f
+
+
+@pytest.mark.parametrize(
+    "over, smoke, access",
+    [
+        ({"smoke": None}, g.UNVERIFIED, g.UNVERIFIED),  # no report
+        ({"smoke": "{not json"}, g.FAIL, g.FAIL),
+        ({"smoke": _sm(errors=["admin login failed"])}, g.FAIL, g.FAIL),
+        ({"smoke": _sm(models={"x.asset": "error: boom"})}, g.FAIL, g.FAIL),
+        ({"smoke": _sm(views={"x.asset": "error: bad arch"})}, g.FAIL, g.FAIL),
+        ({"smoke": _sm(menus={"3": "action ir.actions.act_window,9 missing"})}, g.FAIL, g.FAIL),
+        ({"smoke": _sm(models={"x.asset": "skip: cannot fill"})}, g.UNVERIFIED, g.UNVERIFIED),
+        ({"smoke": _sm(models={})}, g.FAIL, g.FAIL),  # nothing exercised
+        ({"smoke": _sm(roles={})}, g.PASS, g.FAIL),  # role checks missing
+        (
+            {
+                "smoke": _sm(
+                    roles=lambda c: {f"{m}|{gr}": "write denied" for m, gr, _ in c["roles"]}
+                )
+            },
+            g.PASS,
+            g.FAIL,
+        ),
+        ({"server_rc": 1}, g.UNVERIFIED, g.UNVERIFIED),
+        ({"smoke_install_rc": 1}, g.FAIL, g.FAIL),
+        ({"smoke_state": "to install"}, g.FAIL, g.FAIL),
+    ],
+)
+def test_smoke_decides_and_fails_closed(tmp_path, over, smoke, access):
+    rep, mh = gate(tmp_path, **over)
+    assert rep.checks["smoke"].status == smoke, rep.checks["smoke"]
+    assert rep.checks["access"].status == access, rep.checks["access"]
+    assert not passed(rep, mh)
+
+
+def test_forged_module_tests_cannot_pass_without_smoke(tmp_path):
+    rep, mh = gate(tmp_path, smoke=_sm(models={"x.asset": "error: create failed"}))
+    assert rep.checks["tests"].status == g.PASS and not passed(rep, mh)
+    d = rep.to_dict()
+    d["checks"]["smoke"]["status"] = g.PASS  # tampering breaks the signature
+    assert not passed(d, mh)
+
+
+def test_schema2_and_deciding_checks():
+    assert g.SCHEMA == "module-test-gate/2" and "tests" not in g.DECIDING
+    assert set(g.DECIDING) | set(g.ADVISORY) == set(g.CHECKS) and "smoke" in g.DECIDING
+
+
+def test_canaries_use_gate_owned_base():
+    src = g.harness_script(MOD, "/var/tmp/r0123456789abcdef/0123456789abcdef.xml")
+    assert "(GateCase,)" in src and "(base,)" not in src
+
+
+def test_smoke_script_compiles_and_is_parameterised():
+    cfg = {
+        "host": "ws-0123456789ab-s1",
+        "db": "dbs_0123456789abcdef",
+        "module": MOD,
+        "pw": "p" * 32,
+        "ready": "/var/tmp/0123456789abcdef.ready",
+        "out": "/var/tmp/0123456789abcdef.json",
+        "roles": [["m.model_a", "m.group_a", [1, 1, 0, 0]]],
+    }
+    compile(g.smoke_script(cfg), "smoke", "exec")
+    with pytest.raises(AssertionError):
+        g.smoke_script({**cfg, "out": "/tmp/x.json"})
+
+
+T7 = "/tmp/gt"
+H = [
+    "docker", "run", "-i", "--name", "ws-0123456789ab-h1", "--network",
+    "ws-0123456789ab-net", *g.HARNESS_HARDEN, "odoo:17", "python3", "-",
+]  # fmt: skip
+
+
+def test_harness_and_cp_allow_list(tmp_path):
+    g.validate_argv(H, T7)
+    g.validate_argv(["docker", "exec", "ws-0123456789ab-h1", "test", "-e",
+                     "/var/tmp/0123456789abcdef.ready"], T7)  # fmt: skip
+    root = os.path.realpath(tmp_path)
+    (Path(root) / "ws-abc").mkdir()
+    g.validate_argv(["docker", "cp", "ws-0123456789ab-h1:/var/tmp/0123456789abcdef.json",
+                     f"{root}/ws-abc/smoke.json"], root)  # fmt: skip
+    bad = [
+        [*H[:7], "--read-only", *H[7:]],  # (duplicate-free but read-only is not allowed)
+        [*H[:3], "--rm", *H[3:]],
+        [*H[:7], "-e", "HOST=ws-0123456789ab-pg", *H[7:]],
+        [*H[:7], "-v", f"{T7}/ws-a/x:/mnt/extra-addons:ro", *H[7:]],
+        [*H[:-2], "python3", "-c", "x"],
+        [*H[:-2], "odoo", "-d", "db_0123456789abcdef"],
+        [x for x in H if x != "--cap-drop=ALL"],
+        ["docker", "cp", "ws-0123456789ab-o1:/var/tmp/0123456789abcdef.json", f"{T7}/ws-a/s"],
+        ["docker", "cp", "ws-0123456789ab-h1:/etc/passwd", f"{T7}/ws-a/s"],
+        ["docker", "cp", "ws-0123456789ab-h1:/var/tmp/0123456789abcdef.json", "/etc/x"],
+        ["docker", "cp", "ws-0123456789ab-h1:/var/tmp/0123456789abcdef.json", f"{T7}/../x"],
+        ["docker", "exec", "ws-0123456789ab-h1", "cat", "/var/tmp/0123456789abcdef.json"],
+        ["docker", "exec", "ws-0123456789ab-s1", "test", "-e", "/var/tmp/0123456789abcdef.ready"],
+    ]
+    for argv in bad:
+        with pytest.raises(g.GateError):
+            g.validate_argv(argv, T7)

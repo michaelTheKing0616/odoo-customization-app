@@ -26,13 +26,19 @@ from app.bots import code_audit as ca
 from app.bots import debug_notes as dn
 from app.bots.versioncaps import caps
 
-SCHEMA = "module-test-gate/1"
+SCHEMA = "module-test-gate/2"
 VERSIONS = (17, 18, 19, 20)
 SANDBOX = "docker-local"  # the only sandbox endpoint the gate accepts
 IMAGES = {v: f"odoo:{v}" for v in VERSIONS}
 PG_IMAGE = "postgres:16"
 KEY_ENV = "INGENIUM_GATE_KEY"
-CHECKS = ("audit", "install", "tests", "upgrade", "access", "uninstall")
+CHECKS = ("audit", "install", "smoke", "upgrade", "access", "uninstall", "tests")
+# Only externally controlled checks decide: state read by the trusted reader, leftover and
+# access diffs, and gate-written smoke tests run from a separate harness container. The
+# module's own test results (and the canaries next to them) run inside the module's process,
+# so they are recorded as an advisory signal and never make or break gate_passed.
+ADVISORY = ("tests",)
+DECIDING = tuple(c for c in CHECKS if c not in ADVISORY)
 PASS, FAIL, UNVERIFIED, SKIPPED, NA = "pass", "fail", "unverified", "skipped", "n/a"
 STATUSES = frozenset({PASS, FAIL, UNVERIFIED, SKIPPED, NA})
 MODULE_RE = re.compile(r"[a-z][a-z0-9_]{1,62}")
@@ -134,16 +140,30 @@ PG_HARDEN = (
     "--cpus=1",
     "--security-opt=no-new-privileges",
 )
+# Smoke harness container: gate code only (no module files, no database credentials), same
+# containment except a writable root so its report can be read back with docker cp after it
+# exits (docker cp cannot read tmpfs).
+HARNESS_HARDEN = tuple(f for f in ODOO_HARDEN if f != "--read-only")
 _RUN_FLAGS = frozenset(ODOO_HARDEN + PG_HARDEN)
-_ODOO_FLAGS = frozenset({"--stop-after-init", "--without-demo=all", "--test-enable", "--no-http"})
-DB_RE = re.compile(r"dbu?_[0-9a-f]{16}")
+_ODOO_FLAGS = frozenset(
+    {
+        "--stop-after-init",
+        "--without-demo=all",
+        "--test-enable",
+        "--no-http",
+        "--max-cron-threads=0",
+        "--no-database-list",
+    }
+)
+DB_RE = re.compile(r"db[us]?_[0-9a-f]{16}")
+_HFILE_RE = re.compile(r"/var/tmp/[0-9a-f]{16}\.(?:json|ready)")
 _NET_RE = re.compile(r"ws-[0-9a-f]{12}-net")
 _RES_RE = re.compile(r"r[0-9a-f]{16}")  # harness result dir: random, unknown to the module
 _PSQL_TAIL = ["-q", "-At", "-v", "ON_ERROR_STOP=1"]
 
 
 def _sandbox_name(v: str) -> bool:
-    return bool(re.fullmatch(r"ws-[0-9a-f]{12}(-pg|-net|-o\d{1,3})?", v))
+    return bool(re.fullmatch(r"ws-[0-9a-f]{12}(-pg|-net|-o\d{1,3}|-s1|-h1)?", v))
 
 
 def _validate_odoo_args(rest: Sequence[str]) -> None:
@@ -199,7 +219,27 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
         if argv[2:3] != ["-f"] or not argv[3:] or not all(_sandbox_name(x) for x in argv[3:]):
             raise GateError("rm only for sandbox containers")
         return
+    if argv[1] == "cp":
+        src, _, path = (argv[2] if len(argv) == 4 else "").partition(":")
+        dst = argv[3] if len(argv) == 4 else ""
+        if (
+            not re.fullmatch(r"ws-[0-9a-f]{12}-h1", src)
+            or not _HFILE_RE.fullmatch(path)
+            or not path.endswith(".json")
+            or ".." in dst.split("/")
+            or os.path.realpath(os.path.dirname(dst)) != os.path.dirname(dst)
+            or not dst.startswith(tmp_root.rstrip("/") + "/ws-")
+        ):
+            raise GateError("cp only the harness report into the sandbox work dir")
+        return
     if argv[1] == "exec":
+        if (
+            len(argv) == 6
+            and re.fullmatch(r"ws-[0-9a-f]{12}-h1", argv[2])
+            and argv[3:5] == ["test", "-e"]
+            and _HFILE_RE.fullmatch(argv[5])
+        ):
+            return
         pg = re.compile(r"ws-[0-9a-f]{12}-pg")
         if len(argv) == 6 and pg.fullmatch(argv[2]) and argv[3:] == ["pg_isready", "-U", PG_ADMIN]:
             return
@@ -223,7 +263,7 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
         raise GateError("image outside the allow-list")
     image = images[0]
     img_at = argv.index(image)
-    i, net, name, host, mounts, res, seen = 2, None, None, None, 0, 0, set()
+    i, net, name, host, mounts, res, seen, envs = 2, None, None, None, 0, 0, set(), 0
     while i < img_at:
         a = argv[i]
         if a in ("--rm", "-i", "-d") or a in _RUN_FLAGS:
@@ -245,6 +285,7 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
             net = val
         elif a == "-e":
             k, _, v = val.partition("=")
+            envs += 1
             if k not in _ENV_KEYS:
                 raise GateError("environment variable not allowed")
             if k == "HOST":
@@ -275,7 +316,23 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
         if not all(f in seen for f in PG_HARDEN):
             raise GateError("sandbox database missing resource limits")
         return
-    if not re.fullmatch(rf"ws-{tag}-o\d{{1,3}}", name):
+    if name == f"ws-{tag}-h1":
+        if (
+            argv[img_at + 1 :] != ["python3", "-"]
+            or envs
+            or mounts
+            or res
+            or "-i" not in seen
+            or "--rm" in seen
+            or "--read-only" in seen
+            or not all(f in seen for f in HARNESS_HARDEN)
+        ):
+            raise GateError("smoke harness container malformed")
+        return
+    if name == f"ws-{tag}-s1":
+        if "-d" not in seen or "--rm" not in seen or "--stop-after-init" in argv[img_at:]:
+            raise GateError("smoke server container malformed")
+    elif not re.fullmatch(rf"ws-{tag}-o\d{{1,3}}", name):
         raise GateError("odoo container name must match the sandbox")
     if host != f"ws-{tag}-pg":
         raise GateError("HOST must be this sandbox's database")
@@ -388,7 +445,7 @@ def gate_passed(
     module: Any = None,
     prior_hash: Any = None,
 ) -> bool:
-    """True only for an untampered, signed report where every check ran and passed for exactly
+    """True only for an untampered, signed report where every deciding check passed for exactly
     this module hash, Odoo version, module name and prior version (None = fresh install).
     version and module are required; missing means False. Never raises."""
     try:
@@ -413,7 +470,7 @@ def gate_passed(
         checks = d.get("checks")
         if not isinstance(checks, dict) or set(checks) != set(CHECKS):
             return False
-        for name in CHECKS:
+        for name in DECIDING:  # the module's own tests are advisory (see ADVISORY)
             st = checks[name].get("status") if isinstance(checks[name], dict) else None
             ok = st == PASS or (name == "upgrade" and st == NA and d.get("prior_hash") is None)
             if not ok:
@@ -873,6 +930,7 @@ _HARNESS = r"""
 import threading, unittest, xml.sax.saxutils
 import odoo
 from odoo.tests import loader
+from odoo.tests.common import TransactionCase as GateCase
 M, P = {module!r}, {path!r}
 CF, CP, CC = {fail!r}, {pas!r}, {cls!r}
 class Res(unittest.TestResult):
@@ -901,9 +959,10 @@ def c4(self): assert False
 def c5(self): self.assertIn(1, ())
 def c6(self): self.assertEqual(1, 1)
 def canary(base, k):
+    # gate-owned base: the module's class (and anything it overrides) is not inherited
     ns = dict(zip(CF, (c0, c1, c2, c3, c4, c5)))
     ns[CP], ns['__module__'] = c6, base.__module__
-    c = type(CC + str(k), (base,), ns)
+    c = type(CC + str(k), (GateCase,), ns)
     c.__qualname__ = c.__name__
     return c
 def flat(s):
@@ -1019,6 +1078,229 @@ def read_harness(
     return True, f"harness: {n} passed" + (f", {len(seen)} canary class(es) ok" if seen else "")
 
 
+# ---------------------------------------------------------------- smoke harness
+# Gate-written smoke tests. They run in their own container (odoo image, `python3 -`, no
+# mounts, no database credentials) against a server container that has the module installed
+# in a third database, over JSON-RPC only. The module's code never runs in the harness
+# process; the harness writes its report (0600) only after the server is gone, and the gate
+# reads it host-side with docker cp.
+_SMOKE = r"""
+import json, os, socket, time, urllib.request
+C = json.loads(__CFG__)
+URL = 'http://%s:8069/jsonrpc' % C['host']
+DB, M, ADMIN = C['db'], C['module'], ('admin', 'admin')
+out = {'models': {}, 'views': {}, 'actions': {}, 'menus': {}, 'crons': {}, 'roles': {},
+       'errors': []}
+def rpc(service, method, *args):
+    body = json.dumps({'jsonrpc': '2.0', 'method': 'call', 'id': 1, 'params': {
+        'service': service, 'method': method, 'args': list(args)}}).encode()
+    req = urllib.request.Request(URL, body, {'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=120) as r:
+        d = json.loads(r.read())
+    if d.get('error'):
+        e = d['error']
+        raise RuntimeError(str((e.get('data') or {}).get('message') or e.get('message'))[:300])
+    return d['result']
+def ex(uid, pw, model, method, args=(), kw=None):
+    return rpc('object', 'execute_kw', DB, uid, pw, model, method, list(args), kw or {})
+def owned(uid, model):
+    rows = ex(uid, ADMIN[1], 'ir.model.data', 'search_read',
+              [[['module', '=', M], ['model', '=', model]]], {'fields': ['name', 'res_id']})
+    return {r['name']: r['res_id'] for r in rows}
+def ref(uid, xmlid, model):
+    mod, _, name = xmlid.partition('.')
+    rows = ex(uid, ADMIN[1], 'ir.model.data', 'search_read',
+              [[['module', '=', mod], ['name', '=', name], ['model', '=', model]]],
+              {'fields': ['res_id']})
+    return rows[0]['res_id'] if len(rows) == 1 else None
+FILL = {'char': 'smoke', 'text': 'smoke', 'html': '<p>smoke</p>', 'integer': 1, 'float': 1.0,
+        'monetary': 1.0, 'boolean': True, 'date': '2026-01-01',
+        'datetime': '2026-01-01 00:00:00'}
+def values(uid, model):
+    fg = ex(uid, ADMIN[1], model, 'fields_get', [],
+            {'attributes': ['type', 'required', 'readonly', 'relation', 'selection']})
+    dv = ex(uid, ADMIN[1], model, 'default_get', [list(fg)])
+    v = {}
+    for f, a in fg.items():
+        if not a.get('required') or a.get('readonly') or dv.get(f) not in (None, False):
+            continue
+        t = a.get('type')
+        if t in FILL:
+            v[f] = FILL[t]
+        elif t == 'selection' and a.get('selection'):
+            v[f] = a['selection'][0][0]
+        elif t == 'many2one':
+            ids = ex(uid, ADMIN[1], a['relation'], 'search', [[]], {'limit': 1})
+            if not ids:
+                return None, fg, 'skip: no %s record for required %s' % (a['relation'], f)
+            v[f] = ids[0]
+        else:
+            return None, fg, 'skip: cannot fill required %s field %s' % (t, f)
+    return v, fg, ''
+def crud(uid, model):
+    v, fg, why = values(uid, model)
+    if v is None:
+        return why
+    rid = ex(uid, ADMIN[1], model, 'create', [v])
+    rid = rid[0] if isinstance(rid, list) else rid
+    if not isinstance(rid, int) or not ex(uid, ADMIN[1], model, 'read', [[rid], ['id']]):
+        return 'create/read failed'
+    wf = next((f for f, a in sorted(fg.items()) if a.get('type') == 'char'
+               and not a.get('readonly') and f not in ('display_name',)), None)
+    if wf:
+        ex(uid, ADMIN[1], model, 'write', [[rid], {wf: 'smoke2'}])
+        got = ex(uid, ADMIN[1], model, 'read', [[rid], [wf]])
+        if not got or got[0].get(wf) != 'smoke2':
+            return 'write not read back'
+    ex(uid, ADMIN[1], model, 'unlink', [[rid]])
+    if ex(uid, ADMIN[1], model, 'search', [[['id', '=', rid]]]):
+        return 'unlink left the record'
+    return 'ok'
+def guard(bucket, key, fn):
+    try:
+        out[bucket][key] = fn()
+    except Exception as e:
+        out[bucket][key] = 'error: %s' % str(e)[:300]
+def main():
+    for _ in range(180):
+        try:
+            rpc('common', 'version')
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        out['errors'].append('server never answered')
+        return
+    uid = rpc('common', 'login', DB, *ADMIN)
+    if not uid:
+        out['errors'].append('admin login failed')
+        return
+    A = ADMIN[1]
+    mids = list(owned(uid, 'ir.model').values())
+    for m in ex(uid, A, 'ir.model', 'read', [mids, ['model']]) if mids else []:
+        guard('models', m['model'], lambda m=m: crud(uid, m['model']))
+    vids = list(owned(uid, 'ir.ui.view').values())
+    by = {}
+    for v in ex(uid, A, 'ir.ui.view', 'read', [vids, ['model', 'type']]) if vids else []:
+        if v['type'] not in ('qweb',) and v['model']:
+            by.setdefault(v['model'], set()).add(v['type'])
+    for model, types in sorted(by.items()):
+        guard('views', model, lambda model=model, types=types: (
+            ex(uid, A, model, 'get_views', [[[False, t] for t in sorted(types)]]) and 'ok'))
+    aids = list(owned(uid, 'ir.actions.act_window').values())
+    for a in ex(uid, A, 'ir.actions.act_window', 'read', [aids, ['res_model']]) if aids else []:
+        guard('actions', str(a['id']), lambda a=a: 'ok' if ex(
+            uid, A, 'ir.model', 'search_count', [[['model', '=', a['res_model']]]])
+            else 'res_model %s missing' % a['res_model'])
+    def menu_ok(mn):
+        if not mn['action']:
+            return 'ok'
+        model, _, rid = mn['action'].partition(',')
+        return 'ok' if ex(uid, A, model, 'search_count', [[['id', '=', int(rid)]]]) else (
+            'action %s missing' % mn['action'])
+    nids = list(owned(uid, 'ir.ui.menu').values())
+    for mn in ex(uid, A, 'ir.ui.menu', 'read', [nids, ['action']]) if nids else []:
+        guard('menus', str(mn['id']), lambda mn=mn: menu_ok(mn))
+    def model_ok(row):
+        mid = row['model_id'][0] if row.get('model_id') else None
+        return 'ok' if mid and ex(uid, A, 'ir.model', 'search_count', [[['id', '=', mid]]]) else (
+            'model missing')
+    cids = list(owned(uid, 'ir.cron').values())
+    for c in ex(uid, A, 'ir.cron', 'read', [cids, ['model_id']]) if cids else []:
+        guard('crons', 'cron %s' % c['id'], lambda c=c: model_ok(c))
+    if ex(uid, A, 'ir.model', 'search_count', [[['model', '=', 'base.automation']]]):
+        bids = list(owned(uid, 'base.automation').values())
+        for b in ex(uid, A, 'base.automation', 'read', [bids, ['model_id']]) if bids else []:
+            guard('crons', 'automation %s' % b['id'], lambda b=b: model_ok(b))
+    fg = ex(uid, A, 'res.users', 'fields_get', [], {'attributes': ['type']})
+    gf = 'group_ids' if 'group_ids' in fg else 'groups_id'
+    user_grp = ref(uid, 'base.group_user', 'res.groups')
+    users = {}
+    for model_x, group_x, perms in C['roles']:
+        key = '%s|%s' % (model_x, group_x)
+        def role(model_x=model_x, group_x=group_x, perms=perms):
+            gid, mid = ref(uid, group_x, 'res.groups'), ref(uid, model_x, 'ir.model')
+            if not gid or not mid:
+                return 'group or model not found'
+            model = ex(uid, A, 'ir.model', 'read', [[mid], ['model']])[0]['model']
+            if gid not in users:
+                login = 'smoke_%d' % gid
+                ex(uid, A, 'res.users', 'create', [{'name': login, 'login': login,
+                   'password': C['pw'], gf: [(6, 0, [gid, user_grp])]}])
+                users[gid] = rpc('common', 'login', DB, login, C['pw'])
+            u = users[gid]
+            if not u:
+                return 'role user login failed'
+            bad = []
+            for op, want in zip(('read', 'write', 'create', 'unlink'), perms):
+                try:
+                    got = ex(u, C['pw'], model, 'has_access', [op])
+                except Exception:
+                    got = ex(u, C['pw'], model, 'check_access_rights', [op],
+                             {'raise_exception': False})
+                if want and not got:
+                    bad.append('%s denied' % op)
+            return 'ok' if not bad else ', '.join(bad)
+        guard('roles', key, role)
+try:
+    main()
+except Exception as e:
+    out['errors'].append('harness: %s' % str(e)[:300])
+open(C['ready'], 'w').close()
+for _ in range(600):  # the report is written only after the module's server is gone
+    try:
+        socket.create_connection((C['host'], 8069), timeout=2).close()
+        time.sleep(1)
+    except OSError:
+        break
+else:
+    out['errors'].append('server did not stop')
+fd = os.open(C['out'], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w') as f:
+    json.dump(out, f)
+"""
+
+
+def smoke_script(cfg: Mapping[str, Any]) -> str:
+    assert set(cfg) == {"host", "db", "module", "pw", "ready", "out", "roles"}
+    assert _HFILE_RE.fullmatch(cfg["ready"]) and _HFILE_RE.fullmatch(cfg["out"])
+    return _SMOKE.replace("__CFG__", repr(json.dumps(dict(cfg))))
+
+
+_SMOKE_BUCKETS = ("models", "views", "actions", "menus", "crons")
+
+
+def read_smoke(raw: bytes | None) -> tuple[str, str, dict[str, str]]:
+    """Count the smoke report host-side. Returns (status, detail, role results). Fail closed:
+    unreadable, errors, any non-ok item -> FAIL; a model that could not be filled -> UNVERIFIED;
+    nothing smoked at all -> FAIL."""
+    if raw is None:
+        return UNVERIFIED, "no smoke report", {}
+    try:
+        d = json.loads(raw.decode()) if len(raw) < 2_000_000 else None
+        assert isinstance(d, dict) and isinstance(d.get("errors"), list)
+        buckets = {b: d[b] for b in (*_SMOKE_BUCKETS, "roles")}
+        assert all(
+            isinstance(v, dict) and all(isinstance(x, str) for x in v.values())
+            for v in buckets.values()
+        )
+    except Exception:  # noqa: BLE001 - fail closed
+        return FAIL, "smoke report unreadable", {}
+    roles = buckets.pop("roles")
+    if d["errors"]:
+        return FAIL, "smoke: " + "; ".join(map(str, d["errors"][:5])), roles
+    bad = [f"{b} {k}: {v}" for b, items in buckets.items() for k, v in items.items() if v != "ok"]
+    n = sum(len(v) for v in buckets.values())
+    if not n:
+        return FAIL, "smoke: nothing owned to exercise", roles
+    if any(not v.startswith("skip:") for v in (x.split(": ", 1)[1] for x in bad)):
+        return FAIL, "smoke: " + "; ".join(bad[:8]), roles
+    if bad:
+        return UNVERIFIED, "smoke: " + "; ".join(bad[:8]), roles
+    counts = ", ".join(f"{len(v)} {b}" for b, v in buckets.items() if v)
+    return PASS, f"smoke ok: {counts}", roles
+
+
 # ---------------------------------------------------------------- gate
 
 
@@ -1038,6 +1320,7 @@ class _Sandbox:
         self.net, self.pg = f"ws-{tag}-net", f"ws-{tag}-pg"
         nonce = secrets.token_hex(8)  # per-run database names, unknown before the run
         self.db_main, self.db_upg = f"db_{nonce}", f"dbu_{nonce}"
+        self.db_smoke = f"dbs_{nonce}"  # smoke tests run here, against a server container
         self.pw = secrets.token_hex(16)  # app role password, never printed
         self.res_dir, self.res_file = f"r{secrets.token_hex(8)}", f"{secrets.token_hex(8)}.xml"
         self.work = tempfile.mkdtemp(prefix="ws-", dir=tmp_root)
@@ -1104,13 +1387,13 @@ class _Sandbox:
             f"GRANT pg_read_all_data TO {READ_ROLE};\n"
             + "".join(
                 f"CREATE DATABASE {d} OWNER {APP_ROLE} TEMPLATE template0 ENCODING 'UTF8';\n"
-                for d in (self.db_main, self.db_upg)
+                for d in (self.db_main, self.db_upg, self.db_smoke)
             )
         )
         r = self.admin_sql("postgres", setup)
         if r.rc != 0:
             raise GateError("sandbox roles failed")
-        for d in (self.db_main, self.db_upg):
+        for d in (self.db_main, self.db_upg, self.db_smoke):
             w = self.admin_sql(d, DDL_WATCH)
             if w.rc != 0:
                 raise GateError("sandbox ddl watch failed")
@@ -1215,6 +1498,84 @@ class _Sandbox:
             return None
         return _snapshot(self.psql(db, sql_schema([t[0] for t in tabs]), fields=3))
 
+    def smoke(self, addons: str, roles: list) -> bytes | None:
+        """Gate-written smoke tests: server container (module code) + harness container (gate
+        code only, no mounts, no credentials). Returns the raw report read via docker cp."""
+        import secrets
+        import threading
+        import time
+
+        srv, hn = f"ws-{self.tag}-s1", f"ws-{self.tag}-h1"
+        ready, out = (f"/var/tmp/{secrets.token_hex(8)}.{x}" for x in ("ready", "json"))
+        self.n += 1  # the server runs module code: no superuser SQL from here on
+        self.started += [srv, hn]
+        r = self.r.run(
+            [
+                "docker",
+                "run",
+                "-d",
+                "--rm",
+                "--name",
+                srv,
+                "--network",
+                self.net,
+                *ODOO_HARDEN,
+                "-e",
+                f"HOST={self.pg}",
+                "-e",
+                f"USER={APP_ROLE}",
+                "-e",
+                f"PASSWORD={self.pw}",
+                "-v",
+                f"{addons}:/mnt/extra-addons:ro",
+                IMAGES[self.v],
+                "odoo",
+                "-d",
+                self.db_smoke,
+                "--max-cron-threads=0",
+                "--no-database-list",
+            ],
+            timeout=120,
+        )
+        if r.rc != 0:
+            return None
+        script = smoke_script(
+            {
+                "host": srv,
+                "db": self.db_smoke,
+                "module": self.mod,
+                "pw": secrets.token_hex(16),
+                "ready": ready,
+                "out": out,
+                "roles": roles,
+            }
+        )
+        argv = ["docker", "run", "-i", "--name", hn, "--network", self.net, *HARNESS_HARDEN]
+        done: list[RunResult] = []
+        th = threading.Thread(
+            target=lambda: done.append(
+                self.r.run(
+                    [*argv, IMAGES[self.v], "python3", "-"], stdin=script, timeout=self.timeout
+                )
+            ),
+            daemon=True,
+        )
+        th.start()
+        t0 = time.monotonic()
+        while th.is_alive() and time.monotonic() - t0 < self.timeout:
+            if self.r.run(["docker", "exec", hn, "test", "-e", ready], timeout=30).rc == 0:
+                break
+            time.sleep(2)
+        self.r.run(["docker", "rm", "-f", srv], timeout=120)  # module process gone first
+        th.join(self.timeout)
+        dst = Path(self.work) / f"smoke-{secrets.token_hex(8)}.json"
+        raw = None
+        if self.r.run(["docker", "cp", f"{hn}:{out}", str(dst)], timeout=60).rc == 0:
+            if dst.is_file() and not dst.is_symlink():
+                raw = dst.read_bytes()
+        self.r.run(["docker", "rm", "-f", hn], timeout=60)
+        return raw
+
     def close(self) -> None:
         if self.up:
             self.r.run(["docker", "rm", "-f", *self.started, self.pg], timeout=120)
@@ -1300,7 +1661,7 @@ def run_gate(
         checks.setdefault(c, Check(UNVERIFIED, "not run"))
     ok = all(
         checks[c].status == PASS or (c == "upgrade" and checks[c].status == NA and old is None)
-        for c in CHECKS
+        for c in DECIDING
     )
     rep = GateReport(
         SCHEMA, module, mh, version, module_hash(old) if old else None, checks, PASS if ok else FAIL
@@ -1422,7 +1783,7 @@ def _sandbox_checks(
     )
     s0 = sb.snapshot(db) if res.rc == 0 else None
     if s0 is None:
-        for c in ("install", "tests", "access", "uninstall"):
+        for c in ("install", "smoke", "tests", "access", "uninstall"):
             checks[c] = Check(UNVERIFIED, "baseline database failed", _tail(res.output))
     else:
         # (2) install, confirmed from the database, not from logs
@@ -1436,11 +1797,31 @@ def _sandbox_checks(
             [] if ok else _classify(res.output, version),
         )
     if checks.get("install") and checks["install"].status == FAIL:
-        for c in ("tests", "access", "uninstall"):
+        for c in ("smoke", "tests", "access", "uninstall"):
             checks[c] = Check(SKIPPED, "install failed")
     elif s0 is not None:
-        # (3) the module's own tests: stock run (log line) AND harness run (own report)
-        every, access = _test_methods(files)
+        # (3a) gate-written smoke tests in a third database, from a separate harness container
+        spec_acc = (role_spec or {}).get("access") or {}
+        roles = [[m, gr, [int(x) for x in p]] for (m, gr), p in sorted(spec_acc.items())]
+        r = sb.odoo(
+            new_dir,
+            sb.db_smoke,
+            "",
+            "-i",
+            ",".join(dict.fromkeys(["base", *deps, mod])),
+            "--stop-after-init",
+            "--without-demo=all",
+        )
+        ok_s, why_s = _odoo_ok(r, sb, sb.db_smoke)
+        role_res: dict[str, str] = {}
+        if not ok_s:
+            checks["smoke"] = Check(FAIL, f"smoke database install: {why_s}", _tail(r.output))
+        else:
+            st_s, det_s, role_res = read_smoke(sb.smoke(new_dir, roles))
+            checks["smoke"] = Check(st_s, det_s)
+        # (3b) the module's own tests: ADVISORY only (they run inside the module's process);
+        # stock run (log line) AND harness run (own report, gate-owned canaries)
+        every, _access = _test_methods(files)
         res = sb.odoo(
             new_dir,
             db,
@@ -1482,37 +1863,37 @@ def _sandbox_checks(
             checks["tests"] = Check(
                 PASS, f"0 failed, 0 error(s) of {ran} tests; {h_why}", _tail(res.output)
             )
-        # (5) role access: access tests passed in the harness AND live rows match the req2mod spec
+        # (5) role access: live rows (trusted reader) match the req2mod spec AND the gate's
+        # smoke role users get every permission the spec grants (checked over RPC)
         if role_spec is None:
             checks["access"] = Check(UNVERIFIED, "no req2mod role spec supplied")
-        elif not (role_spec.get("access") or {}):
+        elif not spec_acc:
             checks["access"] = Check(FAIL, "role spec has no access rows to verify")
-        elif not access:
+        elif checks["smoke"].status != PASS:
             checks["access"] = Check(
-                FAIL, "role spec has access rows but the module has no access tests"
-            )
-        elif checks["tests"].status != PASS:
-            checks["access"] = Check(
-                checks["tests"].status if checks["tests"].status != FAIL else FAIL,
-                "access tests did not pass",
+                checks["smoke"].status if checks["smoke"].status != SKIPPED else UNVERIFIED,
+                "smoke tests did not pass",
             )
         else:
-            missing = sorted(a for a in access if a not in h_passed)
             after = {t: max(s0["i"].get(t) or {0}) for t in ("ir_model_access", "ir_rule")}
             rows = sb.psql(db, sql_access(mod, after), fields=8)
             bad = access_diff(role_spec, rows) if rows is not None else None
+            want = {f"{m}|{gr}" for m, gr, _p in roles}
+            role_bad = sorted(
+                f"{k}: {role_res.get(k, 'not checked')}" for k in want if role_res.get(k) != "ok"
+            )
             if bad is None:
                 checks["access"] = Check(UNVERIFIED, "live access rows unreadable")
             elif bad:
                 checks["access"] = Check(FAIL, "; ".join(bad[:10]))
-            elif missing:
-                checks["access"] = Check(FAIL, f"not passed in harness: {', '.join(missing[:10])}")
+            elif role_bad:
+                checks["access"] = Check(FAIL, "smoke roles: " + "; ".join(role_bad[:10]))
             else:
                 checks["access"] = Check(
                     PASS,
-                    f"{len(access)} access test(s) passed; {len(rows)} live row(s) match the "
-                    f"role spec ({len(role_spec['access'])} access, "
-                    f"{len(role_spec.get('rules') or {})} rule(s))",
+                    f"{len(rows)} live row(s) match the role spec ({len(spec_acc)} access, "
+                    f"{len(role_spec.get('rules') or {})} rule(s)); {len(want)} smoke role "
+                    "check(s) granted",
                 )
         # (6) uninstall leaves nothing behind: state and full snapshot read from the database
         res = sb.odoo(new_dir, db, "shell", "--no-http", stdin=uninstall_script(mod))
