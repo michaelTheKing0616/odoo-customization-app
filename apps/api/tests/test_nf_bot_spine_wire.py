@@ -666,3 +666,15 @@ def test_sealed_decision_still_runs(S) -> None:
     flow.dec.approve("p1", c, owner(S))
     assert json.loads(Path(flow.dec.path).read_text())["p1"][c.slot]["seal"]
     assert flow.run()["steps"][0]["status"] == fl.EXECUTED and leads(o) == 1
+
+
+# ------------------------------------------------------------------ review 4: approved file list
+@pytest.mark.parametrize("files", [[], ["models/other.py"], ["models/m.py", "models/x.py"]])
+def test_upgrade_file_list_must_match_change_set(T3, monkeypatch, files) -> None:
+    store, _plan, cs, mh = T3
+    p = dataclasses.replace(_cs_plan(cs, mh), values={**_cs_plan(cs, mh).values, "files": files})
+    store.approve("conn-a", store.submit(p)["id"], OWNER)
+    monkeypatch.setattr(sp, "_t3_ready", lambda: True)
+    with pytest.raises(sp.SpineError) as e:
+        _apply(store, p, cs, mh, gate_report=report(mh, prior_hash=PRIOR))
+    assert e.value.code == "not-approved" and "files" in str(e.value.message)

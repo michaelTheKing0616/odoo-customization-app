@@ -662,6 +662,8 @@ def apply_t3(
         raise SpineError("not-approved", "this change set was not approved")
     if change_set.id != approved_id or change_set.module != mod or change_set.version != ver:
         raise SpineError("not-approved", "change set differs from the approved one")
+    if upgrade and list(v.get("files") or ()) != change_set.approval_plan()["files"]:
+        raise SpineError("not-approved", "change set touches other files than the approved list")
     try:
         out = oc.apply_change_set(files, change_set, approved_id=approved_id)  # pure, no write
     except oc.ChangeError as exc:
