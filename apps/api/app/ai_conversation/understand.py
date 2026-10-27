@@ -1997,7 +1997,8 @@ def drop_exclusions(rows: list[str], prompt: str) -> list[str]:
         sent = _COND_CLAUSE.split(sent, maxsplit=1)[0]
         m = _NEG_CUE.search(sent)
         if m:
-            negated.append(_stems(re.split(r"[:;,]", sent[m.end():])[0][:120]))
+            # A dash ends the negated clause: "Do not create a new app — inherit sale.order".
+            negated.append(_stems(re.split(r"[:;,\u2014\u2013]|\s-\s", sent[m.end():])[0][:120]))
     out = []
     for row in rows or []:
         text = str(row)
