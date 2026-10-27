@@ -518,7 +518,11 @@ CREATE EVENT TRIGGER gate_ddl ON ddl_command_end EXECUTE FUNCTION gate_audit.ddl
 """
 
 # every read the gate trusts: pinned search_path, then a settings probe (must be 0 rows)
-_READ_PREFIX = (
+# Trusted reads use NUL field and RS (0x1e) record separators so values containing "|" or
+# newlines cannot shift columns; psql ends each result set with "\n". Exactly one statement
+# follows the prefix, so the output is "k0\0<n>\n" + records joined by RS + "\n".
+_PSET = "\\pset fieldsep_zero\n\\pset recordsep '\\036'\n"
+_READ_PREFIX = _PSET + (
     "SET search_path = pg_catalog, public;\n"
     "SELECT 'k0', count(*) FROM pg_catalog.pg_db_role_setting;\n"
 )
@@ -531,6 +535,44 @@ SQL_TABLES = (
     "ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname IN ("
     + ", ".join(f"'{t}'" for t in ID_TABLES)
     + ");\n"
+)
+
+
+# Other database objects a module could leave behind or use to keep a foothold, compared as sets
+# of (kind:name, detail). ACLs carry their text, so a changed grant is a new row.
+_SQL_EXTRA = (
+    "UNION ALL SELECT 'x', 'trigger:' || cn.nspname || '.' || c.relname || '.' || t.tgname, '' "
+    "FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid "
+    "JOIN pg_catalog.pg_namespace cn ON cn.oid = c.relnamespace "
+    "WHERE NOT t.tgisinternal AND {ns_c}\n"
+    "UNION ALL SELECT 'x', 'rule:' || cn.nspname || '.' || c.relname || '.' || r.rulename, '' "
+    "FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON c.oid = r.ev_class "
+    "JOIN pg_catalog.pg_namespace cn ON cn.oid = c.relnamespace "
+    "WHERE r.rulename <> '_RETURN' AND {ns_c}\n"
+    "UNION ALL SELECT 'x', 'policy:' || cn.nspname || '.' || c.relname || '.' || p.polname, '' "
+    "FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_class c ON c.oid = p.polrelid "
+    "JOIN pg_catalog.pg_namespace cn ON cn.oid = c.relnamespace WHERE {ns_c}\n"
+    "UNION ALL SELECT 'x', 'type:' || n.nspname || '.' || t.typname, t.typtype::text "
+    "FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
+    "WHERE t.typrelid = 0 AND t.typcategory <> 'A' AND {ns}\n"
+    "UNION ALL SELECT 'x', 'cast:' || k.castsource::pg_catalog.regtype::text || '->' "
+    "|| k.casttarget::pg_catalog.regtype::text, '' FROM pg_catalog.pg_cast k "
+    "WHERE k.oid >= 16384\n"
+    "UNION ALL SELECT 'x', 'operator:' || n.nspname || '.' || o.oprname, "
+    "o.oprleft::pg_catalog.regtype::text || ',' || o.oprright::pg_catalog.regtype::text "
+    "FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid = o.oprnamespace "
+    "WHERE {ns}\n"
+    "UNION ALL SELECT 'x', 'extension:' || e.extname, e.extversion FROM pg_catalog.pg_extension e\n"
+    "UNION ALL SELECT 'x', 'grant:' || n.nspname || '.' || c.relname, c.relacl::text "
+    "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE c.relacl IS NOT NULL AND {ns}\n"
+    "UNION ALL SELECT 'x', 'grant:schema ' || n.nspname, n.nspacl::text "
+    "FROM pg_catalog.pg_namespace n WHERE n.nspacl IS NOT NULL AND {ns}\n"
+    "UNION ALL SELECT 'x', 'grant:function ' || n.nspname || '.' || p.proname, p.proacl::text "
+    "FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace "
+    "WHERE p.proacl IS NOT NULL AND {ns}\n"
+    "UNION ALL SELECT 'x', 'grant:default ' || d.defaclrole::pg_catalog.regrole::text || ' ' "
+    "|| d.defaclobjtype::text, d.defaclacl::text FROM pg_catalog.pg_default_acl d\n"
 )
 
 
@@ -553,6 +595,7 @@ def sql_schema(tables: Sequence[str]) -> str:
         f"JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace WHERE {ns}\n"
         "UNION ALL SELECT 'o', l.oid::text, '' FROM pg_catalog.pg_largeobject_metadata l\n"
         "UNION ALL SELECT 'd', w.tag, w.ident FROM gate_audit.ddl w\n"
+        + _SQL_EXTRA.format(ns=ns, ns_c=_NS.format(n="cn"))
         + "".join(
             f"UNION ALL SELECT 'i', '{t}', COALESCE(pg_catalog.string_agg(id::text, ',' "
             f"ORDER BY id), '') FROM public.{t}\n"
@@ -756,6 +799,7 @@ def _snapshot(rows: Sequence[Sequence[str]] | None):
         "f": set(),
         "o": set(),
         "d": set(),
+        "x": set(),
         "i": {},
     }
     for r in rows:
@@ -802,6 +846,17 @@ def snapshot_diff(s0, s1) -> list[str]:
     new_d = sorted(f"{t} {i}" for t, i in s1.get("d", set()) - s0.get("d", set()))
     if new_d:
         bad.append(f"privileged database objects created: {'; '.join(new_d[:5])}")
+    x0, x1 = s0.get("x", set()), s1.get("x", set())
+    by: dict[str, list[str]] = {}
+    for name, det in sorted(x1 - x0):
+        k, _, n = name.partition(":")
+        by.setdefault(k, []).append(n if k != "grant" else f"{n} {det}")
+    for name, det in sorted(x0 - x1):  # a grant revoked or an object altered also counts
+        k, _, n = name.partition(":")
+        if k == "grant" or (name, det) not in x1 and any(m == name for m, _ in x1):
+            by.setdefault(k, []).append(f"{n} (changed)")
+    for k, names in sorted(by.items()):
+        bad.append(f"{k}s left or changed: {', '.join(names[:10])}")
     for t in sorted(set(s0["i"]) | set(s1["i"])):
         left = s1["i"].get(t, set()) - s0["i"].get(t, set())
         if left:
@@ -1052,30 +1107,11 @@ class _Sandbox:
                 for d in (self.db_main, self.db_upg)
             )
         )
-        r = self.r.run(
-            [
-                "docker",
-                "exec",
-                "-i",
-                self.pg,
-                "psql",
-                "-U",
-                PG_ADMIN,
-                "-d",
-                "postgres",
-                *_PSQL_TAIL,
-            ],
-            stdin=setup,
-            timeout=120,
-        )
+        r = self.admin_sql("postgres", setup)
         if r.rc != 0:
             raise GateError("sandbox roles failed")
         for d in (self.db_main, self.db_upg):
-            w = self.r.run(
-                ["docker", "exec", "-i", self.pg, "psql", "-U", PG_ADMIN, "-d", d, *_PSQL_TAIL],
-                stdin=DDL_WATCH,
-                timeout=120,
-            )
+            w = self.admin_sql(d, DDL_WATCH)
             if w.rc != 0:
                 raise GateError("sandbox ddl watch failed")
         rows = self.psql(
@@ -1130,6 +1166,15 @@ class _Sandbox:
             self.r.run(["docker", "rm", "-f", name], timeout=60)
         return res_
 
+    def admin_sql(self, db: str, sql: str) -> RunResult:
+        """Superuser SQL is setup-only. Once any odoo container has run (module code may have
+        planted triggers, functions or settings), superuser SQL could execute module-controlled
+        objects with superuser rights, so it is refused from then on (fail closed)."""
+        if self.n > 0:
+            raise GateError("superuser SQL after module code")
+        argv = ["docker", "exec", "-i", self.pg, "psql", "-U", PG_ADMIN, "-d", db, *_PSQL_TAIL]
+        return self.r.run(argv, stdin=sql, timeout=120)
+
     def psql(self, db: str, sql: str, fields: int = 0) -> list[list[str]] | None:
         """Independent read as the read-only role: psql in the postgres container (no module
         code on any path), search_path pinned, and refused when any database or role setting
@@ -1141,11 +1186,24 @@ class _Sandbox:
         )
         if r.rc != 0:
             return None
-        lines = [ln for ln in r.output.splitlines() if ln.strip()]
-        if not lines or lines[0] != "k0|0":
+        return self._parse(r.output, fields)
+
+    def _parse(self, out: str, fields: int) -> list[list[str]] | None:
+        """Fail closed: anything but the exact framing or field count is refused."""
+        if out.startswith("k0\x00") and not out.startswith("k0\x000\n"):
             self.tainted = "database or role settings present (e.g. search_path)"
             return None
-        return [ln.split("|", fields - 1) if fields else ln.split("|") for ln in lines[1:]]
+        if not out.startswith("k0\x000\n"):
+            return None
+        body = out[len("k0\x000\n") :]
+        if not body:
+            return []
+        if not body.endswith("\n"):
+            return None
+        rows = [rec.split("\x00") for rec in body[:-1].split("\x1e")]
+        if fields and any(len(row) != fields for row in rows):
+            return None
+        return rows
 
     def state(self, db: str) -> str | None:
         rows = self.psql(db, sql_state(self.mod))

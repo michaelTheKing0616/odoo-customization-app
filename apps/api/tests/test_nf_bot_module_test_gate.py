@@ -66,8 +66,9 @@ class Fake:
         return rows
 
     def _out(self, rows):
-        pre = "k0|1\n" if self.over.get("settings") else "k0|0\n"
-        return g.RunResult(0, pre + "".join("|".join(r) + "\n" for r in rows))
+        pre = "k0\x001\n" if self.over.get("settings") else "k0\x000\n"
+        body = "\x1e".join("\x00".join(r) for r in rows)
+        return g.RunResult(0, pre + (body + "\n" if rows else ""))
 
     def _psql(self, db, sql):
         o = self.over
@@ -730,6 +731,56 @@ def test_access_diff_and_snapshot_diff_units():
     s1["i"]["ir_rule"] = {1, 3}
     assert g.snapshot_diff(s0, s1)
     assert g._snapshot([["n", "x", "1"]]) is None  # unknown kind
+    x0 = copy.deepcopy(s0)
+    x0["x"] = {("extension:plpgsql", "1.0"), ("grant:public.t", "{postgres=arwdDxt/postgres}")}
+    assert g.snapshot_diff(x0, x0) == []
+    for kind in ("trigger:public.t.tr", "rule:public.t.r", "policy:public.t.p", "type:public.e"):
+        x1 = copy.deepcopy(x0)
+        x1["x"].add((kind, ""))
+        assert g.snapshot_diff(x0, x1), kind
+    x1 = copy.deepcopy(x0)
+    x1["x"] = {
+        ("extension:plpgsql", "1.0"),
+        ("grant:public.t", "{postgres=r/postgres,=r/postgres}"),
+    }
+    assert any("grant" in d for d in g.snapshot_diff(x0, x1))  # changed grant
+    x1["x"] = {("extension:plpgsql", "1.0")}
+    assert g.snapshot_diff(x0, x1)  # removed grant
+
+
+class _Rec:
+    def __init__(self, out, rc=0):
+        self.out, self.rc, self.calls = out, rc, []
+
+    def run(self, argv, stdin=None, timeout=None):
+        self.calls.append((argv, stdin))
+        return g.RunResult(self.rc, self.out)
+
+
+def test_psql_framing_fails_closed(tmp_path):
+    def rd(out, fields=3):
+        sb = g._Sandbox(_Rec(out), 17, MOD, str(tmp_path))
+        return sb.psql("db_0123456789abcdef", "SELECT 1;\n", fields=fields), sb
+
+    rows, sb = rd("k0\x000\na|b\x00x\ny\x00z\x1ec\x00d\x00e\n")
+    assert rows == [["a|b", "x\ny", "z"], ["c", "d", "e"]]  # "|" and newline stay in-field
+    assert sb.r.calls[0][1].startswith(g._PSET)
+    assert rd("k0\x000\n")[0] == []
+    assert rd("k0\x000\na\x00b\n")[0] is None  # wrong field count
+    assert rd("k0\x000\na\x00b\x00c")[0] is None  # truncated framing
+    assert rd("k0|0\na|b|c\n")[0] is None  # old "|" framing refused
+    rows, sb = rd("k0\x001\na\x00b\x00c\n")
+    assert rows is None and sb.tainted
+
+
+def test_no_superuser_sql_after_module_code(tmp_path):
+    sb = g._Sandbox(_Rec(""), 17, MOD, str(tmp_path))
+    assert sb.admin_sql("postgres", "SELECT 1;\n").rc == 0
+    sb.n = 1  # an odoo container (module code) has run
+    with pytest.raises(g.GateError):
+        sb.admin_sql("postgres", "SELECT 1;\n")
+    src = Path(g.__file__).read_text()
+    assert src.count('"-U", PG_ADMIN, "-d", db') == 1  # admin psql only via admin_sql
 
 
 def test_role_spec_from_req2mod_not_module_files():
