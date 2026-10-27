@@ -1006,3 +1006,21 @@ def test_h12_owl_syntax_parses_and_safe_prefix_quiet(attr):
 def test_h12_owl_dynamic_call_low_server_medium():
     x = "<templates><t t-name='a'><t t-call='{{ tpl }}'/></t></templates>"
     assert ("qweb-dynamic-call", "low") in codes({"static/src/a.xml": x})
+
+
+# --- M3: URL-controlled sources graded HIGH in every HTML/code sink ----------------------
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "function f(x){document.write(x)} f(location.search)",
+        "new DOMParser().parseFromString(location.search, 'text/html')",
+        "const f=document.createElement('iframe'); f.srcdoc=location.hash",
+        "const h=location.hash; el.innerHTML=h",
+        "document.createRange().createContextualFragment(location.hash)",
+    ],
+)
+def test_m3_url_source_high(src):
+    got = codes(J(src))
+    assert ("js-dom-xss", "high") in got or ("js-flow-sink", "high") in got

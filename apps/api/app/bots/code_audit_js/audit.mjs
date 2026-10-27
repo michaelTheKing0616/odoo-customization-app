@@ -32,6 +32,7 @@ const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|
 // per-file: identifiers bound once to a constant string, and those holding document.cookie
 let CONSTS = new Map();
 let COOKIE_VARS = new Set();
+let URL_VARS = new Set(); // locals holding a URL-controlled value
 let DEPTH = 0;
 function lit(n) {
   if (!n) return null;
@@ -74,6 +75,7 @@ function readsUrl(n) {
   let hit = false;
   if (!n) return false;
   walk.full(n, (x) => {
+    if (x.type === "Identifier" && URL_VARS.has(x.name)) hit = true;
     if (x.type !== "MemberExpression") return;
     const p = x.computed ? lit(x.property) : x.property.name;
     const o = x.object.type === "Identifier" ? x.object.name : x.object.type === "MemberExpression" && !x.object.computed ? x.object.property.name : "";
@@ -148,6 +150,7 @@ function auditJs(text) {
   // variables that hold document.cookie, to a fixpoint
   CONSTS = new Map();
   COOKIE_VARS = new Set();
+  URL_VARS = new Set();
   const assigned = new Map();
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier") {
@@ -169,6 +172,7 @@ function auditJs(text) {
         if (s !== null) { CONSTS.set(id, s); changed = true; }
       }
       if (!COOKIE_VARS.has(id) && readsCookie(v)) { COOKIE_VARS.add(id); changed = true; }
+      if (!URL_VARS.has(id) && readsUrl(v)) { URL_VARS.add(id); changed = true; }
     });
   }
   // aliases: const e = eval; const { write } = document; const w = window; let f = fetch
@@ -243,6 +247,7 @@ function auditJs(text) {
   function loadSink(n, tag, val, prop) {
     if (!val) return;
     if (readsCookie(val)) { add("high", "js-cookie-leak", n, `${tag || "element"}.${prop} URL carries document.cookie.`); return; }
+    if (prop === "srcdoc" && readsUrl(val)) { add("high", "js-dom-xss", n, "srcdoc from a URL-controlled value: DOM XSS."); return; }
     if (prop === "srcdoc") { if (lit(val) === null) add("medium", "js-html-sink", n, "srcdoc set from non-constant HTML."); return; }
     if (!tag) return;
     const k = urlKind(val);
@@ -358,7 +363,7 @@ function auditJs(text) {
       }
       // M3: URL-controlled source into an HTML/code sink
       if ((["document.write", "document.writeln", "eval", "Function", "setTimeout", "setInterval"].includes(r) ||
-           ["insertAdjacentHTML", "createContextualFragment"].includes(last(r)) ||
+           ["insertAdjacentHTML", "createContextualFragment", "parseFromString"].includes(last(r)) ||
            (JQ_HTML.has(last(r)) && n.callee.type === "MemberExpression") || markupNames.has(r)) &&
           n.arguments.some(readsUrl)) {
         add("high", "js-dom-xss", n, `${last(r)}() of a URL-controlled value (location/referrer/window.name): DOM XSS.`);
@@ -587,9 +592,9 @@ function auditJs(text) {
         const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + owlOps(a1 || a2) + "}") + "`" : owlOps(m[3]);
         if (DEPTH < 2) {
           DEPTH++;
-          const saved = [CONSTS, COOKIE_VARS];
+          const saved = [CONSTS, COOKIE_VARS, URL_VARS];
           let r2;
-          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS] = saved; DEPTH--; }
+          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS] = saved; DEPTH--; }
           if (!r2.ok) add("medium", "owl-expr-unaudited", n, `${m[1]} expression does not parse: unaudited.`);
           else for (const f of r2.findings) if (f.sev === "high" || f.sev === "medium") add(f.sev, f.code, n, `${m[1]}: ${f.msg}`);
         }
@@ -678,7 +683,8 @@ function auditJs(text) {
       for (const [j, sv] of sm) {
         const a = x.arguments[j];
         if (a && lit(a) === null && a.type !== "ArrowFunctionExpression" && a.type !== "FunctionExpression") {
-          add(readsCookie(a) ? "high" : sv, "js-flow-sink", x,
+          // M3: graded by source; attacker-controlled (URL) or cookie arguments are HIGH
+          add(readsCookie(a) || readsUrl(a) ? "high" : sv, "js-flow-sink", x,
               `${name}() passes argument ${j + 1} to ${sv === "high" ? "code execution" : "an HTML/navigation sink"} (interprocedural).`);
           break;
         }
