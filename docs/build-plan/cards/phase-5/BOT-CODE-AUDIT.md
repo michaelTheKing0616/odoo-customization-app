@@ -86,14 +86,74 @@ Root-cause policy, not per-probe patches; each finding has the exact probe, >=2 
 - JS: id lists from empty-domain search/searchRead/orm.call/rpc payloads into unlink/write; javascript:/vbscript:/data:text/html sinks on unknown elements; OWL js-URL href/src and srcdoc.
 - View modifiers (invisible/readonly/required/column_invisible) parsed: unparsable MEDIUM, env/sudo/ORM HIGH. document.domain and code-shaped .po plural forms MEDIUM.
 
-## Remaining limits (CODE-AUDIT-7, honest)
-- Session keys imported from another module cannot be folded per file: MEDIUM review, not HIGH.
-- Taint through arbitrary helper calls is cut at the call (a helper that echoes a secret back is not followed); direct returns and make_response/render/dumps are.
-- `web` addon is too large for one audit (`source too large`, fails closed).
-- Deny-by-default stock HIGH (`sensitive-data-unapproved`, `sensitive-model-write`, `version-list`) unchanged in kind.
+## Remaining limits (CODE-AUDIT-7) - all closed in CODE-AUDIT-8
+- ~~Imported session keys only MEDIUM~~ closed: keys are resolved through own-module and installed-addon constants.
+- ~~Taint cut at helper calls~~ closed: module-wide helper-return summaries.
+- ~~`web` too large~~ closed: stock `web` is audited in full.
+- The deny-by-default stock HIGH counts are intended policy, not a limit: each such record needs a reviewed shape or human approval.
 
 ### CODE-AUDIT-7 verification (2026-10-27 WAT)
 - Stock HIGH/MEDIUM v17: mail 92/340, sale 57/163, crm 30/277, hr 40/243, website_sale 83/191, mrp 54/149, account 83/348, stock 112/179, portal 9/81, auth_signup 8/64, website 331/262. v19: mail 60/339, sale 47/162, crm 18/277, hr 27/241, website_sale 78/188, mrp 41/149, account 57/348, stock 81/179, portal 9/80, auth_signup 7/64, website 321/260. web-unaudited 0 everywhere; no new HIGH false-alarm class after the M5 root-cause fixes (session runtime keys, gif outbound secret, mrp/mail receiver models).
 - All `tests/*code_audit*.py`: 1060 passed forward, 1060 passed reverse.
 - gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
 - bl_08: 4 passed. Stale 97 ids (now5.txt): 95 passed, 1 skipped (b0_iso, needs PG 5433), 0 failed, 1 gone.
+
+## CODE-AUDIT-8 status (the three CODE-AUDIT-7 limits closed by design)
+Tests: `tests/test_nf_bot_code_audit_8.py` (29). Each change has the probe, at least 2 variants and a stock-shaped benign case.
+1. **Session keys across modules.** A key is resolved through module constants and from-imports (relative, absolute `odoo.addons.*`, re-exports in `__init__`, up to 4 hops). Lookup covers the audited module, then sibling addons in the installed inventory (bounded, one file each).
+   - Literal loop tuples are expanded.
+   - f-string, `%` and `.format` keys are reduced to a literal skeleton and matched against the identity keys. `website_{id}_layout_mode` can never be `uid`, so it stays silent.
+   - MEDIUM remains only when the key is built from runtime data, such as request args, a parameter, or a skeleton that could still spell an identity key. The finding message gives the reason. That case is unknowable statically.
+   - Stock: every runtime-key MEDIUM resolved. The HIGHs left are true identity writes: portal/auth_totp `session_token` and web login `uid`/`db`.
+2. **Secret taint through helper returns.** A module-wide fixpoint (bounded by `MAX_FLOW_ROUNDS`) runs over every non-test function and records (returns-secret, returns-param indexes).
+   - A call to a helper that returns a secret is a secret.
+   - A helper that returns its argument carries that argument's taint.
+   - Any other call consumes its arguments.
+   - This works across files and through multi-level chains.
+3. **Large addons.** The budget is now sized from measurements of all 630 stock addons: 40 MB of code, 3000 files, 4 MB per file.
+   - Stock reference points: largest module `web` 25.2 MB in 1841 files, largest file 2.7 MB. Only `web` was over the old cap.
+   - `web` audits in about 7 s with about 410 MB RSS.
+   - Past the caps the audit still fails closed (`source too large`, `file-unaudited` HIGH).
+   - Root causes fixed so that every `web` file is audited:
+     - Left-deep string `+` chains (emoji_data.js) are rebalanced iteratively in the helper. Pure string concatenation is associative, so the value is unchanged; there is no stack overflow.
+     - `.b64` files are strictly decoded. Font and image payloads are inert; anything else stays HIGH.
+     - RPC calls whose service and method are fixed literals (web database manager) are not open proxies. Caller-chosen dispatch is still HIGH.
+
+### CODE-AUDIT-8 verification (2026-10-27 WAT)
+- Stock HIGH/MEDIUM, v17:
+
+  | Module | HIGH/MEDIUM |
+  |---|---|
+  | mail | 92/340 |
+  | sale | 57/162 |
+  | crm | 30/277 |
+  | hr | 40/243 |
+  | website_sale | 83/187 |
+  | mrp | 54/149 |
+  | account | 83/348 |
+  | stock | 112/179 |
+  | **web** | **189/489** |
+  | portal | 9/81 |
+  | auth_signup | 8/63 |
+  | website | 331/261 |
+
+- Stock HIGH/MEDIUM, v19:
+
+  | Module | HIGH/MEDIUM |
+  |---|---|
+  | mail | 60/339 |
+  | sale | 47/161 |
+  | crm | 18/277 |
+  | hr | 27/241 |
+  | website_sale | 78/184 |
+  | mrp | 41/149 |
+  | account | 57/348 |
+  | stock | 81/179 |
+  | **web** | **187/489** |
+  | portal | 9/80 |
+  | auth_signup | 7/63 |
+  | website | 321/259 |
+
+- web-unaudited and file-unaudited are 0 in every module, including `web`.
+- All `tests/*code_audit*.py`: 1089 passed forward, 1089 passed reverse.
+- gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
