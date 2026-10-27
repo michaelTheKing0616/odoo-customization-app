@@ -25,6 +25,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from app.bots import code_audit_web as web
 from app.bots.versioncaps import caps
 
 VERSIONS = (17, 18, 19, 20)
@@ -134,9 +135,9 @@ def _safe_rel(name: str) -> str:
 
 def _is_asset(rel: str) -> bool:
     """Skip only non-code assets: any .py is audited wherever it lives, and so are XML
-    templates under static/ (OWL)."""
+    templates under static/ (OWL), JavaScript and stylesheets (code_audit_web)."""
     low = rel.lower()
-    if low.endswith(".py"):
+    if low.endswith(".py") or web.web_kind(rel):
         return False
     parts = rel.split("/")
     if "static" in parts[:-1] and low.endswith(".xml"):
@@ -271,6 +272,8 @@ class _Ctx:
         self.view_fields: list[tuple[str, str, str, int]] = []  # model, field, file, line
         self.module = ""
         self.prod_tests: set[str] = set()  # test-dir files production code imports or loads
+        # (key, file, first line, kind, text) for code_audit_web: files and inline <script>s
+        self.web: list[tuple[str, str, int, str, str]] = []
 
     def add(self, sev, code, file, line, msg, fix):
         tdir = file.startswith("tests/") or "/tests/" in file
@@ -1367,6 +1370,70 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
         )
 
 
+# ---------------------------------------------------------------- javascript / stylesheets
+
+_WEB_FIX = {
+    "js-eval": "Never build code from strings; call functions directly.",
+    "js-html-sink": "Render through OWL templates (t-out) or set textContent.",
+    "js-dynamic-sink": "Render through OWL templates (t-out) or set textContent.",
+    "js-markup": "Only wrap trusted, already-escaped HTML in markup().",
+    "js-external-request": "Call only this Odoo server; route integrations through Python.",
+    "js-dynamic-request": "Build request URLs from fixed routes on this server.",
+    "js-dynamic-import": "Import modules statically through the asset bundle.",
+    "js-service-worker": "Do not register service workers from a module.",
+    "js-token-storage": "Keep secrets out of browser storage and cookies.",
+    "js-cookie-write": "Let the server set cookies (HttpOnly).",
+    "js-sensitive-model": "Do security-sensitive writes in Python with access checks.",
+    "js-dynamic-model": "Call fixed model and method names.",
+    "js-dynamic-call": "Call fixed model and method names.",
+    "css-external-import": "Bundle the stylesheet with the module.",
+    "css-external-url": "Bundle fonts and images with the module.",
+    "css-dynamic-url": "Use fixed, bundled asset paths.",
+    "css-exfiltration": "Remove attribute-selector or variable-driven remote loads.",
+    "css-expression": "Remove script execution from stylesheets.",
+}
+
+
+def _audit_web(c: _Ctx) -> None:
+    """JS and stylesheets through the pinned parser helper; fail closed per file."""
+    todo = [w for w in c.web if w[3] != "unparseable"]
+    for _, file, line, _, _ in (w for w in c.web if w[3] == "unparseable"):
+        c.add(
+            HIGH,
+            "web-unaudited",
+            file,
+            line,
+            "Cannot parse, unaudited: no parser for this file type.",
+            "Ship plain JavaScript/CSS/SCSS/LESS, or review this file by hand.",
+        )
+    res = web.run([(key, kind, text) for key, _, _, kind, text in todo])
+    for key, file, line0, _, _ in todo:
+        r = res.get(key) if isinstance(res, dict) else None
+        if r is None or not r.get("ok"):
+            why = res if isinstance(res, str) else (r or {}).get("error", "no result")
+            c.add(
+                HIGH,
+                "web-unaudited",
+                file,
+                line0 + max(int((r or {}).get("line") or 1), 1) - 1,
+                f"Cannot parse, unaudited ({why}).",
+                "Fix the syntax, or install the pinned parser (npm ci --ignore-scripts in "
+                "app/bots/code_audit_js), then audit again.",
+            )
+            continue
+        for f in r.get("findings", []):
+            sev = f.get("sev") if f.get("sev") in _SEV_RANK else HIGH
+            code = str(f.get("code", "web-finding"))
+            c.add(
+                sev,
+                code,
+                file,
+                line0 + max(int(f.get("line") or 1), 1) - 1,
+                str(f.get("msg", ""))[:300],
+                _WEB_FIX.get(code, "Review this code by hand."),
+            )
+
+
 def _audit_csv(c: _Ctx, path: str, body: bytes) -> None:
     model = path.rsplit("/", 1)[-1][: -len(".csv")]  # Odoo loads a csv into the model it names
     if model in FOREIGN_GUARDED:
@@ -1777,6 +1844,10 @@ def audit(
                     _audit_xml(c, path, body)
                 elif path.endswith(".csv"):
                     _audit_csv(c, path, body)
+                elif web.web_kind(path):
+                    c.web.append(
+                        (path, path, 1, web.web_kind(path), body.decode("utf-8", "replace"))
+                    )
             except (RecursionError, MemoryError) as e:
                 c.add(
                     HIGH,
@@ -1786,6 +1857,7 @@ def audit(
                     f"File too deeply nested to audit ({type(e).__name__}).",
                     "Simplify the file; it is not a normal module source file.",
                 )
+        _audit_web(c)
         _module_checks(c, manifest)
         if (
             manifest

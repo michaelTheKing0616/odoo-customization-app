@@ -445,7 +445,7 @@ def test_r2_b3_tests_dir_capped_low_and_static_skipped():
     files = _tree(
         **{
             "tests/test_x.py": "def t(cr, c):\n    cr.execute('SELECT ' + c)\n",
-            "static/src/big.js": "x" * 3_000_000,
+            "static/img/big.png": "x" * 3_000_000,
             "static/src/x.xml": "<t t-name='a'><div attrs=\"{'a': 1}\"/></t>",
             "i18n/fr.po": "y" * 3_000_000,
         }
@@ -931,3 +931,107 @@ def test_foreign_row_in_guarded_csv_is_high():
     assert "foreign-record-edit" in codes(ca.audit(zbytes(t), version=17))
     t = dict(TREE, **{"data/ir.rule.csv": "id,name\nmy_rule,x\n"})
     assert "foreign-record-edit" not in codes(ca.audit(zbytes(t), version=17))
+
+
+# ---------------------------------------------------------------- BOT-CODE-AUDIT-2 web layer
+
+
+def _web(files, **kw):
+    return ca.audit(zbytes(_tree(**files)), version=17, **kw)
+
+
+def _codes(r, file=None):
+    return {f.code for f in r.findings if file is None or f.file == file}
+
+
+def test_web_oversized_js_fails_closed():
+    r = _web({"static/src/big.js": "x" * 3_000_000})
+    assert not r.ok and "big.js" in r.error
+
+
+@pytest.mark.parametrize(
+    "src,code,line",
+    [
+        ("const a = 1;\neval(x);\n", "js-eval", 2),
+        ("el.innerHTML = v;\n", "js-html-sink", 1),
+        ("fetch('https://evil.example/x');\n", "js-external-request", 1),
+        ("navigator.serviceWorker.register('/sw.js');\n", "js-service-worker", 1),
+        ("localStorage.setItem('token', t);\n", "js-token-storage", 1),
+    ],
+)
+def test_web_js_shapes(src, code, line):
+    r = _web({"static/src/a.js": src})
+    assert r.ok, r.error
+    hit = [f for f in r.findings if f.code == code]
+    assert hit and hit[0].line == line and hit[0].file == "static/src/a.js"
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "const a = 1;\nconsole.log(a);\n",
+        "el.textContent = v;\n",
+        "fetch('/web/dataset/call_kw');\n",
+        "localStorage.setItem('theme', 'dark');\n",
+    ],
+)
+def test_web_js_negative(src):
+    r = _web({"static/src/a.js": src})
+    assert r.ok and not _codes(r, "static/src/a.js"), r.findings
+
+
+@pytest.mark.parametrize(
+    "path,src,code",
+    [
+        ("static/src/a.css", "@import url(https://evil.example/x.css);\n", "css-external-import"),
+        ("static/src/a.scss", "a { b: url(https://cdn.example/f.woff); }\n", "css-external-url"),
+        ("static/src/a.less", "a { b: expression(alert(1)); }\n", "css-expression"),
+    ],
+)
+def test_web_css_shapes(path, src, code):
+    r = _web({path: src})
+    assert code in _codes(r, path), r.findings
+
+
+def test_web_css_negative():
+    r = _web({"static/src/a.scss": "$c: red;\na { color: $c; b: url('/m/static/x.png'); }\n"})
+    assert r.ok and not _codes(r, "static/src/a.scss")
+
+
+def test_web_parse_error_unaudited():
+    r = _web({"static/src/a.js": "function (\n"})
+    f = [f for f in r.findings if f.code == "web-unaudited"]
+    assert f and f[0].severity == "high" and "Cannot parse, unaudited" in f[0].message
+
+
+def test_web_no_parser_type_unaudited():
+    r = _web({"static/src/a.ts": "let a: number = 1;\n"})
+    assert "web-unaudited" in _codes(r, "static/src/a.ts")
+
+
+@pytest.mark.parametrize(
+    "attr,val",
+    [
+        ("HELPER_SHA256", "0" * 64),
+        ("LOCK_SHA256", "0" * 64),
+        ("MODULES_SHA256", "0" * 64),
+        ("NODE_MIN_MAJOR", 999),
+    ],
+)
+def test_web_helper_unavailable_fails_closed(monkeypatch, attr, val):
+    from app.bots import code_audit_web as w
+
+    monkeypatch.setattr(w, attr, val)
+    r = _web({"static/src/a.js": "const a = 1;\n", "static/src/b.css": "a{}\n"})
+    assert r.ok
+    for p in ("static/src/a.js", "static/src/b.css"):
+        hit = [f for f in r.findings if f.file == p]
+        assert [f.code for f in hit] == ["web-unaudited"] and hit[0].severity == "high"
+
+
+def test_web_node_missing_fails_closed(monkeypatch):
+    from app.bots import code_audit_web as w
+
+    monkeypatch.setattr(w, "_node", lambda: None)
+    r = _web({"static/src/a.js": "const a = 1;\n"})
+    assert "web-unaudited" in _codes(r, "static/src/a.js")

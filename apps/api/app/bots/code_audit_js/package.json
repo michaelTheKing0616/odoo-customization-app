@@ -1,0 +1,14 @@
+{
+  "name": "ingenium-code-audit-js",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Parser helper for BOT-CODE-AUDIT: JS (acorn) and CSS/SCSS/LESS (postcss). Read-only, stdin->stdout JSON.",
+  "type": "module",
+  "dependencies": {
+    "acorn": "8.19.0",
+    "acorn-walk": "8.3.5",
+    "postcss": "8.5.32",
+    "postcss-less": "6.0.0",
+    "postcss-scss": "4.0.9"
+  }
+}
