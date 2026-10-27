@@ -28,6 +28,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 from app.bots import code_audit_flow as flow
+from app.bots import code_audit_policy as policy
 from app.bots import code_audit_web as web
 from app.bots.versioncaps import caps
 
@@ -1396,11 +1397,10 @@ def _sensitive_writes(
         if n.func.attr not in _SENSITIVE_WRITES:
             continue
         model = model_of(n.func.value)
-        if model not in SENSITIVE_MODELS:
+        if not policy.python_write_needs_l3(model):
             continue
         why = elevated(n.func.value) or ("stored server code" if server_code else "")
-        cfg = model == "ir.config_parameter"
-        sev = (MEDIUM if cfg else HIGH) if why else (LOW if cfg else MEDIUM)
+        sev = HIGH  # deny by default: any write on the security core needs L3 approval
         c.add(
             sev,
             "sensitive-model-write",
@@ -2901,10 +2901,20 @@ _TRUE = ("1", "True", "true")
 
 
 def _record_checks(
-    c: _Ctx, path: str, line: int, model: str, vals: dict[str, str], csv_row: bool = False
+    c: _Ctx,
+    path: str,
+    line: int,
+    model: str,
+    vals: dict[str, str],
+    csv_row: bool = False,
+    rid: str = "",
 ) -> None:
-    """Data-record rules shared by XML <record> and CSV rows (column names: groups_id/id,
-    model_id:id, ...). vals maps field name -> text / eval / ref."""
+    """Data-record rules shared by XML <record>, CSV rows and JSON/YAML data (column names:
+    groups_id/id, model_id:id, ...). vals maps field name -> text / eval / ref.
+    Deny by default: policy.data_record_policy grades every record on the security core."""
+    policy.data_record_policy(
+        c.add, HIGH, path, line, model, ({"id": rid} if rid else {}) | vals, c.module
+    )
     v = {k.split("/")[0].split(":")[0]: (x or "").strip() for k, x in vals.items()}
     if model == "ir.actions.server" and re.search(r"\.unlink\s*\(", v.get("code", "")):
         c.add(
@@ -3271,10 +3281,14 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
             vals = {}
             for f in el.findall("field"):
                 if f.get("name"):
-                    vals[f.get("name")] = (
-                        f.get("eval") or f.get("ref") or f.get("search") or (f.text or "")
+                    inner = (f.text or "") + "".join(
+                        ET.tostring(ch, encoding="unicode") if isinstance(ch.tag, str) else ""
+                        for ch in f
                     )
-            _record_checks(c, path, xl.el(el), el.get("model"), vals)
+                    vals[f.get("name")] = (
+                        f.get("eval") or f.get("ref") or f.get("search") or inner
+                    )
+            _record_checks(c, path, xl.el(el), el.get("model"), vals, rid=el.get("id") or "")
             _fields_lines(
                 c, path, xl.el(el), vals.get("fields_lines", "") or vals.get("update_field_ids", "")
             )
@@ -4018,6 +4032,9 @@ def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
             "Remove raw HTML and javascript: links.",
         )
     if low.endswith(".json"):
+        _structured_data(
+            c, path, head.decode("utf-8", "replace"), truncated=len(head) >= HEAD_BYTES
+        )
         for m in re.finditer(
             r'"(imports|scopes|import|src|url|script|scripts)"\s*:\s*[\[{]?\s*"((?:https?:)?//[^"]+)"',
             text,
@@ -4047,11 +4064,51 @@ def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
                     )
 
 
+def _structured_data(c: _Ctx, path: str, text: str, truncated: bool = False) -> None:
+    """JSON/YAML data: every dict that names a sensitive model (or carries stored web
+    content / alias defaults) goes through the same deny-by-default record policy."""
+    low = path.lower()
+    try:
+        if low.endswith(".json"):
+            import json
+
+            obj = json.loads(text)
+        else:
+            import yaml
+
+            obj = list(yaml.safe_load_all(text))
+    except Exception as e:  # noqa: BLE001 - any parse failure is graded below
+        hint = re.search(
+            r"\b(?:" + "|".join(re.escape(m) for m in sorted(policy.SENSITIVE_MODELS)) + r")\b"
+            r"|custom_code_|alias_defaults",
+            text,
+        )
+        if hint or truncated:
+            c.add(
+                HIGH,
+                "data-unaudited",
+                path,
+                0,
+                f"Structured data names a sensitive model or field but cannot be parsed"
+                f" ({type(e).__name__}): unaudited.",
+                "Ship valid JSON/YAML, or move the records to XML/CSV data.",
+            )
+        return
+    for model, vals in policy.records_from_structured(obj):
+        if model == "__too_deep__":
+            c.add(HIGH, "data-unaudited", path, 0, "Structured data nests too deep to audit.",
+                  "Flatten the data.")  # fmt: skip
+            return
+        _record_checks(c, path, 0, model, vals, rid=vals.get("id", ""))
+
+
 def _audit_other_file(c: _Ctx, path: str, body: bytes, manifest: dict[str, Any] | None) -> None:
     """Every file that is neither audited code nor on the inert allow-list: graded, never
     silently skipped (fail closed)."""
     low = path.lower()
     name = low.rsplit("/", 1)[-1]
+    if low.endswith((".yml", ".yaml")):
+        _structured_data(c, path, body.decode("utf-8", "replace"))
     if low.endswith(".svgz"):
         import gzip
 

@@ -1,0 +1,134 @@
+"""BOT-CODE-AUDIT-6: REVIEW-CODE-AUDIT-5 (H1-H17, M1-M6, L1-L3, goal 5) and the
+deny-by-default sensitive data policy. Every item: a positive probe, variants, and a benign twin.
+"""
+
+# ruff: noqa: E501
+import pytest
+
+from tests.test_nf_bot_code_audit_5 import codes, py, pyt  # noqa: F401
+
+L3 = ("sensitive-data-unapproved", "high")
+
+
+def X(body):
+    return {"views/v.xml": "<odoo>\n" + body + "\n</odoo>\n"}
+
+
+def has(files, code, sev="high"):
+    return (code, sev) in codes(files)
+
+
+# ---------------------------------------------------------------- deny-by-default policy
+
+DENY_XML = {
+    "users": "<record id='u' model='res.users'><field name='login'>x</field></record>",
+    "config-param": "<record id='p' model='ir.config_parameter'><field name='key'>a.b</field><field name='value'>1</field></record>",
+    "mail-server": "<record id='m' model='ir.mail_server'><field name='name'>m</field><field name='smtp_host'>e.v</field></record>",
+    "fetchmail": "<record id='f' model='fetchmail.server'><field name='name'>f</field></record>",
+    "rewrite": "<record id='r' model='website.rewrite'><field name='name'>r</field><field name='url_from'>/web/login</field><field name='url_to'>https://e.v/login</field></record>",
+    "rewrite-local": "<record id='r' model='website.rewrite'><field name='name'>r</field><field name='url_from'>/a</field><field name='url_to'>/b</field></record>",
+    "website-code-head": "<record id='w' model='website'><field name='custom_code_head'>&lt;script src='https://e.v/x.js'&gt;&lt;/script&gt;</field></record>",
+    "website-code-footer": "<record id='w' model='website'><field name='custom_code_footer'>x</field></record>",
+    "access-public-write": "<record id='a' model='ir.model.access'><field name='name'>a</field><field name='model_id' ref='base.model_res_users'/><field name='group_id' ref='base.group_public'/><field name='perm_read' eval='1'/><field name='perm_write' eval='1'/></record>",
+    "access-own-public-write": "<record id='a' model='ir.model.access'><field name='name'>a</field><field name='model_id' ref='model_a_a'/><field name='group_id' ref='base.group_portal'/><field name='perm_write' eval='1'/></record>",
+    "rule-core": "<record id='r' model='ir.rule'><field name='name'>r</field><field name='model_id' ref='base.model_res_partner'/><field name='domain_force'>[('id','>',0)]</field></record>",
+    "group-admin-implied": "<record id='g' model='res.groups'><field name='name'>g</field><field name='implied_ids' eval=\"[(4,ref('base.group_system'))]\"/></record>",
+    "group-users": "<record id='g' model='res.groups'><field name='name'>g</field><field name='users' eval=\"[(4,ref('base.user_demo'))]\"/></record>",
+    "cron-unlink": "<record id='c' model='ir.cron'><field name='name'>c</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>model.search([]).unlink()</field></record>",
+    "cron-core-model": "<record id='c' model='ir.cron'><field name='name'>c</field><field name='model_id' ref='base.model_res_partner'/><field name='state'>code</field><field name='code'>model._gc()</field></record>",
+    "server-two-lines": "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>x = 1\nrecords.action_done()</field></record>",
+    "server-multi": "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>multi</field><field name='child_ids' eval=\"[(4,ref('base.action_x'))]\"/></record>",
+    "loop-write-core-field": "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>for rec in records:\n    rec['user_id'] = 1</field></record>",
+    "loop-dynamic-value": "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>for rec in records:\n    rec['x_a'] = env.user.id</field></record>",
+    "automation-foreign-action": "<record id='b' model='base.automation'><field name='name'>b</field><field name='model_id' ref='model_a_a'/><field name='trigger'>on_create</field><field name='action_server_ids' eval=\"[(4, ref('base.action_x'))]\"/></record>",
+    "automation": "<record id='b' model='base.automation'><field name='name'>b</field></record>",
+    "view-script": "<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>a.a</field><field name='arch' type='xml'><form><div><script>alert(1)</script></div></form></field></record>",
+    "view-onclick": "<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>a.a</field><field name='arch' type='xml'><form><div onclick='x()'/></form></field></record>",
+    "view-users-public": "<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>res.users</field><field name='inherit_id' ref='base.view_users_form'/><field name='arch' type='xml'><field name='groups_id' position='attributes'><attribute name='groups'>base.group_public</attribute></field></field></record>",
+    "act-url-js": "<record id='u' model='ir.actions.act_url'><field name='name'>u</field><field name='url'>javascript:alert(document.cookie)</field></record>",
+    "act-url-ext": "<record id='u' model='ir.actions.act_url'><field name='name'>u</field><field name='url'>https://e.v</field></record>",
+    "menu-js": "<record id='m' model='website.menu'><field name='name'>m</field><field name='url'>javascript:alert(1)</field></record>",
+    "asset-ext": "<record id='a' model='ir.asset'><field name='name'>a</field><field name='bundle'>web.assets_backend</field><field name='path'>https://e.v/x.js</field></record>",
+    "asset-foreign": "<record id='a' model='ir.asset'><field name='name'>a</field><field name='bundle'>web.assets_backend</field><field name='path'>web/static/x.js</field></record>",
+    "attachment-public": "<record id='a' model='ir.attachment'><field name='name'>a.txt</field><field name='public' eval='True'/><field name='raw'>x</field></record>",
+    "field-compute": "<record id='f' model='ir.model.fields'><field name='name'>x_a</field><field name='model_id' ref='model_a_a'/><field name='compute'>for r in self: r['x_a']=1</field></record>",
+    "alias-defaults-priv": "<record id='al' model='mail.alias'><field name='alias_name'>a</field><field name='alias_model_id' ref='base.model_res_users'/><field name='alias_defaults'>{'groups_id':[(4,ref('base.group_system'))]}</field></record>",
+    "alias-defaults-dynamic": "<record id='al' model='mail.alias'><field name='alias_name'>a</field><field name='alias_model_id' ref='model_a_a'/><field name='alias_defaults'>dict(share=False)</field></record>",
+    "default-groups": "<record id='d' model='ir.default'><field name='field_id' ref='base.field_res_users__groups_id'/><field name='json_value'>[1]</field></record>",
+    "default-priv-json": "<record id='d' model='ir.default'><field name='field_id' ref='field_a_a__x'/><field name='json_value'>{\"share\": false}</field></record>",
+    "report-env": "<record id='r' model='ir.actions.report'><field name='name'>r</field><field name='model'>a.a</field><field name='report_name'>x.r</field><field name='print_report_name'>env['res.users'].search([]).name</field></record>",
+    "foreign-group": "<record id='base.group_user' model='res.groups'><field name='name'>g</field></record>",
+    "template-script": "<record id='t' model='mail.template'><field name='name'>t</field><field name='model_id' ref='model_a_a'/><field name='body_html'>&lt;script&gt;x&lt;/script&gt;</field></record>",
+    "ir-model-data": "<record id='d' model='ir.model.data'><field name='name'>x</field><field name='module'>base</field></record>",
+    "module": "<record id='m' model='ir.module.module'><field name='name'>x</field></record>",
+    "server-lines": "<record id='l' model='ir.server.object.lines'><field name='col1' ref='base.field_res_users__active'/></record>",
+    "company-users": "<record id='co' model='res.company'><field name='name'>c</field><field name='user_ids' eval='[(4,1)]'/></record>",
+    "other-model-alias-defaults": "<record id='p' model='project.project'><field name='name'>p</field><field name='alias_defaults'>{'groups_id':[1]}</field></record>",
+}
+
+ALLOW_XML = {
+    "own-access": "<record id='a' model='ir.model.access'><field name='name'>a</field><field name='model_id' ref='model_a_a'/><field name='group_id' ref='base.group_user'/><field name='perm_read' eval='1'/><field name='perm_write' eval='1'/><field name='perm_create' eval='1'/><field name='perm_unlink' eval='1'/></record>",
+    "own-rule": "<record id='r' model='ir.rule'><field name='name'>r</field><field name='model_id' ref='model_a_a'/><field name='domain_force'>[('user_id','=',user.id)]</field></record>",
+    "own-group": "<record id='g' model='res.groups'><field name='name'>g</field><field name='implied_ids' eval=\"[(4,ref('base.group_user'))]\"/></record>",
+    "own-cron": "<record id='c' model='ir.cron'><field name='name'>c</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>model._cron_refresh()</field></record>",
+    "own-loop-server": "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' search=\"[('model','=','x_request')]\"/><field name='state'>code</field><field name='code'>for rec in records:\n    rec['x_state'] = 'done'\n    rec.message_post(body='ok')</field></record>",
+    "own-automation": "<record id='b' model='base.automation'><field name='name'>b</field><field name='model_id' ref='model_a_a'/><field name='trigger'>on_create</field><field name='action_server_ids' eval=\"[(4, ref('s'))]\"/></record>",
+    "own-server": "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>action = records.action_open()</field></record>",
+    "inert-view": "<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>a.a</field><field name='arch' type='xml'><form><field name='name'/></form></field></record>",
+    "rel-act-url": "<record id='u' model='ir.actions.act_url'><field name='name'>u</field><field name='url'>/web#action=1</field></record>",
+    "rel-menu": "<record id='m' model='website.menu'><field name='name'>m</field><field name='url'>/shop</field></record>",
+    "own-asset": "<record id='a' model='ir.asset'><field name='name'>a</field><field name='bundle'>web.assets_backend</field><field name='path'>x/static/src/a.js</field></record>",
+    "private-attachment": "<record id='a' model='ir.attachment'><field name='name'>a.txt</field><field name='raw'>hello</field></record>",
+    "plain-report": "<record id='r' model='ir.actions.report'><field name='name'>r</field><field name='model'>a.a</field><field name='report_name'>x.r</field><field name='print_report_name'>'Doc - %s' % (object.name)</field></record>",
+    "plain-template": "<record id='t' model='mail.template'><field name='name'>t</field><field name='model_id' ref='model_a_a'/><field name='body_html'>&lt;p&gt;Hi&lt;/p&gt;</field></record>",
+    "plain-alias": "<record id='al' model='mail.alias'><field name='alias_name'>a</field><field name='alias_model_id' ref='model_a_a'/><field name='alias_defaults'>{'priority':'1'}</field></record>",
+    "plain-default": "<record id='d' model='ir.default'><field name='field_id' ref='field_a_a__x'/><field name='json_value'>\"draft\"</field></record>",
+    "plain-field": "<record id='f' model='ir.model.fields'><field name='name'>x_a</field><field name='model_id' ref='model_a_a'/><field name='ttype'>char</field></record>",
+}
+
+
+@pytest.mark.parametrize("name", sorted(DENY_XML))
+def test_policy_denies_xml(name):
+    assert L3 in codes(X(DENY_XML[name])), name
+
+
+@pytest.mark.parametrize("name", sorted(ALLOW_XML))
+def test_policy_allows_narrow_shape(name):
+    assert L3 not in codes(X(ALLOW_XML[name])), name
+
+
+def test_policy_csv_same_as_xml():
+    deny = "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink\na,a,base.model_res_users,base.group_public,1,1,0,0\n"
+    allow = "id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink\na,a,model_a_a,base.group_user,1,1,1,1\n"
+    assert L3 in codes({"security/ir.model.access.csv": deny})
+    assert L3 not in codes({"security/ir.model.access.csv": allow})
+    assert L3 in codes({"data/ir.config_parameter.csv": "id,key,value\np,a.b,1\n"})
+
+
+def test_policy_json_and_yaml_data():
+    j = '{"records":[{"model":"ir.mail_server","id":"m","values":{"smtp_host":"e.v"}}]}'
+    assert L3 in codes({"data/d.json": j})
+    assert L3 in codes({"data/d.yaml": "- model: res.users\n  values:\n    login: x\n"})
+    assert L3 in codes({"data/d.yml": "site:\n  custom_code_head: '<script>x</script>'\n"})
+    assert L3 not in codes({"data/d.json": '{"model":"x.y","values":{"name":"a"}}'})
+    # unparsable data naming a sensitive model fails closed
+    assert ("data-unaudited", "high") in codes({"data/d.yaml": "model: res.users\n  : : bad: [\n"})
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "self.env['ir.config_parameter'].set_param('a','b')",
+        "self.env['res.groups'].create({'name':'g'})",
+        "self.env['ir.mail_server'].create({'smtp_host':'e.v'})",
+        "self.env['website.rewrite'].create({'url_from':'/web/login'})",
+        "self.env['ir.ui.view'].write({'arch':'x'})",
+        "m = self.env['ir.cron']\nm.create({'name':'c'})",
+    ],
+)
+def test_policy_python_writes_are_high(body):
+    assert ("sensitive-model-write", "high") in codes(py(body))
+
+
+def test_policy_python_reads_are_not_writes():
+    assert ("sensitive-model-write", "high") not in codes(py("self.env['ir.config_parameter'].get_param('a')"))

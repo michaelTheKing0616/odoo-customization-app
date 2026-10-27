@@ -360,7 +360,11 @@ NEG = [
 def test_reproducer_negative(name, run):
     got = run()
     # access-missing is the unrelated model-level ACL check for the probe model
-    assert not {c for c, s in got if s in ("high", "medium") and c != "access-missing"}, got
+    # H1-server-ok writes records with no model_id: deny-by-default (audit 6) needs L3 for it
+    l3 = {"sensitive-data-unapproved"} if name == "H1-server-ok" else set()
+    assert not {
+        c for c, s in got if s in ("high", "medium") and c != "access-missing" and c not in l3
+    }, got
 
 
 def test_stock_noise_negatives():
