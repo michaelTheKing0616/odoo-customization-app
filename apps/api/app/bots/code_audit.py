@@ -2309,10 +2309,57 @@ def _secret_flow(f: ast.AST, summ: dict[str, tuple[str, frozenset[int]]]):
         if isinstance(z, ast.Name) and id(z) not in carry
     }
 
+    fconsts = _str_consts(f)
+    rec_vars: set[str] = set()
+
+    def fold(x: ast.AST) -> str | None:
+        v = _fold_str(x)
+        if v is None and isinstance(x, ast.Name):
+            v = fconsts.get(x.id)
+        return v
+
+    def rec_like(x: ast.AST) -> bool:
+        """x evaluates to a recordset / read() rows, not to request input (kw['password'])."""
+        for z in ast.walk(x):
+            if isinstance(z, ast.Subscript) and _chain(z.value).endswith("env"):
+                return True
+            if isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr in (
+                "browse", "search", "sudo", "with_user", "with_context", "exists", "filtered", "read",
+                "search_read", "search_fetch", "with_company", "ensure_one", "_read_group", "web_read",
+            ):
+                return True
+            if isinstance(z, ast.Name) and (z.id in rec_vars or z.id in ("self", "user", "users", "record", "records", "rec", "recs")):
+                return True
+            if isinstance(z, ast.Attribute) and z.attr in ("user", "users"):
+                return True
+        return False
+
+    for st in ast.walk(f):
+        if isinstance(st, ast.Assign) and rec_like(st.value):
+            rec_vars |= {t.id for t in st.targets if isinstance(t, ast.Name)}
+    if params:  # a helper's record parameter (g(rec): return rec[...]) is a record when callers pass one
+        rec_vars |= set(params)
+
     def secret_read(e: ast.AST) -> str:
         for y in ast.walk(e):
             if isinstance(y, ast.Attribute) and _SECRET_ATTR.match(y.attr) and id(y) not in called:
                 return y.attr
+            # H1: rec['password'] / rec[fld] / browse(..)['x'] / rows[0]['password']
+            if isinstance(y, ast.Subscript) and not _chain(y.value).endswith("env") and (k := fold(y.slice)) and _SECRET_ATTR.match(k) and rec_like(y.value):
+                return k
+            if isinstance(y, ast.Call):
+                fn = y.func
+                # H2: getattr(rec, 'pass' + 'word'), operator.attrgetter('password')(rec), rec.get('password')
+                if isinstance(fn, ast.Name) and fn.id == "getattr" and len(y.args) >= 2 and (k := fold(y.args[1])) and _SECRET_ATTR.match(k):
+                    return k
+                if isinstance(fn, ast.Call) and _dotted(fn.func).endswith(("attrgetter", "itemgetter")) and any((k := fold(a)) and _SECRET_ATTR.match(k) for a in fn.args):
+                    return "attrgetter"
+                if isinstance(fn, ast.Attribute) and fn.attr in ("get", "mapped", "_read_format") and y.args and (k := fold(y.args[0])) and _SECRET_ATTR.match(k.split(".")[-1]) and rec_like(fn.value):
+                    return k
+                if isinstance(fn, ast.Attribute) and fn.attr in ("read", "search_read", "web_read", "_read_format", "export_data", "search_fetch") and any(
+                    isinstance(z, (ast.List, ast.Tuple)) and any((k := fold(el)) and _SECRET_ATTR.match(k.split(".")[-1]) for el in z.elts) for a in [*y.args, *[kk.value for kk in y.keywords]] for z in ast.walk(a)
+                ):
+                    return "read(secret field)"
             if isinstance(y, ast.Call):
                 nm = _callee_name(y)
                 if nm in summ and summ[nm][0]:
@@ -2384,6 +2431,36 @@ def _secret_summaries(c: _Ctx) -> dict[str, tuple[str, frozenset[int]]]:
             break
     c._secret_summ = summ
     return summ
+
+
+_ATT_CONTENT = frozenset({"raw", "datas", "db_datas", "index_content"})
+_ATT_GUARDS = ("access_token", "_document_check_access", "check_access", "_check_access", "consteq", "_can_bypass_rights", "_get_stream")
+
+
+def _attachment_idor(f: ast.AST) -> int:
+    """Line of an ir.attachment content read on a sudo record whose id comes from the request."""
+    src_names = {a.arg for a in ast.walk(f.args) if isinstance(a, ast.arg) and a.arg not in ("self", "cls")} if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) else set()
+    if any((isinstance(n, ast.Name) and n.id in _ATT_GUARDS) or (isinstance(n, ast.Attribute) and n.attr in _ATT_GUARDS) or (isinstance(n, ast.Constant) and n.value in _ATT_GUARDS) for n in ast.walk(f)):
+        return 0
+
+    def user_id(x: ast.AST) -> bool:
+        return any((isinstance(z, ast.Name) and z.id in src_names) or (isinstance(z, ast.Attribute) and z.attr in ("params", "jsonrequest", "httprequest", "get_json_data")) for z in ast.walk(x))
+
+    def att_rec(x: ast.AST) -> bool:
+        txt = ast.dump(x)
+        if "'ir.attachment'" not in txt or "attr='sudo'" not in txt:
+            return False
+        return any(isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr in ("browse", "search", "search_read", "read") and user_id(z) for z in ast.walk(x))
+
+    att_vars = {t.id for st in ast.walk(f) if isinstance(st, ast.Assign) and att_rec(st.value) for t in st.targets if isinstance(t, ast.Name)}
+    for n in ast.walk(f):
+        if isinstance(n, ast.Attribute) and n.attr in _ATT_CONTENT and (att_rec(n.value) or (isinstance(n.value, ast.Name) and n.value.id in att_vars)):
+            return n.lineno
+        if isinstance(n, ast.Subscript) and _fold_str(n.slice) in _ATT_CONTENT and (att_rec(n.value) or (isinstance(n.value, ast.Name) and n.value.id in att_vars)):
+            return n.lineno
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("read", "search_read") and att_rec(n) and any(_fold_str(e) in _ATT_CONTENT for a in [*n.args, *[k.value for k in n.keywords]] for e in ast.walk(a)):
+            return n.lineno
+    return 0
 
 
 def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
@@ -2518,6 +2595,13 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                           f"auth='{auth}' route {f.name}() reads {w}.",
                           "Do not read API keys/TOTP devices in controllers.")  # fmt: skip
                     break
+        if public:  # M4: sudo ir.attachment content for a caller-chosen id (IDOR)
+            line = _attachment_idor(f)
+            if line:
+                c.add(MEDIUM, "route-attachment-idor", path, line,
+                      f"auth='{auth}' route {f.name}() returns ir.attachment content for a caller-supplied id under sudo"
+                      " with no access-token / ownership check: any visitor can download any attachment.",
+                      "Drop sudo(), or verify access_token / res_model+res_id ownership (portal _document_check_access) first.")  # fmt: skip
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
