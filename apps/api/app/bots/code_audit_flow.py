@@ -300,11 +300,21 @@ def _own_nodes(scope: ast.AST) -> Iterator[ast.AST]:
 
 
 class Taint:
-    def __init__(self, scope: ast.AST, text_fields: frozenset[str], res: Resolver):
+    def __init__(
+        self,
+        scope: ast.AST,
+        text_fields: frozenset[str],
+        res: Resolver,
+        passthrough: frozenset[str] = frozenset(),
+        seed_params: bool = False,
+    ):
         self.fields = text_fields
         self.res = res
+        self.passthrough = passthrough  # same-file functions whose result carries an argument
         self.src: dict[str, tuple[str, int]] = {}  # var -> (source description, line)
-        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_route(scope):
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+            seed_params or _is_route(scope)
+        ):
             a = scope.args
             for arg in [*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg]:
                 if arg is not None and arg.arg not in ("self", "cls"):
@@ -343,7 +353,7 @@ class Taint:
             # method, a renderer) returns new data (see BOT-CODE-AUDIT-2.md, limitations)
             fn = n.func
             name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
-            if name not in _STR_PASS:
+            if name not in _STR_PASS and name not in self.passthrough:
                 return None
             if isinstance(fn, ast.Attribute):
                 r = self.source(fn.value)
@@ -385,17 +395,70 @@ def _markup_call(res: Resolver, call: ast.Call) -> bool:
     return d.rsplit(".", 1)[-1] == "Markup"
 
 
+def passthrough_functions(tree: ast.AST, res: Resolver) -> frozenset[str]:
+    """Functions in this file that return (a transform of) one of their parameters, so a
+    call with tainted arguments yields tainted data: def wrap(x): return '<b>' + x."""
+    fns = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    found: frozenset[str] = frozenset()
+    for _ in range(4):
+        new = set(found)
+        for fn in fns:
+            if fn.name in new:
+                continue
+            t = Taint(fn, frozenset(), res, found, seed_params=True)
+            if any(
+                isinstance(r, ast.Return) and r.value is not None and t.source(r.value)
+                for r in _own_nodes(fn)
+            ):
+                new.add(fn.name)
+        if new == found:
+            break
+        found = frozenset(new)
+    return found
+
+
 def taint_hits(tree: ast.AST, text_fields: frozenset[str], res: Resolver) -> list[Hit]:
     out: list[Hit] = []
+    passthrough = passthrough_functions(tree, res)
     for scope in _func_scopes(tree):
         if isinstance(scope, ast.Lambda):
             continue
-        t = Taint(scope, text_fields, res)
+        t = Taint(scope, text_fields, res, passthrough)
         for n in _own_nodes(scope):
+            if isinstance(n, ast.Subscript) and chain(n.value).endswith("env"):
+                s = t.source(n.slice)
+                if s:
+                    out.append(
+                        Hit(
+                            MEDIUM,
+                            "tainted-model",
+                            n.lineno,
+                            f"Model name comes from {s[0]} (line {s[1]}).",
+                            "Accept only model names from a fixed allow-list.",
+                        )
+                    )
             if not isinstance(n, ast.Call):
                 continue
             name = chain(n.func).rsplit(".", 1)[-1] if chain(n.func) else ""
             a0 = n.args[0] if n.args else None
+            fc = n.func
+            if (
+                isinstance(fc, ast.Call)
+                and res.expr(fc.func) in ("getattr", "builtins.getattr")
+                and len(fc.args) >= 2
+            ):
+                s = t.source(fc.args[1])
+                if s:
+                    out.append(
+                        Hit(
+                            HIGH,
+                            "tainted-dispatch",
+                            n.lineno,
+                            f"Calls a method named by {s[0]} (line {s[1]}): any public or"
+                            " private method can be reached.",
+                            "Map allowed names to methods explicitly (a dict of allowed actions).",
+                        )
+                    )
             if _markup_call(res, n) and a0 is not None and not isinstance(a0, ast.Constant):
                 s = t.source(a0)
                 if s:

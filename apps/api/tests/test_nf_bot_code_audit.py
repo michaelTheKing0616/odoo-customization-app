@@ -1341,3 +1341,52 @@ def test_xml_inline_script_with_qweb_output_parses_and_keeps_lines():
 def test_web_token_storage_precision(src, hit):
     r = _web({"static/src/a.js": src})
     assert ("js-token-storage" in _codes(r, "static/src/a.js")) is hit
+
+
+@pytest.mark.parametrize(
+    "body,code,line",
+    [
+        (
+            "def wrap(x):\n    return '<b>' + x + '</b>'\n"
+            "@http.route('/a')\ndef a(self, q):\n    return Markup(wrap(q))\n",
+            "tainted-markup",
+            8,
+        ),
+        (
+            "def w1(x):\n    return x.strip()\ndef w2(y):\n    return w1(y)\n"
+            "@http.route('/a')\ndef a(self, q):\n    self.env.cr.execute(w2(q))\n",
+            "tainted-sql",
+            10,
+        ),
+        (
+            "@http.route('/a')\ndef a(self, action, rid):\n"
+            "    rec = request.env['res.partner'].browse(int(rid))\n"
+            "    return getattr(rec, action)()\n",
+            "tainted-dispatch",
+            7,
+        ),
+        (
+            "@http.route('/a')\ndef a(self, model):\n    return request.env[model].search([])\n",
+            "tainted-model",
+            6,
+        ),
+    ],
+)
+def test_flow_taint_interprocedural_and_dispatch(body, code, line):
+    got = _py(CTRL + body, "controllers/main.py")
+    assert any(g[0] == code and g[1] == line for g in got), got
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def fixed(x):\n    return 'SELECT 1'\n"
+        "@http.route('/a')\ndef a(self, q):\n    self.env.cr.execute(fixed(q))\n",
+        "@http.route('/a')\ndef a(self, rid):\n"
+        "    return getattr(request.env['x'].browse(int(rid)), 'action_view')()\n",
+        "@http.route('/a')\ndef a(self, q):\n    return request.env['res.partner'].search([])\n",
+    ],
+)
+def test_flow_taint_interprocedural_negative(body):
+    got = _py(CTRL + body, "controllers/main.py")
+    assert not [g for g in got if g[0].startswith("tainted")], got
