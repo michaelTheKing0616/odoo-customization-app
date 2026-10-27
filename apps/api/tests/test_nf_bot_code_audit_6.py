@@ -525,3 +525,23 @@ def test_mrp_stock_file_converges():
     from pathlib import Path
     src = (Path(__file__).parent / "fixtures" / "mrp17_mo_overview_line.js").read_text()
     assert ("js-flow-incomplete", "high") not in codes({"static/src/a.js": src})
+
+
+# ---------------------------------------------------------------- probes x-view-attrs-expr / x-view-field-context
+def _view(attrs):
+    return X(f"<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>a.a</field><field name='arch' type='xml'><form><field name='name' {attrs}/></form></field></record>")
+
+
+@pytest.mark.parametrize("a", ["invisible=\"__import__('os')\"", "readonly=\"().__class__\"", "required=\"eval('1')\"", "column_invisible=\"open('/etc/passwd')\""])
+def test_probe_view_attrs_expr(a):
+    assert has(_view(a), "unsafe-expression")
+
+
+@pytest.mark.parametrize("ctx", ["{'default_groups_id':[(4,ref('base.group_system'))]}", "{'default_share': False}", "{'default_user_ids': [(4, uid)]}"])
+def test_probe_view_field_context(ctx):
+    assert has(_view(f'context="{ctx}"'), "context-privilege-default")
+
+
+def test_probe_view_plain_ok():
+    c = codes(_view("invisible=\"state == 'done'\" context=\"{'default_name': 'x', 'active_test': False}\""))
+    assert not {k for k, s in c if s == "high"}, c

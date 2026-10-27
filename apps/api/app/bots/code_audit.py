@@ -3420,7 +3420,14 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                 "t-att",
                 "t-esc",
                 "t-out",
-            ) and _DANGER_PY.search(val):
+                "invisible",
+                "readonly",
+                "required",
+                "column_invisible",
+                "options",
+                "attrs",
+                "states",
+            ) and (_DANGER_PY.search(val) or re.search(r"__\w+__", val)):
                 c.add(
                     HIGH,
                     "unsafe-expression",
@@ -3429,6 +3436,22 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     f"Expression in {a} reaches Python internals or sudo.",
                     "Use only field names and literals in domains, contexts and evals.",
                 )
+            if a == "context" and el.tag != "record":
+                pk = re.search(
+                    r"""['"]default_(groups_id|group_ids|implied_ids|share|password|login|company_ids|"""
+                    r"""sel_groups_\w+|in_group_\w+|user_ids|users)['"]\s*:""",
+                    val,
+                )
+                if pk:
+                    c.add(
+                        HIGH,
+                        "context-privilege-default",
+                        path,
+                        xl.el(el, a),
+                        f"context sets default_{pk.group(1)}: records created from this view get"
+                        " privilege fields (used server-side by create()).",
+                        "Do not default security fields from a view context.",
+                    )
         if el.tag == "record" and el.get("model"):
             vals = {}
             eval_code = False
