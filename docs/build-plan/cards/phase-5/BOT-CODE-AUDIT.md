@@ -96,3 +96,4 @@ Root-cause policy, not per-probe patches; each finding has the exact probe, >=2 
 - Stock HIGH/MEDIUM v17: mail 92/340, sale 57/163, crm 30/277, hr 40/243, website_sale 83/191, mrp 54/149, account 83/348, stock 112/179, portal 9/81, auth_signup 8/64, website 331/262. v19: mail 60/339, sale 47/162, crm 18/277, hr 27/241, website_sale 78/188, mrp 41/149, account 57/348, stock 81/179, portal 9/80, auth_signup 7/64, website 321/260. web-unaudited 0 everywhere; no new HIGH false-alarm class after the M5 root-cause fixes (session runtime keys, gif outbound secret, mrp/mail receiver models).
 - All `tests/*code_audit*.py`: 1060 passed forward, 1060 passed reverse.
 - gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
+- bl_08: 4 passed. Stale 97 ids (now5.txt): 95 passed, 1 skipped (b0_iso, needs PG 5433), 0 failed, 1 gone.
