@@ -596,19 +596,28 @@ def test_rpc_copy_execute_kw_pinned_to_guarded_wrapper() -> None:
 
 
 BEFORE_IMAGE = API / "app" / "bots" / "before_image.py"
-_RPC_WRITES = frozenset({"write", "create", "unlink"})
+_RPC_WRITES = frozenset(
+    {"write", "create", "unlink", "execute", "set_values", "button_immediate_install"}
+)
+# Methods that write when called directly on a record/proxy, e.g. wiz.set_values().
+_RPC_WRITE_ATTRS = frozenset({"execute_kw", "set_values", "button_immediate_install"})
 
 
 def rpc_write_calls(src: str) -> list[int]:
-    """Lines of Odoo RPC writes: execute_kw, or a call passing write/create/unlink as the method
-    (2nd positional or method=), i.e. rpc(model, "write", ...). Path.unlink() is not RPC."""
+    """Lines of Odoo RPC writes: execute_kw / set_values / button_immediate_install called as a
+    method; a call passing a write method name (write, create, unlink, execute, set_values,
+    button_immediate_install) as the 2nd positional or method=, i.e. rpc(model, "write", ...);
+    or XML-RPC object.execute(db, uid, pw, model, method, ...) with a write method 5th.
+    Path.unlink() and cursor.execute(sql) are not RPC."""
     out = []
     for n in ast.walk(ast.parse(src)):
         if not isinstance(n, ast.Call):
             continue
         attr = n.func.attr if isinstance(n.func, ast.Attribute) else ""
         args = [*n.args[1:2], *(k.value for k in n.keywords if k.arg == "method")]
-        if attr == "execute_kw" or any(
+        if attr == "execute" and len(n.args) >= 5:
+            args.append(n.args[4])
+        if attr in _RPC_WRITE_ATTRS or any(
             isinstance(a, ast.Constant) and a.value in _RPC_WRITES for a in args
         ):
             out.append(n.lineno)
@@ -638,6 +647,40 @@ def test_rpc_write_detector_regression(tmp_path) -> None:
     finally:
         bad.unlink()
     assert rpc_write_calls((API / "app" / "bots" / "snapshot.py").read_text()) == []
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "rpc('res.config.settings', 'execute', [[7]])",
+        "rpc('res.config.settings', 'set_values', [[7]])",
+        "rpc('ir.module.module', 'button_immediate_install', [[3]])",
+        "c(model=m, method='execute', args=[[1]])",
+        "c(model=m, method='button_immediate_install', args=[[1]])",
+        "proxy.execute(db, uid, pw, 'res.partner', 'write', [1], {})",
+        "proxy.execute(db, uid, pw, 'ir.module.module', 'button_immediate_install', [3])",
+        "wiz.set_values()",
+        "mod.button_immediate_install()",
+        "x.execute_kw(db, 1, 'pw', 'm', 'search', [])",
+    ],
+)
+def test_rpc_write_detector_catches_each_write_shape(src) -> None:
+    assert rpc_write_calls(src) == [1], src
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "cur.execute('select 1')",
+        "conn.execute(stmt, params)",
+        "proxy.execute(db, uid, pw, 'res.partner', 'read', [1])",
+        "rpc('res.partner', 'read', [[1]])",
+        "c(model=m, method='search_read', args=[[]])",
+        "Path('x').unlink()",
+    ],
+)
+def test_rpc_write_detector_ignores_reads_and_sql(src) -> None:
+    assert rpc_write_calls(src) == [], src
 
 
 def test_before_image_writes_pinned_behind_gate_and_kill_switch() -> None:
