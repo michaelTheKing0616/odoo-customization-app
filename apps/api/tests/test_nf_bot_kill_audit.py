@@ -597,9 +597,10 @@ def test_rpc_copy_execute_kw_pinned_to_guarded_wrapper() -> None:
 
 BEFORE_IMAGE = API / "app" / "bots" / "before_image.py"
 # Allow-list (round 9): an RPC-shaped call passes only with a LITERAL method from this set;
-# any other name, or a method held in a variable, is flagged. Limit: "RPC-shaped" is decided by
-# shape and callee name (below), so an RPC client bound to an unlisted name and called with a
-# non-model first argument is not seen; the exempt files are pinned separately.
+# any other name, or a method held in a variable, is flagged. RPC clients are also found by
+# binding (import of an RPC library, construction of a client, transitively re-bound), by call
+# shape ("model.name", "method", ...) under any callee, by RPC endpoint/payload literals and by
+# HTTP sends whose URL is not a literal; the exempt files are pinned separately.
 _RPC_READS = frozenset(
     {
         "read",
@@ -646,12 +647,38 @@ _RPC_WRITE_ATTRS = frozenset(
 )
 
 
+_METHOD_RE = re.compile(r"_?[a-z][a-z0-9_]*")
+_MODEL_RE = re.compile(r"[a-z][a-z0-9_]*(\.[a-z0-9_]+)+")
+
+
 def _is_read(a: ast.AST) -> bool:
     return isinstance(a, ast.Constant) and a.value in _RPC_READS
 
 
-def _guarded_names(fn: ast.AST) -> set[str]:
-    """Names a function refuses unless allow-listed: `if v not in SET: raise ...`."""
+def _const_set(node: ast.AST | None, consts: dict[str, ast.AST]) -> set | None:
+    """The string members of a literal set/list/tuple/frozenset(...) (or a module-level name
+    bound to one); None when not statically known."""
+    if isinstance(node, ast.Name):
+        node = consts.get(node.id)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in ("frozenset", "set", "tuple")
+        and len(node.args) == 1
+    ):
+        node = node.args[0]
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        a, b = _const_set(node.left, consts), _const_set(node.right, consts)
+        return None if a is None or b is None else a | b
+    if isinstance(node, (ast.Set, ast.List, ast.Tuple)):
+        vals = [e.value for e in node.elts if isinstance(e, ast.Constant)]
+        return set(vals) if len(vals) == len(node.elts) else None
+    return None
+
+
+def _guarded_names(fn: ast.AST, consts: dict[str, ast.AST] | None = None) -> set[str]:
+    """Names a function refuses unless allow-listed: `if v not in SET: raise ...`, where SET
+    is statically known and holds read methods only (a set naming any write is no guard)."""
     out = set()
     for n in ast.walk(fn):
         t = n.test if isinstance(n, ast.If) else None
@@ -662,8 +689,74 @@ def _guarded_names(fn: ast.AST) -> set[str]:
             and n.body
             and isinstance(n.body[0], ast.Raise)
         ):
-            out.add(t.left.id)
+            members = _const_set(t.comparators[0], consts or {})
+            if members is not None and members <= _RPC_READS:
+                out.add(t.left.id)
     return out
+
+
+# modules whose import or construction makes an RPC client, under whatever name it is bound
+_RPC_MODULES = ("xmlrpc", "odoorpc", "jsonrpc", "jsonrpclib", "odoo_rpc", "odoolib", "erppeek")
+_RPC_CTORS = frozenset({"ServerProxy", "ODOO", "Client", "OdooClient", "Connection"})
+_RPC_URL_MARKS = ("/jsonrpc", "/xmlrpc", "/web/dataset/call", "/json/2/", "execute_kw", "call_kw")
+_HTTP_LIBS = frozenset({"requests", "httpx", "urllib", "urllib3", "http", "aiohttp"})
+_HTTP_SENDS = frozenset({"post", "put", "patch", "request", "urlopen", "Request", "send"})
+
+
+def _http_send(n: ast.Call, http: set[str]) -> bool:
+    """requests/httpx/urllib send (post/put/patch/request/urlopen) whose URL is not a literal
+    free of RPC paths: the endpoint is unknown, so it may be /jsonrpc or /xmlrpc."""
+    f = n.func
+    if not (isinstance(f, ast.Attribute) and f.attr in _HTTP_SENDS and _rooted_in(f, http)):
+        return False
+    url = n.args[0] if n.args else next((k.value for k in n.keywords if k.arg == "url"), None)
+    if f.attr == "request" and len(n.args) >= 2:
+        url = n.args[1]
+    return not (isinstance(url, ast.Constant) and isinstance(url.value, str))
+
+
+def _client_names(tree: ast.AST) -> set[str]:
+    """Names bound to an RPC client: from an RPC module import, or assigned the result of an
+    RPC client constructor (ServerProxy(...), odoorpc.ODOO(...), ...), transitively."""
+    names: set[str] = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in _RPC_MODULES:
+            names |= {a.asname or a.name for a in n.names}
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name.split(".")[0] in _RPC_MODULES:
+                    names.add((a.asname or a.name).split(".")[0])
+    changed = True
+    while changed:
+        changed = False
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None:
+                v = n.value
+                base = v.func if isinstance(v, ast.Call) else v
+                while isinstance(base, (ast.Attribute, ast.Call)):
+                    if isinstance(base, ast.Attribute) and base.attr in _RPC_CTORS:
+                        break
+                    base = base.value if isinstance(base, ast.Attribute) else base.func
+                hit = (isinstance(base, ast.Name) and base.id in names | _RPC_CTORS) or (
+                    isinstance(base, ast.Attribute) and base.attr in _RPC_CTORS
+                )
+                if not hit:
+                    continue
+                tgts = n.targets if isinstance(n, ast.Assign) else [n.target]
+                for t in tgts:
+                    key = t.id if isinstance(t, ast.Name) else getattr(t, "attr", None)
+                    if key and key not in names:
+                        names.add(key)
+                        changed = True
+    return names
+
+
+def _rooted_in(f: ast.AST, names: set[str]) -> bool:
+    while isinstance(f, (ast.Attribute, ast.Call, ast.Subscript)):
+        if isinstance(f, ast.Attribute) and f.attr in names:
+            return True
+        f = f.func if isinstance(f, ast.Call) else f.value
+    return isinstance(f, ast.Name) and f.id in names
 
 
 def _is_gate_call(f: ast.AST) -> bool:
@@ -690,16 +783,54 @@ def rpc_write_calls(src: str, passthrough: frozenset[str] = frozenset()) -> list
     (pinned per file by the caller). x.gate.call(...) is the guarded path and not flagged.
     Path.unlink(), cursor.execute(sql) and file writes are not RPC-shaped."""
     tree = ast.parse(src)
+    consts = {
+        t.id: n.value
+        for n in getattr(tree, "body", [])
+        if isinstance(n, ast.Assign)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
+    clients = _client_names(tree)
+    # plain record classes of this file (dataclass, no methods): constructing one is data
+    records = {
+        c.name
+        for c in ast.walk(tree)
+        if isinstance(c, ast.ClassDef)
+        and any("dataclass" in ast.unparse(d) for d in c.decorator_list)
+        and not any(isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef)) for b in c.body)
+    }
+    http = set(_HTTP_LIBS)
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            for a in n.names:
+                root = ((n.module or "") if isinstance(n, ast.ImportFrom) else a.name).split(".")[0]
+                if root in _HTTP_LIBS:
+                    http.add((a.asname or a.name).split(".")[0])
+    for _ in range(3):  # sessions/clients bound from an HTTP library: s = requests.Session()
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call):
+                if _rooted_in(n.value.func, http):
+                    http |= {t.id for t in n.targets if isinstance(t, ast.Name)}
+                    http |= {t.attr for t in n.targets if isinstance(t, ast.Attribute)}
     ctx: dict[int, tuple[str, set[str]]] = {}
     for fn in ast.walk(tree):
         if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            g = _guarded_names(fn)
+            g = _guarded_names(fn, consts)
             for n in ast.walk(fn):
                 ctx[id(n)] = (fn.name, g)  # innermost wins: inner defs are walked later
     out = set()
     for n in ast.walk(tree):
-        if isinstance(n, ast.Constant) and n.value in ("execute_kw", "call_kw"):
-            out.add(n.lineno)
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            mods = [n.module or ""] if isinstance(n, ast.ImportFrom) else [a.name for a in n.names]
+            if any(m.split(".")[0] in _RPC_MODULES for m in mods):
+                out.add(n.lineno)  # an RPC client library, whatever it is bound to
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            if any(k in n.value for k in _RPC_URL_MARKS):
+                out.add(n.lineno)  # RPC endpoint, e.g. requests.post(url + "/jsonrpc")
+        if isinstance(n, ast.Dict) and any(
+            isinstance(k, ast.Constant) and k.value == "jsonrpc" for k in n.keys
+        ):
+            out.add(n.lineno)  # a JSON-RPC envelope {"jsonrpc": "2.0", ...}
         if not isinstance(n, ast.Call):
             continue
         f = n.func
@@ -715,6 +846,12 @@ def rpc_write_calls(src: str, passthrough: frozenset[str] = frozenset()) -> list
             continue
         if _is_gate_call(f):
             continue
+        if _http_send(n, http):
+            out.add(n.lineno)
+            continue
+        if name in _RPC_CTORS or (clients and _rooted_in(f, clients)):
+            out.add(n.lineno)  # constructing or calling an RPC client: by name or binding
+            continue
         second = n.args[1] if len(n.args) >= 2 else None
         if isinstance(second, ast.Constant) and second.value in _RPC_WRITES:
             out.add(n.lineno)
@@ -724,6 +861,16 @@ def rpc_write_calls(src: str, passthrough: frozenset[str] = frozenset()) -> list
             methods.append(n.args[4])
         elif second is not None and name in _RPC_CALLEES:
             methods.append(second)
+        elif (
+            isinstance(second, ast.Constant)
+            and isinstance(second.value, str)
+            and _METHOD_RE.fullmatch(second.value)
+            and name not in records
+            and isinstance(n.args[0], ast.Constant)
+            and isinstance(n.args[0].value, str)
+            and _MODEL_RE.fullmatch(n.args[0].value)
+        ):
+            methods.append(second)  # (model, method, ...) call shape, under any callee name
         fname, guarded = ctx.get(id(n), ("", set()))
         for m in methods:
             if _is_read(m):
@@ -797,21 +944,38 @@ def test_read_passthroughs_route_to_read_only_wrappers() -> None:
         "f = getattr(proxy, 'execute_kw')",
         "getattr(rec, 'unlink')()",
         "x.call_kw(m, 'read', [])",
+        "import xmlrpc.client as xc",
+        "from odoorpc import ODOO as O",
+        "p = ServerProxy(u)\nq = p\nq.anything(1, 2)",
+        "import odoorpc\nc = odoorpc.ODOO('h')\nc.env",
+        "lookup('res.partner', 'archive_all', [[1]])",  # any callee, (model, method) shape
+        "requests.post(base + '/jsonrpc', json=b)",
+        "import requests as r\nr.post(url, json=b)",  # endpoint unknown
+        "import httpx\ns = httpx.Client()\ns.post(u, json=b)",
+        "body = {'jsonrpc': '2.0', 'params': p}",
+        "urllib.request.urlopen(req)",
+        # a guard naming a write method is no guard
+        "def f(m):\n    if m not in {'read', 'write'}:\n        raise E\n    rpc(x, m)",
+        "W = frozenset({'read', 'unlink'})\n"
+        "def f(m):\n    if m not in W:\n        raise E\n    rpc(x, m)",
+        "def f(m, S):\n    if m not in S:\n        raise E\n    rpc(x, m)",  # unknown set
     ],
 )
 def test_rpc_allow_list_flags_unknown_and_non_literal(src) -> None:
-    assert rpc_write_calls(src) == [1], src
+    hits = rpc_write_calls(src)
+    assert hits and (hits == [1] or "\n" in src), src
 
 
 def test_rpc_allow_list_guarded_non_literal_passes() -> None:
     src = (
+        "READS = frozenset({'read', 'search_read'})\n"
         "def ro(model, method, args):\n"
         "    if method not in READS:\n"
         "        raise PermissionError(method)\n"
         "    return rpc(model, method, args)\n"
     )
     assert rpc_write_calls(src) == []
-    assert rpc_write_calls(src.replace("not in READS", "in READS")) == [4]
+    assert rpc_write_calls(src.replace("not in READS", "in READS")) == [5]
     assert rpc_write_calls("x.gate.call(s, m, 'write', [[1], {}])") == []
     assert rpc_write_calls("getattr(self, 'name')") == []
 
@@ -861,6 +1025,12 @@ def test_rpc_write_detector_catches_each_write_shape(src) -> None:
         "rpc('res.partner', 'read', [[1]])",
         "c(model=m, method='search_read', args=[[]])",
         "Path('x').unlink()",
+        "requests.get(u)",
+        "requests.post('https://api.example.com/v1/x', json=b)",  # literal, non-RPC endpoint
+        "import os\nos.write(1, b'')",
+        "s = 'xmlrpc.client'",  # a module name as data, not an import
+        "d = {'rpc': ('jsonrpc',)}",
+        "lookup('res.partner', 'search_read', [[]])",
     ],
 )
 def test_rpc_write_detector_ignores_reads_and_sql(src) -> None:
