@@ -546,6 +546,8 @@ class _Ctx:
         # (key, file, first line, kind, text) for code_audit_web: files and inline <script>s
         self.web: list[tuple[str, str, int, str, str]] = []
         self.pycache: list[str] = []
+        self.addons_dirs: list[Path] = []  # installed-module inventory: sibling addons on the path
+        self._const_cache: dict[str, dict[str, Any]] = {}
 
     def add(self, sev, code, file, line, msg, fix):
         tdir = file.startswith("tests/") or "/tests/" in file
@@ -1782,6 +1784,145 @@ def _odoo_imports(tree: ast.AST) -> dict[str, str]:
 _SESSION_AUTH = frozenset({"uid", "pre_uid", "session_token", "login", "db", "pre_login"})
 
 
+_CONST_DEPTH = 4
+
+
+def _key_shape(n: ast.AST | None, consts: dict[str, Any]) -> list[str | None] | None:
+    """Literal skeleton of a string expression: str parts are fixed, None is any text.
+    None when nothing about the value is known."""
+    if n is None:
+        return None
+    v = _fold_str(n)
+    if v is not None:
+        return [v]
+    if isinstance(n, ast.Name):
+        k = consts.get(n.id)
+        if isinstance(k, str):
+            return [k]
+        return None
+    if isinstance(n, ast.JoinedStr):
+        out: list[str | None] = []
+        for p in n.values:
+            if isinstance(p, ast.FormattedValue):
+                sh = _key_shape(p.value, consts)
+                out += sh if sh is not None else [None]
+            else:
+                out += [_fold_str(p)]
+        return out
+    if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+        a, b = _key_shape(n.left, consts), _key_shape(n.right, consts)
+        return (a or [None]) + (b or [None])
+    if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod):
+        f = _key_shape(n.left, consts)
+        if f and len(f) == 1 and isinstance(f[0], str):
+            return [x if i % 2 == 0 else None for i, x in enumerate(re.split(r"(%[-#0 +]*\d*(?:\.\d+)?[sdirfx])", f[0]))]
+        return None
+    if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "format":
+        f = _key_shape(n.func.value, consts)
+        if f and len(f) == 1 and isinstance(f[0], str):
+            return [x if i % 2 == 0 else None for i, x in enumerate(re.split(r"(\{[^{}]*\})", f[0]))]
+    return None
+
+
+def _shape_may_be(shape: list[str | None], keys: Iterable[str]) -> list[str]:
+    """Keys the skeleton could evaluate to."""
+    rx = re.compile("".join(re.escape(x) if isinstance(x, str) else ".*" for x in shape), re.S)
+    return [k for k in keys if rx.fullmatch(k)]
+
+
+def _module_consts(tree: ast.AST) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+    """Module-level names bound once to a foldable string, and names it imports (name -> (module, attr))."""
+    consts = {k: v for k, v in _str_consts(ast.Module(body=[n for n in getattr(tree, "body", []) if isinstance(n, ast.Assign)], type_ignores=[])).items()}
+    imports: dict[str, tuple[str, str]] = {}
+    for n in getattr(tree, "body", []):
+        if isinstance(n, ast.ImportFrom):
+            mod = "." * n.level + (n.module or "")
+            for a in n.names:
+                imports[a.asname or a.name] = (mod, a.name)
+    return consts, imports
+
+
+def _abs_module(c: _Ctx, path: str, mod: str) -> str:
+    """Dotted absolute module for an import written in module file ``path``."""
+    if not mod.startswith("."):
+        return mod
+    lvl = len(mod) - len(mod.lstrip("."))
+    pkg = ["odoo", "addons", c.module, *path.rsplit(".", 1)[0].split("/")]
+    pkg = pkg[:-1] if pkg[-1] != "__init__" else pkg[:-1]
+    base = pkg[: len(pkg) - (lvl - 1)] if lvl > 1 else pkg
+    rest = mod.lstrip(".")
+    return ".".join(base + ([rest] if rest else []))
+
+
+def _module_source(c: _Ctx, dotted: str) -> tuple[str, bytes] | None:
+    """Source of an odoo.addons.* module: the audited module's own files, else a sibling
+    addon in the installed inventory. Bounded: one file, MAX_FILE."""
+    parts = dotted.split(".")
+    if parts[:2] != ["odoo", "addons"] or len(parts) < 3:
+        return None
+    m, rest = parts[2], parts[3:]
+    for rel in ("/".join(rest) + ".py" if rest else None, "/".join([*rest, "__init__.py"])):
+        if rel is None:
+            continue
+        if m == c.module:
+            if rel in c.files:
+                return rel, c.files[rel]
+            continue
+        for d in c.addons_dirs:
+            f = d / m / rel
+            try:
+                if f.is_file() and not f.is_symlink() and f.stat().st_size <= MAX_FILE:
+                    return f"{m}/{rel}", f.read_bytes()
+            except OSError:
+                return None
+    return None
+
+
+def _resolve_const(c: _Ctx, path: str, tree_or_none: ast.AST | None, name: str, depth: int = 0) -> str | None:
+    """Follow ``name`` through module constants and from-imports (own module or installed addons)."""
+    if depth > _CONST_DEPTH:
+        return None
+    key = f"{path}"
+    info = c._const_cache.get(key)
+    if info is None:
+        tree = tree_or_none
+        if tree is None:
+            body = c.files.get(path)
+            try:
+                tree = ast.parse(body) if body is not None else None
+            except (SyntaxError, ValueError, RecursionError, MemoryError):
+                tree = None
+        info = dict(zip(("consts", "imports"), _module_consts(tree))) if tree is not None else {"consts": {}, "imports": {}}
+        c._const_cache[key] = info
+    if name in info["consts"]:
+        return info["consts"][name]
+    if name not in info["imports"]:
+        return None
+    mod, attr = info["imports"][name]
+    dotted = _abs_module(c, path, mod) if not path.startswith("@") else mod
+    got = _module_source(c, dotted)
+    if got is None:
+        return None
+    rel, body = got
+    own = rel in c.files and c.files[rel] is body
+    p2 = rel if own else "@" + rel
+    if p2 not in c._const_cache:
+        try:
+            t2 = ast.parse(body)
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            return None
+        consts, imports = _module_consts(t2)
+        if not own:  # re-express relative imports of a foreign addon absolutely
+            m = rel.split("/", 1)[0]
+            fake = rel.split("/", 1)[1]
+            saved = c.module
+            c.module = m
+            imports = {k: (_abs_module(c, fake, v[0]), v[1]) for k, v in imports.items()}
+            c.module = saved
+        c._const_cache[p2] = {"consts": consts, "imports": imports}
+    return _resolve_const(c, p2, None, attr, depth + 1)
+
+
 def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
     """H2/H3/H5/H6 of review 5: non-literal setattr on an imported Odoo class, assignments
     into odoo.http/odoo.service internals, literal DML on core tables anywhere, and asyncio
@@ -1822,23 +1963,68 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
         return origin(x) == "odoo.http.request.session" or (isinstance(x, ast.Name) and x.id in sess_alias)
 
     sconsts = _str_consts(tree)
+    # loop variables over literal string collections: `for key in ('a', 'b')`
+    loop_vals: dict[str, list[str]] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.For, ast.comprehension)) and isinstance(n.target, ast.Name):
+            it = n.iter
+            if isinstance(it, (ast.Tuple, ast.List, ast.Set)):
+                vals = [_fold_str(e) for e in it.elts]
+                if all(v is not None for v in vals):
+                    loop_vals.setdefault(n.target.id, []).extend(vals)  # type: ignore[arg-type]
+                    continue
+            loop_vals[n.target.id] = loop_vals.get(n.target.id, []) + [None]  # type: ignore[list-item]
 
-    def skey(x: ast.AST | None) -> str | None:
-        k = _fold_str(x) if x is not None else None
-        if k is None and isinstance(x, ast.Name):
-            k = sconsts.get(x.id)
-        return k
+    class _Key:
+        __slots__ = ("hits", "why")
 
-    def sess_auth_write(line: int, key: str | None) -> None:
-        # a key that folds to an identity key is HIGH; a key unknown here (imported constant,
-        # loop variable) cannot be ruled out, so it is reviewed (MEDIUM), not silently passed
-        if key is None:
+        def __init__(self, hits: list[str], why: str):
+            self.hits, self.why = hits, why
+
+    def skey(x: ast.AST | None) -> "_Key":
+        """Which identity keys x could be. hits=[] and why='' means provably none."""
+        if x is None:
+            return _Key([], "no key")
+        consts = dict(sconsts)
+        names = {y.id for y in ast.walk(x) if isinstance(y, ast.Name)}
+        unresolved = []
+        for nm in names:
+            if nm in consts:
+                continue
+            if nm in loop_vals and None not in loop_vals[nm]:
+                continue
+            v = _resolve_const(c, path, tree, nm)
+            if v is not None:
+                consts[nm] = v
+            else:
+                unresolved.append(nm)
+        if isinstance(x, ast.Name) and x.id in loop_vals and None not in loop_vals[x.id]:
+            hits = [k for k in loop_vals[x.id] if k in _SESSION_AUTH]
+            return _Key(hits, "")
+        shape = _key_shape(x, consts)
+        if shape is None:
+            return _Key(sorted(_SESSION_AUTH), f"key from runtime data ({', '.join(sorted(unresolved)) or ast.unparse(x)[:40]})")
+        hits = _shape_may_be(shape, _SESSION_AUTH)
+        if hits and any(p is None for p in shape):
+            return _Key(hits, f"key pattern {''.join(p if isinstance(p, str) else '*' for p in shape)!r} built from runtime data")
+        return _Key(hits, "")
+
+    def sess_auth_write(line: int, key: "_Key | str | None") -> None:
+        if isinstance(key, str):
+            key = _Key([key] if key in _SESSION_AUTH else [], "")
+        elif key is None:
+            key = _Key(sorted(_SESSION_AUTH), "key from runtime data")
+        if not key.hits:
+            return
+        # unknowable only when the key really is runtime data (request args, parameters): the
+        # constant tables of this module and installed addons were already followed
+        if key.why:
             c.add(MEDIUM, "session-auth-write", path, line,
-                  "Writes request.session[<runtime key>]: the key is not known here and could be 'uid'.",
-                  "Use a literal key; identity must only change through request.session.authenticate().")  # fmt: skip
+                  f"Writes request.session[<runtime key>]: {key.why}; could be {'/'.join(key.hits[:3])}.",
+                  "Use a literal or constant key; identity must only change through request.session.authenticate().")  # fmt: skip
             return
         c.add(HIGH, "session-auth-write", path, line,
-              f"Writes request.session[{key!r}]: sets who the request is authenticated as.",
+              f"Writes request.session[{key.hits[0]!r}]: sets who the request is authenticated as.",
               "Authenticate through request.session.authenticate(); never set identity by hand.")  # fmt: skip
 
     for n in ast.walk(tree):
@@ -1850,9 +2036,7 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
         for t in targets:
             # H13: request.session['uid'] = ... (also through an alias of request.session)
             if isinstance(t, ast.Subscript) and is_session(t.value):
-                k = skey(t.slice)
-                if k is None or k in _SESSION_AUTH:
-                    sess_auth_write(n.lineno, k)
+                sess_auth_write(n.lineno, skey(t.slice))
                 continue
             if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id in sess_alias:
                 if t.attr in _SESSION_AUTH:
@@ -1895,13 +2079,13 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
             keys: list[str | None] = [k.arg for k in n.keywords]
             if attr == "update" and n.args:
                 a0 = n.args[0]
-                keys += [skey(k) for k in a0.keys] if isinstance(a0, ast.Dict) else [None]
+                keys += [skey(k) if k is not None else None for k in a0.keys] if isinstance(a0, ast.Dict) else [None]
             elif n.args:
                 keys.append(skey(n.args[0]))
-            for k in keys:
-                if k is None or k in _SESSION_AUTH:
-                    sess_auth_write(n.lineno, k)
-                    break
+            ks = [k if not isinstance(k, str) else _Key([k] if k in _SESSION_AUTH else [], "") for k in keys]
+            ks = [k for k in ks if k is None or k.hits]
+            if ks:
+                sess_auth_write(n.lineno, next((k for k in ks if k is not None and not k.why), ks[0]))
         if attr in _ASYNC_SPAWN or attr in spawn_alias:
             c.add(HIGH, "dangerous-call", path, n.lineno,
                   f"{fn or attr}() starts an OS process (asyncio subprocess).",
@@ -5414,6 +5598,8 @@ def audit(
     owned = isinstance(owned_names, (list, tuple, set, frozenset)) and name in set(owned_names)
     c = _Ctx(files, version, owned)
     c.module = name
+    if isinstance(src, Path):
+        c.addons_dirs = [src.resolve().parent]
     for rel in big:
         c.add(
             HIGH,
