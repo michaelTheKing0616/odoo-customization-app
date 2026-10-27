@@ -65,6 +65,14 @@ batch_os/recipes/settings_recipes.py::CurrencyBasicsRecipe.apply::execute_kw:wri
 batch_os/recipes/settings_recipes.py::PaymentTermsRecipe.apply::execute_kw:create
 batch_os/recipes/settings_recipes.py::PricelistRecipe.apply::execute_kw:create
 batch_os/recipes/settings_recipes.py::SequenceDefaultsRecipe.apply::execute_kw:write
+bot_verify/flow_library.py::_leave_request::call:create
+bots/access.py::AccessLayer._exec::call:create
+bots/access.py::AccessLayer._undo_create::call:unlink
+bots/module_test_gate.py::_audit.zipit::writestr
+bots/owned_change.py::_zip::writestr
+bots/removal.py::Removal._merge::call:create
+bots/settings.py::SettingsBot.apply::call:create
+bots/walker.py::Walker._exec::call:create
 bridge/delivery.py::odoo_handler.handle::execute_kw:create
 bridge/delivery.py::odoo_handler.handle::execute_kw:write
 bridge/export.py::build_zip::writestr
