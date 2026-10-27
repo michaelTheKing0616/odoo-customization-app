@@ -59,7 +59,7 @@ def web_kind(path: str) -> str | None:
     if low.endswith(".sass"):
         return "sass"  # indented syntax: postcss-sass
     if low.endswith(".d.ts"):
-        return "inert"  # type declarations only: no runtime code exists in the file
+        return "ts"  # declarations hold no code: audit like .ts so hidden code is seen
     for ext in (".tsx", ".ts", ".jsx"):
         if low.endswith(ext):
             return ext[1:]  # types stripped / JSX compiled by sucrase, then audited as JS

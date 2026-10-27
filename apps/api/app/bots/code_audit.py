@@ -2786,7 +2786,7 @@ def _audit_web(c: _Ctx) -> None:
         )
     for _, file, line, _, _ in (w for w in c.web if w[3] == "foreign"):
         c.add(
-            LOW,
+            HIGH,
             "web-unaudited",
             file,
             line,
@@ -2894,7 +2894,23 @@ def _po_structure(s: str) -> tuple[Counter[tuple[str, tuple[tuple[str, str], ...
 def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
     """Translated template terms render as markup: a translation must not add script,
     event handlers or javascript: URLs its source text does not have."""
-    text = body.decode("utf-8", "replace")
+    cs = re.search(rb"charset\s*=\s*([A-Za-z0-9_.:-]+)", body[:4096], re.I)
+    charset = cs.group(1).decode("ascii", "replace").lower() if cs else "utf-8"
+    try:
+        text = body.decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        text = None
+    if text is None or charset.replace("_", "-") not in ("utf-8", "utf8", "charset"):
+        c.add(
+            HIGH,
+            "po-unaudited",
+            path,
+            1,
+            f"Translation file is not plain UTF-8 (charset {charset!r}): its rendered text is"
+            " undecidable (e.g. UTF-7 hides markup).",
+            "Save translations as UTF-8 with 'charset=UTF-8'.",
+        )
+        return
     for msgid, msgstr, line in _po_entries(text):
         src = {m.group(0).lower() for m in _PO_RISK.finditer(msgid)}
         new = [m.group(0) for m in _PO_RISK.finditer(msgstr) if m.group(0).lower() not in src]
@@ -3601,6 +3617,11 @@ UNBASELINABLE = frozenset(
         "flow-incomplete",
     }
 )
+
+
+def unbaselinable(code: str) -> bool:
+    """Never baseline a not-checked finding: the fixed set, any *-unaudited, *-incomplete."""
+    return code in UNBASELINABLE or code.endswith(("-unaudited", "-incomplete"))
 
 
 class FlowIncomplete(RuntimeError):

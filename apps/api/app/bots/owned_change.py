@@ -360,7 +360,7 @@ def build_change_set(
     if not post.ok:
         raise ChangeError("audit-failed", post.error or "post audit failed")
     before = Counter(
-        _key(f) for f in pre.findings if f.severity in _BLOCK and f.code not in ca.UNBASELINABLE
+        _key(f) for f in pre.findings if f.severity in _BLOCK and not ca.unbaselinable(f.code)
     )
     new = []
     for f in post.findings:

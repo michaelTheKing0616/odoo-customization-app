@@ -434,3 +434,48 @@ def test_h9_owl_prop_schema_is_not_eval():
     )
     assert not {x for x in _web("js", src) if x[1] == "js-eval"}
     assert ("high", "js-eval") in _web("js", "const o = { f: Function }; o.f('x')()")
+
+
+# ---- CODE-AUDIT-5 (review 4) ----
+def test_r4_m2_every_unaudited_or_incomplete_code_is_unbaselinable():
+    import re as _re
+    from pathlib import Path as _P
+
+    base = _P(ca.__file__).parent
+    srcs = [
+        base / "code_audit.py",
+        base / "code_audit_web.py",
+        base / "code_audit_js" / "audit.mjs",
+    ]
+    codes = set()
+    for f in srcs:
+        codes |= set(
+            _re.findall(r"[\"']([a-z]+(?:-[a-z]+)*-(?:unaudited|incomplete))[\"']", f.read_text())
+        )
+    assert {"js-flow-incomplete", "web-unaudited", "flow-incomplete", "po-unaudited"} <= codes
+    assert all(ca.unbaselinable(x) for x in codes)
+    assert not ca.unbaselinable("sql-injection")
+
+
+def test_r4_m6_po_utf7_refused_and_utf8_ok():
+    po7 = (
+        'msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-7\\n"\n\n'
+        'msgid "Hi"\nmsgstr "+ADw-script+AD4-"\n'
+    )
+    r = ca.audit(_zip({"i18n/fr.po": po7}), version=17)
+    assert any(f.code == "po-unaudited" and f.severity == ca.HIGH for f in r.findings)
+    ok = po7.replace("UTF-7", "UTF-8").replace("+ADw-script+AD4-", "Salut")
+    r = ca.audit(_zip({"i18n/fr.po": ok}), version=17)
+    assert not any(f.code.startswith("po-") for f in r.findings)
+
+
+def test_r4_m6_coffee_styl_unaudited_is_high_and_dts_audited():
+    r = ca.audit(
+        _zip({"static/src/a.coffee": "x = 1", "static/src/a.styl": "a\n  b c"}), version=17
+    )
+    sev = {f.file: f.severity for f in r.findings if f.code == "web-unaudited"}
+    assert sev == {"static/src/a.coffee": ca.HIGH, "static/src/a.styl": ca.HIGH}
+    r = ca.audit(
+        _zip({"static/src/a.d.ts": "declare const x: number;\neval(location.hash)\n"}), version=17
+    )
+    assert any(f.severity == ca.HIGH for f in r.findings if f.file == "static/src/a.d.ts")
