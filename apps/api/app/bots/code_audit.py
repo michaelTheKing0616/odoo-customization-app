@@ -17,6 +17,7 @@ import ast
 import csv
 import fnmatch
 import io
+import json
 import re
 import stat
 import zipfile
@@ -516,6 +517,9 @@ class _XLines:
 def _line_of(text: str, needle: str) -> int:
     i = text.find(needle)
     return text.count("\n", 0, i) + 1 if i >= 0 else 0
+
+
+_JSON_BAD = object()
 
 
 class _Ctx:
@@ -3089,6 +3093,36 @@ def _record_checks(
             f"ir.default sets a default on a security-core field ({v.get('field_id')}).",
             "Do not ship defaults for users/groups/company/ir.* fields.",
         )
+    if model == "ir.default" and v.get("json_value"):
+        # probe x-default-value-expr: the stored JSON is the default every new record gets
+        jv = v["json_value"]
+        try:
+            parsed = json.loads(jv)
+        except (ValueError, RecursionError):
+            parsed = _JSON_BAD
+        fname = re.sub(r".*__", "", v.get("field_id", ""))
+        if parsed is _JSON_BAD:
+            c.add(
+                HIGH,
+                "default-value-unaudited",
+                path,
+                line,
+                "ir.default json_value is not JSON: the stored default is undecidable.",
+                "Store a plain JSON literal.",
+            )
+        elif re.fullmatch(
+            r"groups_id|group_ids|implied_ids|share|password|login|company_ids|user_ids|"
+            r"users|sel_groups_\w+|in_group_\w+",
+            fname,
+        ) or (fname == "active" and re.search(r"field_(?:res_users|res_groups|ir_)", v.get("field_id", ""))) or re.search(r"group_(?:system|erp_manager|no_one)|__\w+__", jv):
+            c.add(
+                HIGH,
+                "privilege-default",
+                path,
+                line,
+                f"ir.default gives every new record a privilege value ({fname or 'json_value'}={jv[:60]}).",
+                "Do not ship defaults for privilege fields.",
+            )
     if model == "ir.model.access" and not v.get("group_id"):
         if any(v.get(p) in _TRUE for p in ("perm_write", "perm_create", "perm_unlink")):
             c.add(

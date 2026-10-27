@@ -545,3 +545,28 @@ def test_probe_view_field_context(ctx):
 def test_probe_view_plain_ok():
     c = codes(_view("invisible=\"state == 'done'\" context=\"{'default_name': 'x', 'active_test': False}\""))
     assert not {k for k, s in c if s == "high"}, c
+
+
+# ---------------------------------------------------------------- probe x-default-value-expr (ir.default json_value)
+def _dflt(field, jv):
+    return X(f"<record id='d' model='ir.default'><field name='field_id' ref='{field}'/><field name='json_value'>{jv}</field></record>")
+
+
+@pytest.mark.parametrize("field,jv", [
+    ("base.field_res_users__share", "false"),
+    ("base.field_res_users__groups_id", "[[4, 2]]"),
+    ("x.field_a_a__note", '"base.group_system"'),
+    ("base.field_res_users__active", "false"),
+])
+def test_probe_default_privilege(field, jv):
+    assert has(_dflt(field, jv), "privilege-default")
+
+
+def test_probe_default_unparsed():
+    assert has(_dflt("x.field_a_a__note", "{'a': __import__('os')}"), "default-value-unaudited")
+
+
+@pytest.mark.parametrize("field,jv", [("x.field_a_a__note", '"hello"'), ("x.field_a_a__active", "true")])
+def test_probe_default_plain_ok(field, jv):
+    c = codes(_dflt(field, jv))
+    assert ("privilege-default", "high") not in c and ("default-value-unaudited", "high") not in c
