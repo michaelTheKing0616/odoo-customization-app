@@ -385,3 +385,19 @@ def test_h15_js_mass_change(src):
 def test_h15_js_scoped_unlink_ok():
     src = "export async function f(orm){ await orm.unlink('a.a', await orm.search('a.a',[['state','=','draft']])); }\n"
     assert not has({"static/src/a.js": src}, "js-mass-change")
+
+
+# ---------------------------------------------------------------- M1 LESS @import variable interpolation
+@pytest.mark.parametrize("src,code,sev", [
+    ("@h:'https://e.v';\n@import url('@{h}/x.css');\n", "css-external-import", "high"),
+    ("@h:\"//e.v\";\n@import (css) url(\"@{h}/x.css\");\n", "css-external-import", "high"),
+    ("@import url('@{unknown}/x.css');\n", "css-dynamic-url", "medium"),
+    ("@import '@{unknown}/x.less';\n", "css-dynamic-url", "medium"),
+])
+def test_m1_less_import_interp(src, code, sev):
+    assert (code, sev) in codes({"static/src/a.less": src})
+
+
+def test_m1_less_local_import_ok():
+    c = codes({"static/src/a.less": "@d:'./parts';\n@import url('@{d}/x.less');\n"})
+    assert not {k for k, s in c if k.startswith("css-") and s in ("high", "medium")}, c

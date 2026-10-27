@@ -827,8 +827,8 @@ function auditCss(text, kind) {
   root.walk((n) => {
     if (n.type === "atrule" && ["import", "use", "forward", "require", "plugin"].includes(cssUnescape(n.name).toLowerCase())) {
       const p = subst(n.params || "").replace(/^\s*\([^)]*\)\s*/, ""); // LESS @import (css) url(...)
-      if (EXT.test(p)) add("high", "css-external-import", n, "@import from an external host.");
-      else if (/url\(/.test(p) && INTERP.test(p.replace(/^[^(]*\(/, ""))) add("medium", "css-dynamic-url", n, "@import of a URL built from variables: undecidable, flagged.");
+      if (EXT.test(p) || EXT_ANY.test(p)) add("high", "css-external-import", n, "@import from an external host.");
+      else if (INTERP.test(p.replace(/^[^(]*\(/, ""))) add("medium", "css-dynamic-url", n, "@import of a URL built from variables: undecidable, flagged.");
     }
     if (n.type === "decl") {
       const v = cssUnescape(n.value || "");
