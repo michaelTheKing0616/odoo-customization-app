@@ -286,3 +286,43 @@ def test_l3_overlong_path_rejected_not_audited_as_clean():
 ])
 def test_async_route_variants(body, code):
     assert (code, "high") in codes({"models/a.py": PH + body})
+
+
+# ---------------------------------------------------------------- M5: stock-shaped code from the v17/v19 re-run stays out of HIGH
+_RT = "class C(http.Controller):\n    @http.route('/p', auth='public')\n    def p(self):\n"
+
+
+def test_m5_session_key_constant_folded_high():
+    body = "K = 'u' + 'id'\n" + _RT + "        request.session[K] = 2\n"
+    assert ("session-auth-write", "high") in codes({"models/a.py": PH + body})
+
+
+@pytest.mark.parametrize("body", [
+    "from .const import CART_KEY\n" + _RT + "        request.session[CART_KEY] = 3\n",  # website_sale shape
+    _RT + "        for key, val in {}.items():\n            request.session[key] = val\n",  # auth_signup shape
+])
+def test_m5_unknown_session_key_reviewed_not_high(body):
+    c = codes({"models/a.py": PH + body})
+    assert ("session-auth-write", "medium") in c and ("session-auth-write", "high") not in c
+
+
+def test_m5_secret_consumed_by_outbound_request_not_returned():
+    body = ("import requests\nclass C(http.Controller):\n    @http.route('/g', type='json', auth='user')\n    def g(self, q):\n"
+            "        key = request.env['ir.config_parameter'].sudo().get_param('discuss.api_key')\n"
+            "        qs = dict(q=q, key=key)\n        response = requests.get('https://x.example/' + str(len(qs)), params=qs)\n"
+            "        return response.json()\n")
+    assert ("route-secret-read", "high") not in codes({"models/a.py": PH + body})
+
+
+@pytest.mark.parametrize("body", [
+    "class M(models.Model):\n    _inherit = 'mrp.production'\n    def f(self):\n        production = self.env['mrp.production'].create({})\n        production.write({'state': 'done'})\n",
+    "class M(models.Model):\n    _inherit = 'mail.thread'\n    def f(self):\n        new_msg = self.env.user.message_post(body='x')\n        new_msg.write({'partner_ids': []})\n",
+    "class M(models.Model):\n    _inherit = 'mrp.production'\n    def f(self):\n        (self.move_raw_ids | self.move_finished_ids).write({'state': 'confirmed'})\n",
+])
+def test_m5_non_core_receivers_not_core_writes(body):
+    assert ("sensitive-model-write", "high") not in codes({"models/a.py": PH + body})
+
+
+def test_m5_relation_hop_to_core_still_high():
+    body = "class M(models.Model):\n    _inherit = 'sale.order'\n    def f(self):\n        (self.user_id | self.env.user).sudo().write({'group_ids': [(4, 1)]})\n"
+    assert ("sensitive-model-write", "high") in codes({"models/a.py": PH + body})

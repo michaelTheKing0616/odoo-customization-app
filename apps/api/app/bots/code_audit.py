@@ -1821,7 +1821,22 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
     def is_session(x: ast.AST) -> bool:
         return origin(x) == "odoo.http.request.session" or (isinstance(x, ast.Name) and x.id in sess_alias)
 
-    def sess_auth_write(line: int, key: str) -> None:
+    sconsts = _str_consts(tree)
+
+    def skey(x: ast.AST | None) -> str | None:
+        k = _fold_str(x) if x is not None else None
+        if k is None and isinstance(x, ast.Name):
+            k = sconsts.get(x.id)
+        return k
+
+    def sess_auth_write(line: int, key: str | None) -> None:
+        # a key that folds to an identity key is HIGH; a key unknown here (imported constant,
+        # loop variable) cannot be ruled out, so it is reviewed (MEDIUM), not silently passed
+        if key is None:
+            c.add(MEDIUM, "session-auth-write", path, line,
+                  "Writes request.session[<runtime key>]: the key is not known here and could be 'uid'.",
+                  "Use a literal key; identity must only change through request.session.authenticate().")  # fmt: skip
+            return
         c.add(HIGH, "session-auth-write", path, line,
               f"Writes request.session[{key!r}]: sets who the request is authenticated as.",
               "Authenticate through request.session.authenticate(); never set identity by hand.")  # fmt: skip
@@ -1835,9 +1850,9 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
         for t in targets:
             # H13: request.session['uid'] = ... (also through an alias of request.session)
             if isinstance(t, ast.Subscript) and is_session(t.value):
-                k = _fold_str(t.slice)
+                k = skey(t.slice)
                 if k is None or k in _SESSION_AUTH:
-                    sess_auth_write(n.lineno, k or "<runtime key>")
+                    sess_auth_write(n.lineno, k)
                 continue
             if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id in sess_alias:
                 if t.attr in _SESSION_AUTH:
@@ -1880,12 +1895,12 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
             keys: list[str | None] = [k.arg for k in n.keywords]
             if attr == "update" and n.args:
                 a0 = n.args[0]
-                keys += [_fold_str(k) for k in a0.keys] if isinstance(a0, ast.Dict) else [None]
+                keys += [skey(k) for k in a0.keys] if isinstance(a0, ast.Dict) else [None]
             elif n.args:
-                keys.append(_fold_str(n.args[0]))
+                keys.append(skey(n.args[0]))
             for k in keys:
                 if k is None or k in _SESSION_AUTH:
-                    sess_auth_write(n.lineno, k or "<runtime key>")
+                    sess_auth_write(n.lineno, k)
                     break
         if attr in _ASYNC_SPAWN or attr in spawn_alias:
             c.add(HIGH, "dangerous-call", path, n.lineno,
@@ -1939,7 +1954,13 @@ def _receiver_model(x: ast.AST, model_vars: dict[str, str], env_key) -> str | No
             if a in _SAME_RECORDSET:
                 x = x.func.value
                 continue
-            return None
+            if a in ("create", "copy", "new"):  # a new record of the receiver's model
+                x = x.func.value
+                continue
+            if a in ("ref", "get", "browse_ref") or _chain(x.func.value).endswith("env"):
+                return None
+            # another method's result (message_post(), _get_x()) is not provably the receiver's model
+            return ""
         if isinstance(x, ast.Attribute):
             if x.attr in _REL_MODEL:
                 return _REL_MODEL[x.attr]
@@ -1947,7 +1968,13 @@ def _receiver_model(x: ast.AST, model_vars: dict[str, str], env_key) -> str | No
                 return "res.users"
             if x.attr in ("company", "companies") and _chain(x.value).endswith("env"):
                 return "res.company"
-            return None
+            if x.attr in ("env", "sudo") or _chain(x).endswith(".env"):
+                return None
+            # a field hop off a recordset lands on another model: never the base record's model
+            return ""
+        if isinstance(x, ast.BinOp) and isinstance(x.op, (ast.BitOr, ast.BitAnd, ast.Add, ast.Sub)):
+            x = x.left
+            continue
         if isinstance(x, ast.Subscript):
             k = env_key(x)
             return k if k is not None else None
@@ -2164,9 +2191,23 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                                 return v
                     if (k := next((kk for z in ast.walk(y.func.value) if isinstance(z, ast.Subscript) and (kk := _fold_str(z.slice)) in _SECRET_READ_MODELS), None)):
                         return k
-                if isinstance(y, ast.Name) and y.id in tainted:
+                if isinstance(y, ast.Name) and y.id in tainted and id(y) not in sunk:
                     return y.id
             return ""
+
+        # a tainted value handed as an argument to some other call (an outbound request, a helper)
+        # is consumed there; only data-shaping calls carry the secret into their result
+        _PASS = {"dict", "str", "list", "tuple", "format", "join", "dumps", "url_encode", "urlencode",
+                 "encode", "decode", "b64encode", "copy", "update", "jsonify",
+                 "make_response", "make_json_response", "render", "Response"}  # fmt: skip
+        sunk = {
+            id(z)
+            for y in ast.walk(f)
+            if isinstance(y, ast.Call) and (y.func.attr if isinstance(y.func, ast.Attribute) else getattr(y.func, "id", "")) not in _PASS
+            for a0 in [*y.args, *[k.value for k in y.keywords]]
+            for z in ast.walk(a0)
+            if isinstance(z, ast.Name)
+        }
 
         for _ in range(3):
             for st in ast.walk(f):
