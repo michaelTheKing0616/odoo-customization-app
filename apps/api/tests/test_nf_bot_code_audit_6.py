@@ -132,3 +132,21 @@ def test_policy_python_writes_are_high(body):
 
 def test_policy_python_reads_are_not_writes():
     assert ("sensitive-model-write", "high") not in codes(py("self.env['ir.config_parameter'].get_param('a')"))
+
+
+# ---------------------------------------------------------------- H17 mrp t-att-class FP
+
+
+@pytest.mark.parametrize("expr", ["data['get_color']()", "values['fmt'](line)", "docs['label']()"])
+def test_h17_render_value_call_in_template_not_high(expr):
+    f = X(f"<template id='t'><span t-att-class=\"{expr}\"/></template>")
+    assert ("unsafe-expression", "high") not in codes(f)
+
+
+@pytest.mark.parametrize(
+    "expr",
+    ["data['write']({})", "env['res.users']()", "data['__class__']()", "_x['a']()", "(lambda: 1)()", "data[k]()"],
+)
+def test_h17_variants_still_high(expr):
+    f = X(f"<template id='t'><span t-att-class=\"{expr}\"/></template>")
+    assert ("unsafe-expression", "high") in codes(f), expr

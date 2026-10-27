@@ -2645,6 +2645,19 @@ def _audit_expr(
                 continue  # x2many command tuples
             if template and nm in ("sudo", "with_user", "with_env"):
                 continue  # read under elevation for display: qweb-orm-call (MEDIUM)
+            if (
+                isinstance(fn, ast.Subscript)
+                and isinstance(fn.value, ast.Name)
+                and not fn.value.id.startswith("_")
+                and fn.value.id not in _EXPR_ESCAPE | {"env", "request", "globals", "locals"}
+                and isinstance(_const(fn.slice), str)
+                and not _const(fn.slice).startswith("_")
+                and not (_EXPR_WRITE | _EXPR_BAD_CALLS) & {_const(fn.slice)}
+            ):
+                # data['get_color']() (stock mrp): a render-value callable chosen by the
+                # controller; it cannot be steered to write/elevate from the template.
+                unknown.append(f"{fn.value.id}[{_const(fn.slice)!r}]()")
+                continue
             if nm in _EXPR_BAD_CALLS or nm in _EXPR_WRITE or not nm:
                 high.append(f"{nm or ast.unparse(fn)[:30]}()")
             elif nm not in _EXPR_SAFE_CALLS:
