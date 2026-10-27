@@ -636,10 +636,11 @@ def test_undo_refused_when_changed_and_for_unlink(W) -> None:
 
 
 def test_writes_only_through_the_gate() -> None:
-    from tests.test_nf_bot_kill_audit import rpc_write_calls
+    from tests.test_nf_bot_kill_audit import READ_PASSTHROUGH, rpc_write_calls
 
     src = Path(wk.__file__).read_text()
-    assert rpc_write_calls(src) == [] and "execute_kw" not in src and "xmlrpc" not in src
+    pins = READ_PASSTHROUGH["walker.py"]
+    assert rpc_write_calls(src, pins) == [] and "execute_kw" not in src and "xmlrpc" not in src
     tree = ast.parse(src)
     gates = sorted(
         ast.unparse(c.func)

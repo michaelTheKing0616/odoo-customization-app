@@ -596,40 +596,224 @@ def test_rpc_copy_execute_kw_pinned_to_guarded_wrapper() -> None:
 
 
 BEFORE_IMAGE = API / "app" / "bots" / "before_image.py"
-_RPC_WRITES = frozenset(
-    {"write", "create", "unlink", "execute", "set_values", "button_immediate_install"}
+# Allow-list (round 9): an RPC-shaped call passes only with a LITERAL method from this set;
+# any other name, or a method held in a variable, is flagged. Limit: "RPC-shaped" is decided by
+# shape and callee name (below), so an RPC client bound to an unlisted name and called with a
+# non-model first argument is not seen; the exempt files are pinned separately.
+_RPC_READS = frozenset(
+    {
+        "read",
+        "search",
+        "onchange",  # computed in memory, never stored
+        "search_read",
+        "search_count",
+        "search_fetch",
+        "fields_get",
+        "read_group",
+        "name_search",
+        "name_get",
+        "check_access_rights",
+        "check_access",
+        "has_access",
+        "default_get",
+        "get_views",
+        "load_views",
+        "context_get",
+        "get_metadata",
+        "web_search_read",
+        "web_read",
+        "web_read_group",
+        "exists",
+    }
 )
-# Methods that write when called directly on a record/proxy, e.g. wiz.set_values().
-_RPC_WRITE_ATTRS = frozenset({"execute_kw", "set_values", "button_immediate_install"})
+# callee names used for RPC clients taking (model, method, ...)
+_RPC_CALLEES = frozenset({"rpc", "_rpc", "call", "_call", "call_kw", "read", "_r", "_dry"})
+# names that are RPC entry points or write methods by themselves
+_RPC_NAMES = frozenset(
+    {"execute_kw", "call_kw", "execute", "write", "create", "unlink", "copy", "set_values"}
+    | {"button_immediate_install", "button_immediate_upgrade", "button_immediate_uninstall"}
+    | {"name_create", "action_post", "action_confirm", "toggle_active", "action_archive"}
+)
+# write method names flagged as a literal 2nd positional whatever the callee
+_RPC_WRITES = frozenset(
+    {"write", "create", "unlink", "execute", "set_values", "copy", "button_immediate_install"}
+    | {"button_immediate_upgrade", "button_immediate_uninstall"}
+)
+# methods that write when called directly on a record/proxy, e.g. wiz.set_values()
+_RPC_WRITE_ATTRS = frozenset(
+    {"execute_kw", "call_kw", "set_values", "button_immediate_install", "button_immediate_upgrade"}
+    | {"button_immediate_uninstall"}
+)
 
 
-def rpc_write_calls(src: str) -> list[int]:
-    """Lines of Odoo RPC writes: execute_kw / set_values / button_immediate_install called as a
-    method; a call passing a write method name (write, create, unlink, execute, set_values,
-    button_immediate_install) as the 2nd positional or method=, i.e. rpc(model, "write", ...);
-    or XML-RPC object.execute(db, uid, pw, model, method, ...) with a write method 5th.
-    Path.unlink() and cursor.execute(sql) are not RPC."""
-    out = []
-    for n in ast.walk(ast.parse(src)):
+def _is_read(a: ast.AST) -> bool:
+    return isinstance(a, ast.Constant) and a.value in _RPC_READS
+
+
+def _guarded_names(fn: ast.AST) -> set[str]:
+    """Names a function refuses unless allow-listed: `if v not in SET: raise ...`."""
+    out = set()
+    for n in ast.walk(fn):
+        t = n.test if isinstance(n, ast.If) else None
+        if (
+            isinstance(t, ast.Compare)
+            and isinstance(t.left, ast.Name)
+            and [type(o) for o in t.ops] == [ast.NotIn]
+            and n.body
+            and isinstance(n.body[0], ast.Raise)
+        ):
+            out.add(t.left.id)
+    return out
+
+
+def _is_gate_call(f: ast.AST) -> bool:
+    """x.gate.call(...): the guarded write path (guard.py), approval-checked and pinned."""
+    return (
+        isinstance(f, ast.Attribute)
+        and f.attr == "call"
+        and isinstance(f.value, ast.Attribute)
+        and f.value.attr == "gate"
+    )
+
+
+def rpc_write_calls(src: str, passthrough: frozenset[str] = frozenset()) -> list[int]:
+    """Lines of possible Odoo RPC writes (allow-list). Flagged:
+    - any "execute_kw" / "call_kw" string literal, and execute_kw / call_kw / set_values /
+      button_immediate_* called as a method;
+    - getattr(x, "<rpc name>") with a literal RPC entry point or write method;
+    - a call passing a literal RPC write name 2nd positional, whatever the callee;
+    - an RPC-shaped call whose method is not a literal read method. RPC-shaped: XML-RPC
+      object.execute(db, uid, pw, model, method, ...) (method 5th); a method= keyword; or a
+      2nd positional on a known RPC callee name (rpc, call, read, _r, ...).
+    A non-literal method passes only inside a function that first refuses it unless
+    allow-listed (`if method not in READS: raise`), or in a function named in `passthrough`
+    (pinned per file by the caller). x.gate.call(...) is the guarded path and not flagged.
+    Path.unlink(), cursor.execute(sql) and file writes are not RPC-shaped."""
+    tree = ast.parse(src)
+    ctx: dict[int, tuple[str, set[str]]] = {}
+    for fn in ast.walk(tree):
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            g = _guarded_names(fn)
+            for n in ast.walk(fn):
+                ctx[id(n)] = (fn.name, g)  # innermost wins: inner defs are walked later
+    out = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Constant) and n.value in ("execute_kw", "call_kw"):
+            out.add(n.lineno)
         if not isinstance(n, ast.Call):
             continue
-        attr = n.func.attr if isinstance(n.func, ast.Attribute) else ""
-        args = [*n.args[1:2], *(k.value for k in n.keywords if k.arg == "method")]
+        f = n.func
+        attr = f.attr if isinstance(f, ast.Attribute) else ""
+        name = attr or (f.id if isinstance(f, ast.Name) else "")
+        if attr in _RPC_WRITE_ATTRS:
+            out.add(n.lineno)
+            continue
+        if name == "getattr" and len(n.args) >= 2:
+            a = n.args[1]
+            if isinstance(a, ast.Constant) and a.value in _RPC_NAMES:
+                out.add(n.lineno)
+            continue
+        if _is_gate_call(f):
+            continue
+        second = n.args[1] if len(n.args) >= 2 else None
+        if isinstance(second, ast.Constant) and second.value in _RPC_WRITES:
+            out.add(n.lineno)
+            continue
+        methods = [k.value for k in n.keywords if k.arg == "method"]
         if attr == "execute" and len(n.args) >= 5:
-            args.append(n.args[4])
-        if attr in _RPC_WRITE_ATTRS or any(
-            isinstance(a, ast.Constant) and a.value in _RPC_WRITES for a in args
-        ):
-            out.append(n.lineno)
-    return out
+            methods.append(n.args[4])
+        elif second is not None and name in _RPC_CALLEES:
+            methods.append(second)
+        fname, guarded = ctx.get(id(n), ("", set()))
+        for m in methods:
+            if _is_read(m):
+                continue
+            if isinstance(m, ast.Name) and (m.id in guarded or fname in passthrough):
+                continue
+            if isinstance(m, ast.Attribute) and fname in passthrough:
+                continue
+            out.add(n.lineno)
+    return sorted(out)
+
+
+# Non-literal pass-throughs that are read-only by construction, pinned per file (see
+# test_read_passthroughs_route_to_read_only_wrappers).
+READ_PASSTHROUGH = {
+    "configverify.py": frozenset({"_r"}),  # self.call = read_only(call)
+    "walker.py": frozenset({"call"}),  # _Port.call -> self.read: df.ReadOnly
+    "posting.py": frozenset({"plan"}),  # Step(method=op.method): op from OPS, walked via gate
+}
 
 
 def test_no_raw_rpc_writes_in_bots() -> None:
     bots = API / "app" / "bots"
     # each pinned separately (sinkhole.py: tests/test_nf_bot_sinkhole.py AST pin)
     exempt = {bots / "guard.py", RPC_COPY, BEFORE_IMAGE, bots / "sinkhole.py"}
-    hits = [p for p in bots.rglob("*.py") if p not in exempt and rpc_write_calls(p.read_text())]
+    hits = [
+        p
+        for p in bots.rglob("*.py")
+        if p not in exempt
+        and rpc_write_calls(p.read_text(), READ_PASSTHROUGH.get(p.name, frozenset()))
+    ]
     assert hits == []
+
+
+def test_sandbox_harness_exempt_only_by_sha_pin() -> None:
+    import hashlib
+
+    from app.bots import module_test_gate as mtg
+
+    root = API / "app" / "sandbox_harness"
+    smoke = root / "smoke.py"
+    assert hashlib.sha256(smoke.read_bytes()).hexdigest() == mtg.SMOKE_HARNESS_SHA256
+    assert rpc_write_calls(smoke.read_text())  # it does call execute_kw: exempt by pin only
+    hits = [p for p in root.rglob("*.py") if p != smoke and rpc_write_calls(p.read_text())]
+    assert hits == []
+
+
+def test_read_passthroughs_route_to_read_only_wrappers() -> None:
+    bots = API / "app" / "bots"
+    assert "self.call = read_only(call)" in (bots / "configverify.py").read_text()
+    assert "def __init__(self, read: df.ReadOnly)" in (bots / "walker.py").read_text()
+    post = (bots / "posting.py").read_text()
+    assert 'wk.Step("call", op.model, ids, method=op.method)' in post
+    assert "op = OPS.get(op_name)" in post
+    # the pins are needed (each forwards a non-literal method) and nothing else is pinned
+    for name, fns in READ_PASSTHROUGH.items():
+        path = next(bots.rglob(name))
+        assert rpc_write_calls(path.read_text()), name
+        assert rpc_write_calls(path.read_text(), fns) == [], name
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "rpc('res.partner', 'message_post', [[1]])",  # not a known write: still not a read
+        "rpc(model, method, [[1]])",  # non-literal method
+        "call(m, 'action_confirm', [[1]])",
+        "c(model=m, method=meth, args=[[1]])",
+        "proxy.execute(db, uid, pw, 'res.partner', name, [1])",
+        "s = 'execute_kw'",
+        "f = getattr(proxy, 'execute_kw')",
+        "getattr(rec, 'unlink')()",
+        "x.call_kw(m, 'read', [])",
+    ],
+)
+def test_rpc_allow_list_flags_unknown_and_non_literal(src) -> None:
+    assert rpc_write_calls(src) == [1], src
+
+
+def test_rpc_allow_list_guarded_non_literal_passes() -> None:
+    src = (
+        "def ro(model, method, args):\n"
+        "    if method not in READS:\n"
+        "        raise PermissionError(method)\n"
+        "    return rpc(model, method, args)\n"
+    )
+    assert rpc_write_calls(src) == []
+    assert rpc_write_calls(src.replace("not in READS", "in READS")) == [4]
+    assert rpc_write_calls("x.gate.call(s, m, 'write', [[1], {}])") == []
+    assert rpc_write_calls("getattr(self, 'name')") == []
 
 
 def test_rpc_write_detector_regression(tmp_path) -> None:
