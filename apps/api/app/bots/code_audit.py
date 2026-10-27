@@ -552,6 +552,7 @@ class _Ctx:
         self.web: list[tuple[str, str, int, str, str]] = []
         self.pycache: list[str] = []
         self.addons_dirs: list[Path] = []  # installed-module inventory: sibling addons on the path
+        self.heads: dict[str, bytes] = {}  # inert assets skipped from files: first HEAD_BYTES
         self._const_cache: dict[str, dict[str, Any]] = {}
 
     def add(self, sev, code, file, line, msg, fix):
@@ -3935,6 +3936,11 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         ref = el.get("file").strip()
         rel = ref.split("/", 1)[1] if ref.split("/", 1)[0] == getattr(c, "module", None) else ref
         body = c.files.get(rel) if hasattr(c, "files") else None
+        binary_field = name not in _STORED_MARKUP and name not in ("code", "arch_db")
+        if body is None and binary_field and _inert_ref_ok(c, rel, ref):
+            return  # an image/font sniffed true to its extension, stored in a binary field: inert
+        if body is None and not binary_field:
+            body = _sibling_file(c, ref)  # markup/code from another installed addon: audit its text
         if body is None:
             c.add(
                 MEDIUM,
@@ -5099,6 +5105,49 @@ _PIP_SRC = re.compile(
 )
 
 
+def _magic_ok(path: str, head: bytes) -> bool:
+    """True only for an inert extension whose content starts with that format's signature."""
+    low = path.lower()
+    if not low.endswith(_INERT_EXT) or not head:
+        return False
+    if low.endswith(".webp"):
+        return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+    for exts, magics in _MAGIC_OF.items():
+        if low.endswith(exts):
+            return head.startswith(magics)
+    return False  # inert by name but no signature we can verify: not proven
+
+
+def _sibling_file(c: _Ctx, ref: str, limit: int | None = None) -> bytes | None:
+    """module/path resolved in an installed sibling addon (directory audits only), never
+    escaping that addon; None when unavailable, oversize or unsafe."""
+    parts = ref.replace("\\", "/").split("/")
+    if len(parts) < 2 or any(p in ("", ".", "..") for p in parts) or not re.fullmatch(r"[a-z][a-z0-9_]*", parts[0]):
+        return None
+    for d in getattr(c, "addons_dirs", []) or []:
+        try:
+            root = (d / parts[0]).resolve()
+            f = (d / ref).resolve()
+            if root not in f.parents or not f.is_file() or f.is_symlink() or f.stat().st_size > MAX_FILE:
+                continue
+            with open(f, "rb") as fh:
+                return fh.read(limit) if limit else fh.read()
+        except OSError:
+            continue
+    return None
+
+
+def _inert_ref_ok(c: _Ctx, rel: str, ref: str) -> bool:
+    """file= target is an inert asset of this module (skipped from c.files but sniffed in
+    c.heads) or of an installed sibling addon, and its bytes match its extension."""
+    heads = getattr(c, "heads", {}) or {}
+    if rel in heads:
+        return _magic_ok(rel, heads[rel])
+    if rel != ref or "/" not in ref:
+        return False
+    return _magic_ok(ref, _sibling_file(c, ref, HEAD_BYTES) or b"")
+
+
 def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
     """Inert files are never executed, but only when they are what their name says: sniff
     the first HEAD_BYTES. A mismatch, an embedded document or active content is reported."""
@@ -5971,8 +6020,13 @@ def audit(
     owned = isinstance(owned_names, (list, tuple, set, frozenset)) and name in set(owned_names)
     c = _Ctx(files, version, owned)
     c.module = name
+    c.heads = heads  # inert assets skipped from c.files, by their first HEAD_BYTES
     if isinstance(src, Path):
         c.addons_dirs = [src.resolve().parent]
+        # Odoo source layout: <root>/addons beside the core addons path <root>/odoo/addons (base, web...)
+        core = src.resolve().parent.parent / "odoo" / "addons"
+        if (core / "base" / "__manifest__.py").is_file() and core.resolve() != c.addons_dirs[0]:
+            c.addons_dirs.append(core.resolve())
     for rel in big:
         c.add(
             HIGH,
