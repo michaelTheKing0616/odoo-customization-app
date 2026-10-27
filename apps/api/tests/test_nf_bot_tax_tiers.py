@@ -168,7 +168,6 @@ def test_cron_graded_by_named_app(ver):
 @pytest.mark.parametrize(
     ("tid", "kw"),
     [
-        (CRON, {}),  # no app named: cannot confirm
         (CRON, {"module_hint": "Mail; drop"}),  # malformed hint
         (CRON, {"module_hint": ""}),
         ("cron:Not A Real Job", {"module_hint": "mail"}),  # not in the catalogue
@@ -209,15 +208,33 @@ def test_unknown_app_and_catalogue_fault_fail_closed(monkeypatch):
     [
         (RPT, None, "hr_expense"),
         (RPT, "mail", "hr_expense"),
-        (CRON, None, None),
+        (CRON, None, "mail"),  # owner stored in the version catalogue
         (CRON, "mail", "mail"),
         (CRON, "Mail", None),
+        (CRON, "sale", None),  # caller hint disagrees with the stored owner: refused
+        ("cron:Not A Real Job", "mail", None),
         ("r:.x", None, None),
         ("m:res.partner:create", "mail", None),
     ],
 )
 def test_module_of_contract(tid, hint, mod):
-    assert tt.module_of(tid, hint) == mod
+    assert tt.module_of(tid, hint, 17) == mod
+    if tid.startswith("cron:"):
+        assert tt.module_of(tid, hint) is None  # no version: no catalogue, no owner
+
+
+@pytest.mark.parametrize("ver", [17, 18, 19, 20])
+def test_cron_owner_from_catalogue_not_caller(ver):
+    a = tt.assess(CRON, version=ver, installed_modules=["base"])
+    assert a.grade == tt.NEEDS_STEP and a.prior_steps == ("mod:mail:install",)
+    b = tt.assess(CRON, version=ver, installed_modules=["base", "sale"], module_hint="sale")
+    assert b.grade == tt.UNKNOWN and "belongs to the app 'mail'" in b.reason
+
+
+def test_edition_case_normalised():
+    for ed in ("Enterprise", " ENTERPRISE "):
+        e = tt.assess(RPT, version=17, edition=ed, installed_modules=["base"])
+        assert e.grade == tt.NEEDS_STEP, ed
 
 
 def test_model_of_fault_unknown(monkeypatch):

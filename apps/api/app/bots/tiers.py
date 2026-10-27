@@ -131,16 +131,20 @@ def model_of(task_id: str) -> str | None:
     return None
 
 
-def module_of(task_id: str, module_hint: str | None = None) -> str | None:
+def module_of(task_id: str, module_hint: str | None = None, version: Any = None) -> str | None:
     """App that owns a report or scheduled-action task. ``r:<module>.<xml id>``: the xml id
-    prefix (Odoo names a record's xml id after the module that defines it). ``cron:<name>``
-    names no module: only an explicit, well-formed ``module_hint`` is used; else None."""
+    prefix (Odoo names a record's xml id after the module that defines it). ``cron:<name>``:
+    the owning app stored in the version catalogue (generator, ir.model.data); a caller's
+    ``module_hint`` is never trusted: it must equal that owner, else None (refused)."""
     kind, _, rest = task_id.partition(":")
     if kind == "r":
         mod, dot, name = rest.partition(".")
         return mod if dot and name and _MODULE_RE.fullmatch(mod) else None
-    if kind == "cron" and isinstance(module_hint, str) and _MODULE_RE.fullmatch(module_hint):
-        return module_hint
+    if kind == "cron":
+        owner = caps.cron_owner(version, rest)
+        if owner is None or (module_hint is not None and module_hint != owner):
+            return None
+        return owner
     return None
 
 
@@ -188,6 +192,8 @@ def assess(
     module_hint: str | None = None,
 ) -> Assessment:
     tid = task_id if isinstance(task_id, str) else repr(task_id)
+    if isinstance(edition, str):
+        edition = edition.strip().lower()  # "Enterprise" is enterprise
     tier = tier_of(task_id)
     if tier is None:
         return _unknown(
@@ -377,7 +383,18 @@ def _assess_by_module(
                 tid, tier, NOT_IN_VERSION, "This is not in this Odoo version.", alt, floor
             )
         return _unknown(tid, tier, "The version check failed, so nothing runs.", floor=floor)
-    mod = module_of(tid, module_hint)
+    mod = module_of(tid, module_hint, version)
+    if mod is None and tid.startswith("cron:") and module_hint is not None:
+        owner = module_of(tid, None, version)
+        if owner is not None:
+            return _unknown(
+                tid,
+                tier,
+                f"This scheduled action belongs to the app '{owner}', not '{module_hint}', "
+                "so it will not run.",
+                f"name the app '{owner}' or check the scheduled action",
+                floor=floor,
+            )
     if mod is None:
         return _unknown(
             tid,

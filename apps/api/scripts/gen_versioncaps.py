@@ -250,6 +250,19 @@ def read_caps(b: Box, failed: list[str]) -> dict:
         models[f["model"]]["fields"][f["name"]] = row
     for m in models.values():
         m["fields"] = dict(sorted(m["fields"].items()))
+    # scheduled actions: name -> modules whose xml id names the record (owning app)
+    names = {
+        c["id"]: c["name"]
+        for c in b.call(
+            "ir.cron", "search_read", [["active", "in", [True, False]]], fields=["name"]
+        )
+    }
+    crons: dict[str, set[str]] = {}
+    for x in b.call(
+        "ir.model.data", "search_read", [["model", "=", "ir.cron"]], fields=["module", "res_id"]
+    ):
+        if x["res_id"] in names and not x["module"].startswith("__"):
+            crons.setdefault(names[x["res_id"]], set()).add(x["module"])
     base = {
         k: v
         for k, v in b.call(
@@ -266,6 +279,7 @@ def read_caps(b: Box, failed: list[str]) -> dict:
         "field_row": ["type", "relation", "required", "modules", "selection?"],
         "modules": dict(sorted(mods.items())),
         "models": dict(sorted(models.items())),
+        "crons": {k: sorted(v) for k, v in sorted(crons.items())},
     }
 
 
@@ -276,6 +290,8 @@ SOURCES = [
     "ir.model",
     "ir.model.fields",
     "ir.model.fields.selection",
+    "ir.cron",
+    "ir.model.data",
 ]
 
 

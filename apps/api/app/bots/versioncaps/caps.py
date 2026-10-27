@@ -197,6 +197,16 @@ def module_info(version: Any, name: str) -> dict[str, Any] | None:
     return None
 
 
+def cron_owner(version: Any, name: Any) -> str | None:
+    """The one app whose xml id names scheduled action ``name`` in stock ``version`` (read by
+    the generator from ir.model.data); None when unknown or ambiguous (fail closed)."""
+    c = load(version)
+    mods = c.data.get("crons", {}).get(name) if c is not None and isinstance(name, str) else None
+    if isinstance(mods, list) and len(mods) == 1 and isinstance(mods[0], str):
+        return mods[0]
+    return None
+
+
 def model_info(version: Any, model: str) -> dict[str, Any] | None:
     c = load(version)
     m = c and c.models.get(model)
