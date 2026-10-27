@@ -7,12 +7,18 @@ bisecting batches so one failing or conflicting module never blocks the rest (re
 ``not_introspectable``), then read ir.module.module, ir.model, ir.model.fields and
 ir.model.fields.selection. Output is sorted, compact, gzip (mtime 0) -> deterministic.
 
-    python scripts/gen_versioncaps.py 17 20 [--port-base 18300] [--keep]
+    python scripts/gen_versioncaps.py 17 20 [--port-base 18300] [--keep] [--date YYYY-MM-DD]
+    python scripts/gen_versioncaps.py 17 18 19 20 --stamp-only --date 2026-10-26
+
+Every file carries ``provenance`` (version, edition, generation date, source image + local image
+id, base version, generator, RPC sources); the loader refuses a file without it.
+``--stamp-only`` adds provenance to existing files without a rerun (marked ``stamped``).
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import gzip
 import json
 import subprocess
@@ -41,7 +47,7 @@ def sh(*a: str, env: dict | None = None, check: bool = True) -> str:
 
 class Box:
     def __init__(self, v: int, port: int) -> None:
-        self.v, self.port, self.name = v, port, f"ingenium_caps_v{v}"
+        self.v, self.port, self.name = v, port, f"ws-caps-v{v}"
         self.addons = tempfile.mkdtemp(prefix="caps_addons_")
         self.env = {
             "ISB_NAME": self.name,
@@ -263,6 +269,40 @@ def read_caps(b: Box, failed: list[str]) -> dict:
     }
 
 
+GENERATOR = "apps/api/scripts/gen_versioncaps.py"
+SOURCES = [
+    "ir.module.module",
+    "ir.module.module.dependency",
+    "ir.model",
+    "ir.model.fields",
+    "ir.model.fields.selection",
+]
+
+
+def image_id(v: int) -> str:
+    return sh("docker", "image", "inspect", f"odoo:{v}", "--format", "{{.Id}}").strip()
+
+
+def provenance(caps: dict, date: str, stamped: bool = False) -> dict:
+    datetime.date.fromisoformat(date)  # refuse a malformed date
+    p = {
+        "major": caps["major"],
+        "edition": caps.get("edition", "community"),
+        "generated": date,
+        "source_image": f"odoo:{caps['major']}",
+        "image_id": image_id(caps["major"]),
+        "base_version": caps.get("base_version"),
+        "generator": GENERATOR,
+        "sources": SOURCES,
+        "method": "public XML-RPC on a disposable sandbox with every installable Community module",
+    }
+    if stamped:
+        p["stamped"] = (
+            "provenance added after generation; image_id is the local image at stamp time"
+        )
+    return p
+
+
 def write(caps: dict) -> Path:
     OUT.mkdir(parents=True, exist_ok=True)
     p = OUT / f"caps_{caps['major']}.json.gz"
@@ -278,7 +318,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--port-base", type=int, default=18300)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--depends-only", action="store_true", help="refresh depends in existing files")
+    ap.add_argument("--stamp-only", action="store_true", help="add provenance to existing files")
+    ap.add_argument("--date", default=datetime.date.today().isoformat())
     a = ap.parse_args(argv)
+    if a.stamp_only:
+        for v in a.versions:
+            p = OUT / f"caps_{v}.json.gz"
+            caps = json.loads(gzip.decompress(p.read_bytes()))
+            caps["provenance"] = provenance(caps, a.date, stamped=True)
+            print(f"[{v}] stamped {write(caps)}", flush=True)
+        return 0
     for v in a.versions:
         b = Box(v, a.port_base + v)
         try:
@@ -287,7 +336,9 @@ def main(argv: list[str]) -> int:
                 print(f"[{v}] depends refreshed {refresh_depends(b)}", flush=True)
                 continue
             failed = install_all(b, log=lambda s, v=v: print(f"[{v}]{s}", flush=True))
-            p = write(read_caps(b, failed))
+            caps = read_caps(b, failed)
+            caps["provenance"] = provenance(caps, a.date)
+            p = write(caps)
             print(f"[{v}] wrote {p} failed={failed}", flush=True)
         finally:
             if not a.keep:

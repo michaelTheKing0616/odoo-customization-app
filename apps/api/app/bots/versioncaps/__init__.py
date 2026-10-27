@@ -16,4 +16,5 @@ from .caps import (  # noqa: F401
     load,
     model_info,
     module_info,
+    provenance,
 )

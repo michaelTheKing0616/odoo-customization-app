@@ -368,3 +368,60 @@ def test_real_dependency_facts():
         assert {"mrp", "stock", "product"} <= set(chain)
         c = C._load_file(v)
         assert sum(1 for m in c.listed.values() if m["depends"]) >= 0.8 * (len(c.listed) - 1)
+
+
+# ------------------------------------------------------------ provenance (fail closed)
+@pytest.mark.skipif(not REAL, reason="catalogue not generated")
+def test_provenance_present_and_matches():
+    C._load_file.cache_clear()
+    for v in REAL:
+        p = vc.provenance(v)
+        assert p["major"] == v and p["source_image"] == f"odoo:{v}" and p["edition"] == "community"
+        assert p["image_id"].startswith("sha256:") and p["generated"] >= "2026-10-26"
+        assert "ir.model.fields" in p["sources"]
+    assert vc.provenance(99) is None and vc.provenance("x") is None
+
+
+def _write_caps(path, d):
+    import gzip
+    import json
+
+    path.write_bytes(gzip.compress(json.dumps(d).encode()))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d.pop("provenance"),
+        lambda d: d["provenance"].update(major=18),
+        lambda d: d["provenance"].update(source_image="odoo:18"),
+        lambda d: d["provenance"].update(generated="yesterday"),
+        lambda d: d["provenance"].update(image_id=""),
+        lambda d: d["provenance"].pop("sources"),
+    ],
+)
+@pytest.mark.skipif(17 not in REAL, reason="catalogue 17 not generated")
+def test_bad_provenance_refused(tmp_path, monkeypatch, mutate):
+    import copy
+
+    d = copy.deepcopy(dict(C._load_file(17).data))
+    mutate(d)
+    _write_caps(tmp_path / "caps_17.json.gz", d)
+    monkeypatch.setattr(C, "DATA", tmp_path)
+    C._load_file.cache_clear()
+    try:
+        assert C._load_file(17) is None
+        assert vc.availability(17, "community", [], "mrp.bom").status == "unknown"
+    finally:
+        C._load_file.cache_clear()
+
+
+@pytest.mark.parametrize("raw", [b"", b"not gzip", b"\x1f\x8b\x08\x00garbage"])
+def test_corrupt_catalogue_refused(tmp_path, monkeypatch, raw):
+    (tmp_path / "caps_17.json.gz").write_bytes(raw)
+    monkeypatch.setattr(C, "DATA", tmp_path)
+    C._load_file.cache_clear()
+    try:
+        assert C._load_file(17) is None and vc.provenance(17) is None
+    finally:
+        C._load_file.cache_clear()

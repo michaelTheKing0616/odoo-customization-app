@@ -6,6 +6,7 @@ import gzip
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import Any
@@ -77,9 +78,35 @@ def _load_file(major: int) -> Caps | None:
         d = json.loads(gzip.decompress(p.read_bytes()))
     except (OSError, ValueError, EOFError):  # missing, truncated, not gzip, bad JSON
         return None
-    if not _shape_ok(d) or d.get("major") != major:
+    if not _shape_ok(d) or d.get("major") != major or not _prov_ok(d.get("provenance"), major):
         return None
     return Caps(major, d, _enterprise())
+
+
+_PROV_KEYS = ("major", "edition", "generated", "source_image", "image_id", "generator", "sources")
+
+
+def _prov_ok(p: Any, major: int) -> bool:
+    """A catalogue without provenance (version, date, source image) is not trusted."""
+    if not isinstance(p, dict) or any(not p.get(k) for k in _PROV_KEYS):
+        return False
+    try:
+        date.fromisoformat(str(p["generated"]))
+    except ValueError:
+        return False
+    return (
+        p["major"] == major
+        and p["source_image"] == f"odoo:{major}"
+        and str(p["image_id"]).startswith("sha256:")
+        and isinstance(p["sources"], list)
+    )
+
+
+def provenance(major: Any) -> dict[str, Any] | None:
+    """Where ``major``'s catalogue came from (copy), or None when there is no trusted file."""
+    c = load(major)
+    p = c.data.get("provenance") if c else None
+    return dict(p) if isinstance(p, dict) else None
 
 
 def _shape_ok(d: Any) -> bool:
