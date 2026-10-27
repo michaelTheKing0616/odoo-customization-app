@@ -139,7 +139,7 @@ _SETTING_SPEC = """
 version: 1
 project: demo
 settings:
-  - key: sale.auto_done
+  - key: group_auto_done_setting
     xmlid: demo.sale_auto_done
     values:
       value: "True"
