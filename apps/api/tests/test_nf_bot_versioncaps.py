@@ -521,9 +521,13 @@ def test_load_accepts_plain_int_major():
 
 @pytest.mark.parametrize("v", [17, 18, 19, 20])
 def test_enterprise_model_without_hint_grades_enterprise_only(v):
-    for ed in ("enterprise", "community"):
+    r = C.availability(v, "community", ["base"], "helpdesk.ticket")
+    assert (r.status, r.module) == ("enterprise-only", "helpdesk"), (v, r)
+    # an Enterprise database without the app: it only needs installing (round 9)
+    for ed in ("enterprise", "Enterprise"):
         r = C.availability(v, ed, ["base"], "helpdesk.ticket")
-        assert (r.status, r.module) == ("enterprise-only", "helpdesk"), (v, ed, r)
+        assert (r.status, r.module) == ("available-needs-install", "helpdesk"), (v, ed, r)
+        assert r.missing_depends == ("helpdesk",)
     r = C.availability(v, "enterprise", ["base", "helpdesk"], "helpdesk.ticket")
     assert r.status == "unknown" and "read the live database" in r.reason
 

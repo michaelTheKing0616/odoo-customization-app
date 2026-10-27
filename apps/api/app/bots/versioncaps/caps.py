@@ -397,10 +397,18 @@ def _ent_verdict(c: Caps, name: str, ent_db: bool, inst: frozenset[str], model: 
             "from catalogue; read the live database",
             name,
         )
+    if ent_db:  # an Enterprise database that does not have the app yet: install it
+        return Verdict(
+            "available-needs-install",
+            f"{model} needs Enterprise module {name}, not installed on this Enterprise "
+            "database; needs install (fields and dependencies not verifiable from catalogue)",
+            name,
+            (name,),
+        )
     return Verdict(
         "enterprise-only",
-        f"{model} needs Enterprise module {name}; fields not verifiable"
-        + ("" if ent_db else "; this is a Community database"),
+        f"{model} needs Enterprise module {name}; fields not verifiable; "
+        "this is a Community database",
         name,
     )
 
