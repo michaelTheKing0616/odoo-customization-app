@@ -130,9 +130,94 @@ def test_view_on_uninstalled_model_not_ok(ver):
     assert a.grade == tt.NEEDS_STEP and "mod:sale:install" in a.prior_steps
 
 
-@pytest.mark.parametrize("tid", ["r:hr_expense.report_expense_sheet", "cron:Mail queue"])
-def test_no_model_ids_unknown(tid):
-    assert tt.assess(tid, version=17, installed_modules=["base"]).grade == tt.UNKNOWN
+RPT = "r:hr_expense.report_expense_sheet"  # catalogue: 17|18
+CRON = "cron:Mail: Email Queue Manager"  # catalogue: 17-20
+
+
+@pytest.mark.parametrize("ver", [17, 18])
+def test_report_graded_by_owning_app(ver):
+    a = tt.assess(RPT, version=ver, installed_modules=["base", "hr_expense"])
+    assert a.grade == tt.OK and a.tier == tt.T1
+    b = tt.assess(RPT, version=ver, installed_modules=["base"])
+    assert b.grade == tt.NEEDS_STEP and b.prior_steps == ("mod:hr_expense:install",)
+
+
+@pytest.mark.parametrize("ver", [19, 20])
+def test_report_not_in_version(ver):
+    a = tt.assess(RPT, version=ver, installed_modules=["base", "hr_expense"])
+    assert a.grade == tt.NOT_IN_VERSION
+    assert a.instead == ("this exists in Odoo 17", "this exists in Odoo 18")
+
+
+def test_report_enterprise_app_needs_edition(monkeypatch):
+    monkeypatch.setattr(tt.caps, "module_info", lambda v, m: {"name": m, "edition": "enterprise"})
+    a = tt.assess(RPT, version=17, installed_modules=["base"])
+    assert a.grade == tt.NEEDS_EDITION
+    e = tt.assess(RPT, version=17, edition="enterprise", installed_modules=["base"])
+    assert e.grade == tt.NEEDS_STEP
+
+
+@pytest.mark.parametrize("ver", [17, 20])
+def test_cron_graded_by_named_app(ver):
+    a = tt.assess(CRON, version=ver, installed_modules=["base", "mail"], module_hint="mail")
+    assert a.grade == tt.OK
+    b = tt.assess(CRON, version=ver, installed_modules=["base"], module_hint="mail")
+    assert b.grade == tt.NEEDS_STEP and b.prior_steps == ("mod:mail:install",)
+
+
+@pytest.mark.parametrize(
+    ("tid", "kw"),
+    [
+        (CRON, {}),  # no app named: cannot confirm
+        (CRON, {"module_hint": "Mail; drop"}),  # malformed hint
+        (CRON, {"module_hint": ""}),
+        ("cron:Not A Real Job", {"module_hint": "mail"}),  # not in the catalogue
+        ("r:hr_expense.no_such_report", {}),
+        ("r:noprefix", {}),  # no module prefix
+        (RPT, {"module_hint": "zz_unknown_app", "installed_modules": ["base"]}),  # hint ignored
+        (RPT, {"installed_modules": None}),
+        (RPT, {"installed_modules": "hr_expense"}),
+        (RPT, {"installed_modules": [1]}),
+        (RPT, {"version": "17"}),
+        (RPT, {"version": True}),
+    ],
+)
+def test_report_and_cron_fail_closed(tid, kw):
+    kw = {"version": 17, "installed_modules": ["base"], **kw}
+    a = tt.assess(tid, **kw)
+    if tid == RPT and kw.get("module_hint") == "zz_unknown_app":
+        assert a.grade == tt.NEEDS_STEP and a.prior_steps == ("mod:hr_expense:install",)
+    else:
+        assert a.grade == tt.UNKNOWN and not a.allowed
+
+
+def test_unknown_app_and_catalogue_fault_fail_closed(monkeypatch):
+    monkeypatch.setattr(tt.caps, "module_info", lambda v, m: None)
+    assert tt.assess(RPT, version=17, installed_modules=["base"]).grade == tt.UNKNOWN
+    # installed beats a missing catalogue entry (the row is listed for this version)
+    assert tt.assess(RPT, version=17, installed_modules=["hr_expense"]).grade == tt.OK
+
+    def boom(*_a, **_k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(tt.classifier, "catalogue", boom)
+    assert tt.assess(RPT, version=17, installed_modules=["hr_expense"]).grade == tt.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("tid", "hint", "mod"),
+    [
+        (RPT, None, "hr_expense"),
+        (RPT, "mail", "hr_expense"),
+        (CRON, None, None),
+        (CRON, "mail", "mail"),
+        (CRON, "Mail", None),
+        ("r:.x", None, None),
+        ("m:res.partner:create", "mail", None),
+    ],
+)
+def test_module_of_contract(tid, hint, mod):
+    assert tt.module_of(tid, hint) == mod
 
 
 def test_model_of_fault_unknown(monkeypatch):
@@ -205,7 +290,8 @@ def test_str_installed_never_reaches_availability(monkeypatch):
     assert a.grade == tt.UNKNOWN and calls == []
 
 
-def test_required_read_only_and_claim_mentions_ungraded():
+def test_required_read_only_and_claim_scopes_reports_and_crons():
     with pytest.raises(TypeError):
         tt.REQUIRED[3] = ()  # type: ignore[index]
-    assert "not graded yet" in tt.CLAIM
+    assert "not graded yet" not in tt.CLAIM
+    assert "Report tasks" in tt.CLAIM and "name the app" in tt.CLAIM
