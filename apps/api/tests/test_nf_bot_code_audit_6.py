@@ -581,3 +581,19 @@ def test_probe_md_active(body):
 
 def test_probe_md_plain_ok():
     assert not has({"README.md": "# t\n[link](https://odoo.com) **bold**\n"}, "doc-active-content", "medium")
+
+
+# ---------------------------------------------------------------- probe j-json-module
+@pytest.mark.parametrize("body,code", [
+    ('{"u":"https://e.v/x.js"}', "json-module-url"),
+    ('{"list":["a", "//e.v/p"]}', "json-module-url"),
+    ('{"s":"<script>alert(1)</script>"}', "json-module-script"),
+    ('{"h":"<img src=x onerror=alert(1)>"}', "json-module-script"),
+])
+def test_probe_json_module(body, code):
+    assert (code, "medium") in codes({"static/src/d.json": body})
+
+
+def test_probe_json_module_plain_ok():
+    c = codes({"static/src/d.json": '{"label":"Hello","path":"/shop"}'})
+    assert not {k for k, s in c if k.startswith("json-module") }, c

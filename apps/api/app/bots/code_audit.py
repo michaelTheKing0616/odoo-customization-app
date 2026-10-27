@@ -4264,6 +4264,29 @@ def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
             "Markdown with raw HTML/script or javascript: links (rendered by Apps/GitHub).",
             "Remove raw HTML and javascript: links.",
         )
+    if low.endswith(".json") and low.startswith("static/"):
+        # probe j-json-module: a JSON file under static/ is importable by asset JS
+        # (import x from "./d.json"): its strings are data the page uses
+        um = re.search(r'"\s*((?:https?:)?//[^"\s]+)"', text)
+        if um:
+            c.add(
+                MEDIUM,
+                "json-module-url",
+                path,
+                text[: um.start()].count("\n") + 1,
+                f"JSON asset holds an external URL ({um.group(1)[:60]}) the client code may load.",
+                "Ship the resource in the module; keep JSON assets free of external URLs.",
+            )
+        sm = re.search(r"<\s*(?:script|iframe|object|embed)\b|\bon[a-z]+\s*=|javascript\s*:", text, re.I)
+        if sm:
+            c.add(
+                MEDIUM,
+                "json-module-script",
+                path,
+                text[: sm.start()].count("\n") + 1,
+                "JSON asset holds markup/script: rendered by client code it runs in the page.",
+                "Keep JSON assets to plain data.",
+            )
     if low.endswith(".json"):
         _structured_data(
             c, path, head.decode("utf-8", "replace"), truncated=len(head) >= HEAD_BYTES
