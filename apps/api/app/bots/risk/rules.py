@@ -889,16 +889,22 @@ FIELD_TIER_FLOORS: Mapping[tuple[str, str], tuple[int, str]] = MappingProxyType(
             2,
             "changes which server sends all outgoing email",
         ),
+        # "*": every write task on the model (create / write / unlink, any field)
+        ("ir.mail_server", "*"): (
+            2,
+            "changes an outgoing mail server (where email is sent, and as whom)",
+        ),
     }
 )
 
 
 def field_tier_floor(model: str | None, fields: frozenset[str] | None) -> int:
-    """Min tier from FIELD_TIER_FLOORS; fields=None (unknown set) takes the model's worst."""
+    """Min tier from FIELD_TIER_FLOORS; fields=None (unknown set) takes the model's worst; a
+    "*" row applies to every write on the model whatever the fields."""
     if not model:
         return 1
     rows = [(f, t) for (m, f), (t, _) in FIELD_TIER_FLOORS.items() if m == model]
-    return max([1] + [t for f, t in rows if fields is None or f in fields])
+    return max([1] + [t for f, t in rows if fields is None or f == "*" or f in fields])
 
 
 def required_tier(cls: str, subkind: str | None, route: Route, policy: Policy) -> int:

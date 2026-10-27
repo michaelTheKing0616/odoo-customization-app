@@ -866,6 +866,22 @@ def test_field_tier_floor_rules() -> None:
         ru.FIELD_TIER_FLOORS[(m, "x")] = (1, "")  # type: ignore[index]
 
 
+def test_mail_server_writes_floor_l2() -> None:
+    m = "ir.mail_server"
+    assert ru.field_tier_floor(m, frozenset({"smtp_host"})) == 2
+    assert ru.field_tier_floor(m, frozenset({"name"})) == 2  # any field
+    assert ru.field_tier_floor(m, frozenset()) == 2  # create / unlink: no field set
+    assert ru.field_tier_floor(m, None) == 2
+    assert ru.field_tier_floor("ir.mail_server_x", frozenset({"name"})) == 1
+
+
+@pytest.mark.parametrize("verb", ["write", "create", "unlink"])
+def test_mail_server_write_tasks_need_l2(verb) -> None:
+    # not a catalogue row today (classify refuses it); the floor holds if one is ever added
+    assert cl._tier_floor(f"m:ir.mail_server:{verb}", ctx(17, "A")) == 2
+    assert cl._tier_floor("m:ir.mail_server:export", ctx(17, "A")) == 1
+
+
 def test_walker_path_cannot_write_settings_model() -> None:
     """The walker classifies m:<model>:write; settings have no m: row, so the walker refuses them
     and settings changes go through the settings bot (which applies the same L2 floor)."""
