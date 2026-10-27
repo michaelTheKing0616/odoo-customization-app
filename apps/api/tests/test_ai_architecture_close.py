@@ -16,6 +16,12 @@ from app.expert.draft_review import review_draft
 MUSIC_PROMPT = "A music production company with multiple recording studios and artistes"
 
 
+def _approve_graph_repairs(draft: dict, names: list[str]) -> None:
+    """Closed-class gate (6648b166): structural FK/O2M repairs need operator craft approval."""
+    craft = draft.setdefault("_approved_craft", {})
+    craft["allow"] = sorted(set(craft.get("allow") or []) | set(names))
+
+
 def _status_field(*keys: str) -> dict:
     inner = ",".join(f"('{k}','{k.title()}')" for k in keys)
     return {
@@ -317,6 +323,7 @@ def test_apply_pattern_rules_does_not_promote_registers() -> None:
 
 def test_close_repairs_music_session_fk_and_stock_clones() -> None:
     draft = _broken_music_draft()
+    _approve_graph_repairs(draft, ['x_booking_ids', 'x_engagement_id', 'x_engagement_ids', 'x_equipment_line_ids', 'x_recording_session_ids', 'x_studio_id'])
     notes = close_odoo_architecture(draft, user_prompt=MUSIC_PROMPT)
     assert notes
     by = _by_id(draft)
@@ -911,6 +918,7 @@ def test_close_repairs_music_lexicon_typed_fks_staffing_and_totals() -> None:
         "access_rules": [],
         "groups": [],
     }
+    _approve_graph_repairs(draft, ['x_booking_id', 'x_booking_ids', 'x_deliverable_id', 'x_engagement_id', 'x_studio_id'])
     close_odoo_architecture(draft, user_prompt=MUSIC_PROMPT)
     by = _by_id(draft)
     assert "x_staffing" not in by
@@ -1399,6 +1407,7 @@ def test_close_attaches_job_children_and_collapses_duplicate_lines() -> None:
     assert any("duplicate line models" in d for d in details)
     assert any("without depends product" in d for d in details)
 
+    _approve_graph_repairs(draft, ['x_agreement_ids', 'x_appointment_id', 'x_appointment_ids', 'x_clinic_id', 'x_deliverable_ids', 'x_engagement_id', 'x_job_cost_expense_ids'])
     close_odoo_architecture(draft, user_prompt=prompt)
     by = _by_id(draft)
     assert "x_rate_line" not in by or "x_rate_card_line" not in by
@@ -1652,6 +1661,7 @@ def test_close_repairs_foreign_role_hollow_cost_and_terminals() -> None:
     assert any("corrupt field string" in d for d in details)
     assert any("equipment catalog missing usage line" in d for d in details)
 
+    _approve_graph_repairs(draft, ['x_appointment_ids', 'x_clinic_id', 'x_engagement_ids', 'x_equipment_line_ids', 'x_job_cost_expense_ids', 'x_job_cost_ids'])
     close_odoo_architecture(draft, user_prompt=prompt)
     by = _by_id(draft)
     engagement = by["x_engagement"]
@@ -2206,6 +2216,7 @@ def test_close_trims_usage_line_rate_card_parent_and_search_group_by() -> None:
         "actions": [],
         "menus": [],
     }
+    _approve_graph_repairs(draft, ['x_booking_id'])
     close_odoo_architecture(draft, user_prompt=MUSIC_PROMPT)
     by = _by_id(draft)
     line = by["x_equipment_line"]
@@ -2324,6 +2335,7 @@ def test_expert_fix_drops_usage_line_rate_card_parent() -> None:
         "actions": [],
         "menus": [],
     }
+    _approve_graph_repairs(draft, ['x_booking_id', 'x_recording_ids', 'x_studio_id'])
     before = review_draft(
         draft, user_prompt=MUSIC_PROMPT, apply_fixes=False, include_narratives=False
     )
@@ -2964,3 +2976,14 @@ def test_close_drops_required_rate_on_lined_cost_header() -> None:
     assert by_name["x_name"].get("required") is True
     assert not by_name["x_rate"].get("required")
 
+
+
+def test_close_without_craft_does_not_invent_job_header_fk() -> None:
+    """Closed-class gate (6648b166): uncued structural FK is rejected, not invented."""
+    draft = _clinic_architecture_gaps_draft()
+    close_odoo_architecture(draft, user_prompt="A neighborhood clinic with walk-in appointments")
+    deliverable = next(m for m in draft["models"] if m["model"] == "x_deliverable")
+    assert not any(
+        f.get("ttype") == "many2one" and f.get("relation") == "x_engagement"
+        for f in deliverable["fields"]
+    )
