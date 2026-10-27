@@ -1214,3 +1214,9 @@ def test_sandbox_ready_probe_uses_tcp(tmp_path):
     g.run_gate(files(NEW), module=MOD, version=17, runner=fk, role_spec=role_spec())
     probes = [c for c in fk.calls if "pg_isready" in c]
     assert probes and all(c[c.index("-h") + 1] == "127.0.0.1" for c in probes)
+
+
+def test_access_sql_scopes_own_models_to_introduced_not_inherited():
+    q = g.sql_access(MOD)
+    assert "NOT EXISTS" in q and f"o.module <> '{MOD}'" in q
+    assert "AND model = 'ir.model.access'" in q  # module's own rows still match by xmlid

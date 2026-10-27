@@ -700,8 +700,11 @@ def sql_access(module: str, after: Mapping[str, int] | None = None) -> str:
     dom = "replace(replace(COALESCE(r.domain_force, ''), E'\\n', ' '), E'\\r', ' ')"
     return (
         "-- gate:access\n"
-        f"WITH own AS (SELECT res_id FROM public.ir_model_data WHERE module = '{module}' "
-        "AND model = 'ir.model')\n"
+        # models this module introduces; an inherited stock model also gets a module xmlid,
+        # but its stock rows are not the module's (its own rows still match by id/xmlid)
+        f"WITH own AS (SELECT d.res_id FROM public.ir_model_data d WHERE d.module = '{module}' "
+        "AND d.model = 'ir.model' AND NOT EXISTS (SELECT 1 FROM public.ir_model_data o "
+        f"WHERE o.model = 'ir.model' AND o.res_id = d.res_id AND o.module <> '{module}'))\n"
         f"SELECT 'a', {mx}, {grp.format(g='a.group_id')}, a.perm_read::int, "
         "a.perm_write::int, a.perm_create::int, a.perm_unlink::int, ''\n"
         "FROM public.ir_model_access a JOIN public.ir_model m ON m.id = a.model_id\n"
