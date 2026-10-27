@@ -114,7 +114,7 @@ def test_quotations_community_20_is_sales_stock_and_does_not_ask_for_a_database(
     assert not _CONNECT_ASK.search(_surface(answer))
     assert model.json_calls == 1
     assert model.text_calls == 0
-    assert "QUESTION: Can Odoo do quotations?" in model.prompts[0]
+    assert re.search(r"QUESTION: <<UNTRUSTED source=client_chat id=\w+>>\n" + re.escape('Can Odoo do quotations?'), model.prompts[0])
     assert 2 <= len(answer.bullets) <= 3
     for bullet in answer.bullets:
         assert bullet in answer.answer_markdown
@@ -144,7 +144,7 @@ def test_helpdesk_community_is_enterprise_only_when_the_model_says_so() -> None:
     assert "not in Community" in blob
     assert model.json_calls == 1
     assert model.text_calls == 0
-    assert "QUESTION: Can Odoo do a helpdesk?" in model.prompts[0]
+    assert re.search(r"QUESTION: <<UNTRUSTED source=client_chat id=\w+>>\n" + re.escape('Can Odoo do a helpdesk?'), model.prompts[0])
 
 
 def test_check_refuses_helpdesk_as_community_stock() -> None:
@@ -198,7 +198,7 @@ def test_bank_api_is_never_stock() -> None:
     assert answer.app_name is None
     assert model.json_calls == 1
     assert model.text_calls == 0
-    assert "QUESTION: Can Odoo post to our bank's API?" in model.prompts[0]
+    assert re.search(r"QUESTION: <<UNTRUSTED source=client_chat id=\w+>>\n" + re.escape("Can Odoo post to our bank's API?"), model.prompts[0])
 
 
 def test_feature_only_on_20_is_not_stock_on_19() -> None:
@@ -376,7 +376,7 @@ def test_model_not_sure_on_quotations_is_not_upgraded_to_sales_stock() -> None:
         edition="community",
     )
     assert model.json_calls == 1
-    assert "QUESTION: Can Odoo do quotations?" in model.prompts[0]
+    assert re.search(r"QUESTION: <<UNTRUSTED source=client_chat id=\w+>>\n" + re.escape('Can Odoo do quotations?'), model.prompts[0])
     assert answer.verdict == NOT_SURE
     assert answer.verdict != STOCK_COMMUNITY
     assert answer.app_name is None
