@@ -1357,15 +1357,31 @@ def _sensitive_writes(
     """ORM writes on the security core; HIGH when the receiver runs elevated."""
     model_vars: dict[str, str] = {}
     elev_vars: set[str] = set()
+    str_consts = _str_consts(tree)
+    dict_vars = {
+        t.id: n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Dict)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
+
+    def env_key(y: ast.AST) -> str | None:
+        if isinstance(y, ast.Subscript) and _chain(y.value).endswith("env"):
+            k = _fold_str(y.slice)
+            if k is None and isinstance(y.slice, ast.Name):
+                k = str_consts.get(y.slice.id)
+            return k
+        return None
 
     def model_of(x: ast.AST) -> str:
+        # H15: the outermost relation hop decides the receiver (search(...).mapped('user_ids'))
+        r = _receiver_model(x, model_vars, env_key)
+        if r is not None:
+            return r
         for y in ast.walk(x):
-            if (
-                isinstance(y, ast.Subscript)
-                and _chain(y.value).endswith("env")
-                and isinstance(_const(y.slice), str)
-            ):
-                return _const(y.slice)
+            if (k := env_key(y)) is not None:
+                return k
             if isinstance(y, ast.Name) and y.id in model_vars:
                 return model_vars[y.id]
         return ""
@@ -1390,7 +1406,12 @@ def _sensitive_writes(
     for n in ast.walk(tree):
         if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
             continue
-        if n.func.attr not in _SENSITIVE_WRITES:
+        if n.func.attr == "new":
+            # H17: an in-memory record with privilege vals (onchange/new) on the security core
+            vals = [dict_vars.get(a.id, a) if isinstance(a, ast.Name) else a for a in n.args]
+            if not any(_priv_keys_in(v) for v in vals):
+                continue
+        elif n.func.attr not in _SENSITIVE_WRITES:
             continue
         model = model_of(n.func.value)
         if not policy.python_write_needs_l3(model):
@@ -1681,6 +1702,11 @@ def _is_auth_name(name: str) -> bool:
         "check_access_rights",
         "check_access_rule",
         "_check_access_rights",
+        "_compute_domain",
+        "_compute_domain_keys",
+        "domain_get",
+        "_get_rules",
+        "_get_failing",
     )
 
 
@@ -1769,12 +1795,36 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
         if a.name in _ASYNC_SPAWN
     }
 
+    sql_vars = {
+        t.id: n.value
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
+
     def origin(x: ast.AST) -> str:
         d = _dotted(x)
         head, _, rest = d.partition(".")
         if head in imp:
             return f"{imp[head]}.{rest}" if rest else imp[head]
         return d
+
+    sess_alias = {
+        t.id
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign) and origin(n.value) == "odoo.http.request.session"
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
+
+    def is_session(x: ast.AST) -> bool:
+        return origin(x) == "odoo.http.request.session" or (isinstance(x, ast.Name) and x.id in sess_alias)
+
+    def sess_auth_write(line: int, key: str) -> None:
+        c.add(HIGH, "session-auth-write", path, line,
+              f"Writes request.session[{key!r}]: sets who the request is authenticated as.",
+              "Authenticate through request.session.authenticate(); never set identity by hand.")  # fmt: skip
 
     for n in ast.walk(tree):
         targets: list[ast.AST] = []
@@ -1783,6 +1833,16 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
         elif isinstance(n, (ast.AugAssign, ast.AnnAssign)):
             targets = [n.target]
         for t in targets:
+            # H13: request.session['uid'] = ... (also through an alias of request.session)
+            if isinstance(t, ast.Subscript) and is_session(t.value):
+                k = _fold_str(t.slice)
+                if k is None or k in _SESSION_AUTH:
+                    sess_auth_write(n.lineno, k or "<runtime key>")
+                continue
+            if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id in sess_alias:
+                if t.attr in _SESSION_AUTH:
+                    sess_auth_write(n.lineno, t.attr)
+                continue
             if isinstance(t, ast.Attribute):
                 o = origin(t.value)
                 if o == "odoo.http.request" or o.startswith("odoo.http.request."):
@@ -1815,18 +1875,320 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
                 c.add(HIGH, "core-patch", path, n.lineno, f"setattr on {o}: patches Odoo's HTTP/auth internals.",
                       "Never patch odoo.http/odoo.service; inherit ir.http and call super().")  # fmt: skip
         attr = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
+        # H13: request.session.update({'uid': ..}) / update(uid=..) / setdefault('uid', ..) / __setitem__
+        if isinstance(n.func, ast.Attribute) and is_session(n.func.value) and attr in ("update", "setdefault", "__setitem__"):
+            keys: list[str | None] = [k.arg for k in n.keywords]
+            if attr == "update" and n.args:
+                a0 = n.args[0]
+                keys += [_fold_str(k) for k in a0.keys] if isinstance(a0, ast.Dict) else [None]
+            elif n.args:
+                keys.append(_fold_str(n.args[0]))
+            for k in keys:
+                if k is None or k in _SESSION_AUTH:
+                    sess_auth_write(n.lineno, k or "<runtime key>")
+                    break
         if attr in _ASYNC_SPAWN or attr in spawn_alias:
             c.add(HIGH, "dangerous-call", path, n.lineno,
                   f"{fn or attr}() starts an OS process (asyncio subprocess).",
                   "Never run shell commands from a module.")  # fmt: skip
         if attr in ("execute", "executemany", "copy_expert", "copy_from", "copy_to") and n.args:
-            q = _fold_str(n.args[0])
-            if q is None and isinstance(n.args[0], ast.Call) and n.args[0].args:
-                q = _fold_str(n.args[0].args[0])  # SQL('...') wrapper
+            q = _sql_folded(n.args[0], sql_vars)
             if q and _CORE_DML.search(q) and _CORE_TABLES.search(q):
                 c.add(HIGH, "core-table-dml", path, n.lineno,
                       f"Literal SQL changes a core table ({q.strip()[:60]!r}) bypassing the ORM and access rules.",
                       "Never write core tables with SQL; use the ORM on your own models.")  # fmt: skip
+
+
+def _str_consts(tree: ast.AST) -> dict[str, str]:
+    """Names bound exactly once to a constant-foldable string (m = 'res' + '.users')."""
+    seen: dict[str, int] = {}
+    out: dict[str, str] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign):
+            for t in n.targets:
+                if isinstance(t, ast.Name):
+                    seen[t.id] = seen.get(t.id, 0) + 1
+                    v = _fold_str(n.value)
+                    if v is not None:
+                        out[t.id] = v
+    return {k: v for k, v in out.items() if seen.get(k) == 1}
+
+
+# relation fields whose records are on the security core, whatever model holds them
+_REL_MODEL = {
+    "user_ids": "res.users", "user_id": "res.users", "create_uid": "res.users", "write_uid": "res.users",
+    "users": "res.users", "groups_id": "res.groups", "group_ids": "res.groups", "implied_ids": "res.groups",
+    "company_id": "res.company", "company_ids": "res.company",
+}  # fmt: skip
+_SAME_RECORDSET = frozenset({
+    "filtered", "filtered_domain", "sorted", "sudo", "with_user", "with_context", "with_company",
+    "with_env", "exists", "ensure_one", "browse", "search", "union", "concat",
+})  # fmt: skip
+
+
+def _receiver_model(x: ast.AST, model_vars: dict[str, str], env_key) -> str | None:
+    """Model of the recordset x, read from the outside in; None when unknown here."""
+    for _ in range(40):
+        if isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute):
+            a = x.func.attr
+            if a == "mapped" and x.args:
+                f = _fold_str(x.args[0])
+                if f is None:
+                    return None
+                return _REL_MODEL.get(f.split(".")[-1], "")
+            if a in _SAME_RECORDSET:
+                x = x.func.value
+                continue
+            return None
+        if isinstance(x, ast.Attribute):
+            if x.attr in _REL_MODEL:
+                return _REL_MODEL[x.attr]
+            if x.attr in ("user", "uid") and _chain(x.value).endswith("env"):
+                return "res.users"
+            if x.attr in ("company", "companies") and _chain(x.value).endswith("env"):
+                return "res.company"
+            return None
+        if isinstance(x, ast.Subscript):
+            k = env_key(x)
+            return k if k is not None else None
+        if isinstance(x, ast.Name):
+            return model_vars.get(x.id)
+        return None
+    return None
+
+
+_PRIV_VAL_KEY = re.compile(r"^(?:groups_id|group_ids|implied_ids|share|company_ids|sel_groups_\w+|in_group_\w+)$")
+
+
+def _priv_keys_in(x: ast.AST) -> bool:
+    """A dict literal / dict(...) call / keyword set naming a privilege field."""
+    for y in ast.walk(x):
+        if isinstance(y, ast.Dict) and any(isinstance(k := _fold_str(kk) if kk else None, str) and _PRIV_VAL_KEY.match(k) for kk in y.keys):
+            return True
+        if isinstance(y, ast.Call) and any(k.arg and _PRIV_VAL_KEY.match(k.arg) for k in y.keywords):
+            return True
+    return False
+
+
+def _sql_folded(q: ast.AST, names: dict[str, ast.AST], depth: int = 0) -> str | None:
+    """Folded SQL text: literals, SQL('.. %s ..', SQL.identifier('t')) and
+    psycopg2 sql.SQL('.. {} ..').format(sql.Identifier('t')); identifiers through a local name."""
+    if depth > 6:
+        return None
+    if isinstance(q, ast.Name) and q.id in names:
+        return _sql_folded(names[q.id], names, depth + 1)
+    s = _fold_str(q)
+    if s is not None:
+        return s
+    if not isinstance(q, ast.Call):
+        return None
+    fn = _dotted(q.func).split(".")[-1]
+    if fn in ("identifier", "Identifier") and q.args:
+        return _sql_folded(q.args[0], names, depth + 1)
+    if fn == "format" and isinstance(q.func, ast.Attribute) and isinstance(q.func.value, ast.Call):
+        head = _sql_folded(q.func.value, names, depth + 1)
+        if head is None:
+            return None
+        parts = [_sql_folded(a, names, depth + 1) for a in q.args]
+        try:
+            return head.replace("%s", "{}").format(*[p if p is not None else "?" for p in parts])
+        except (IndexError, KeyError, ValueError):
+            return head
+    if q.args:
+        head = _sql_folded(q.args[0], names, depth + 1)
+        if head is None:
+            return None
+        for a in q.args[1:]:
+            p = _sql_folded(a, names, depth + 1) if isinstance(a, (ast.Call, ast.Name)) else None
+            if "%s" in head:
+                head = head.replace("%s", p if p is not None else "?", 1)
+        return head
+    return None
+
+
+_SECRET_ATTR = re.compile(
+    r"^(?:password|new_password|api_key\w*|totp_secret|signup_token|oauth_access_token|\w+_secret|secret)$"
+)
+_SECRET_READ_MODELS = frozenset({"res.users.apikeys", "auth.totp.device"})
+_RPC_PROXY = re.compile(
+    r"^odoo\.(?:service\.(?:dispatch_rpc|model\.(?:execute(?:_kw|_cr)?|dispatch)|common\.dispatch|"
+    r"db\.(?:dispatch|exp_\w+)|dispatch)|http\.dispatch_rpc)$"
+)
+_RULE_CORE = frozenset({"ir.rule", "ir.model.access"})
+_RULE_CORE_METHODS = frozenset({"_compute_domain", "_compute_domain_keys", "_get_rules", "domain_get", "_get_failing", "check", "_get_allowed_models", "call_cache_clearing_methods"})
+
+
+def _class_inherits(cls: ast.ClassDef) -> set[str]:
+    out: set[str] = set()
+    for st in cls.body:
+        if isinstance(st, ast.Assign) and any(isinstance(t, ast.Name) and t.id in ("_inherit", "_name") for t in st.targets):
+            v = st.value
+            for e in v.elts if isinstance(v, (ast.List, ast.Tuple)) else [v]:
+                if isinstance(e, ast.Constant) and isinstance(e.value, str):
+                    out.add(e.value)
+    return out
+
+
+def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
+    """REVIEW-CODE-AUDIT-6 root causes: rule/access core overrides (H10), security-core
+    create/write overrides that inject privilege vals (H11), secret reads in controllers
+    (H12/M3), RPC proxies on public routes (H9), stored/related secret fields (H16), and
+    privilege defaults through Python action contexts (H8 Python twin)."""
+    imp = _odoo_imports(tree)
+
+    def origin(x: ast.AST) -> str:
+        d = _dotted(x)
+        head, _, rest = d.partition(".")
+        if head in imp:
+            return f"{imp[head]}.{rest}" if rest else imp[head]
+        return d
+
+    # H10/H11: overrides on the security core
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        inh = _class_inherits(cls)
+        if not inh:
+            continue
+        for f in cls.body:
+            if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) or f.name.startswith("__"):
+                continue
+            sup = any(isinstance(x, ast.Call) and _dotted(x.func) == "super" for x in ast.walk(f))
+            lit_domain = any(isinstance(r, ast.Return) and isinstance(r.value, (ast.List, ast.Tuple)) for r in ast.walk(f))
+            if inh & _RULE_CORE and (not _is_auth_name(f.name) or (sup and lit_domain)):
+                c.add(HIGH if (not sup or lit_domain or f.name in _RULE_CORE_METHODS and not sup) else MEDIUM,
+                      "auth-override", path, f.lineno,
+                      f"{cls.name}.{f.name}() overrides {'/'.join(sorted(inh & _RULE_CORE))}: record rules and"
+                      " access rights are computed here" + (" (returns a literal domain)." if lit_domain else "."),
+                      "Never override record-rule or access-right computation in a module.")  # fmt: skip
+            if inh & SENSITIVE_MODELS and f.name in ("create", "write", "copy", "_create", "_write", "new", "default_get", "_signup_create_user"):
+                for x in ast.walk(f):
+                    k = None
+                    if isinstance(x, (ast.Assign, ast.AugAssign)):
+                        for t in x.targets if isinstance(x, ast.Assign) else [x.target]:
+                            if isinstance(t, ast.Subscript):
+                                k = _fold_str(t.slice)
+                    elif isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and x.func.attr in ("update", "setdefault", "__setitem__"):
+                        if x.func.attr == "update" and x.args and isinstance(x.args[0], ast.Dict):
+                            k = next((kk for kk in map(_fold_str, x.args[0].keys) if kk and _PRIV_VAL_KEY.match(kk)), None)
+                        elif x.func.attr != "update" and x.args:
+                            k = _fold_str(x.args[0])
+                        k = k or next((kw.arg for kw in x.keywords if kw.arg and _PRIV_VAL_KEY.match(kw.arg)), None)
+                    if k is None and isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) \
+                            and isinstance(x.func.value, ast.Call) and _dotted(x.func.value.func) == "super":
+                        if any(_priv_keys_in(a) for a in x.args):
+                            k = "groups_id"
+                    if k and (_PRIV_VAL_KEY.match(k) or ("res.groups" in inh and k in ("users", "user_ids"))):
+                        c.add(HIGH, "sensitive-override-write", path, x.lineno,
+                              f"{cls.name}.{f.name}() on {'/'.join(sorted(inh & SENSITIVE_MODELS))} sets {k!r} in the"
+                              " values: every record created/written through it gets privileges.",
+                              "Never inject groups/share/company privileges in a security-core create/write override.")  # fmt: skip
+                        break
+
+    # H16: python fields related to a secret column (stored or not, the hash/token becomes readable)
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call) and _dotted(n.func).split(".")[0] in ("fields", "odoo") and _dotted(n.func)[:1].isalpha():
+            for kw in n.keywords:
+                if kw.arg == "related":
+                    r = _fold_str(kw.value)
+                    if r and _SECRET_ATTR.match(r.split(".")[-1]):
+                        store = any(k.arg == "store" and _const(k.value) is True for k in n.keywords)
+                        c.add(HIGH, "sensitive-field-exposure", path, n.lineno,
+                              f"Field related to {r!r}{' (stored)' if store else ''}: copies a secret onto a readable model.",
+                              "Never relate or store password/token/secret columns on another model.")  # fmt: skip
+
+    # H8 Python twin: action dicts / with_context defaulting privilege fields
+    for n in ast.walk(tree):
+        hit = None
+        if isinstance(n, ast.Dict):
+            for kk, vv in zip(n.keys, n.values):
+                if kk is not None and _fold_str(kk) == "context":
+                    src = ast.unparse(vv)
+                    if m := policy.CTX_PRIV_DEFAULT.search(src):
+                        hit = m.group(1) or m.group(2)
+        elif isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "with_context":
+            for kw in n.keywords:
+                if kw.arg and re.match(r"^default_(groups_id|group_ids|implied_ids|share|password|company_ids|sel_groups_\w+|in_group_\w+|user_ids|users)$", kw.arg):
+                    hit = kw.arg[8:]
+            for a in n.args:
+                if m := policy.CTX_PRIV_DEFAULT.search(ast.unparse(a)):
+                    hit = m.group(1) or m.group(2)
+        if hit:
+            c.add(HIGH, "context-privilege-default", path, n.lineno,
+                  f"Context sets default_{hit}: records created with it get privilege fields.",
+                  "Do not default security fields through a context.")  # fmt: skip
+
+    # H9 / H12 / M3: controllers
+    funcs = {f.name: f for f in ast.walk(tree) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    proxy: set[str] = set()
+    for _ in range(4):  # helpers that reach an RPC dispatcher are dispatchers too
+        for name, f in funcs.items():
+            if name in proxy:
+                continue
+            for x in ast.walk(f):
+                if isinstance(x, ast.Call):
+                    o = origin(x.func)
+                    callee = x.func.attr if isinstance(x.func, ast.Attribute) and _chain(x.func.value) in ("self", "cls") else (x.func.id if isinstance(x.func, ast.Name) else "")
+                    if _RPC_PROXY.match(o) or callee in proxy:
+                        proxy.add(name)
+                        break
+    for f in funcs.values():
+        auth = _route_auth(f)
+        if not auth:
+            continue
+        public = auth in ("public", "none", "dynamic")
+        for x in ast.walk(f):
+            if not isinstance(x, ast.Call):
+                continue
+            o = origin(x.func)
+            callee = x.func.attr if isinstance(x.func, ast.Attribute) and _chain(x.func.value) in ("self", "cls") else (x.func.id if isinstance(x.func, ast.Name) else "")
+            if _RPC_PROXY.match(o) or (callee and callee in proxy and callee != f.name):
+                c.add(HIGH if public else MEDIUM, "rpc-proxy", path, x.lineno,
+                      f"auth='{auth}' route {f.name}() forwards to the RPC dispatcher ({o or callee}):"
+                      " an open proxy to every model and service.",
+                      "Never expose the RPC dispatcher (dispatch_rpc, model.execute*) from a route; call the ORM on fixed models.")  # fmt: skip
+                break
+        # secret reads inside the route
+        tainted: set[str] = set()
+        reads: list[tuple[int, str]] = []
+        called = {id(y.func) for y in ast.walk(f) if isinstance(y, ast.Call)}  # x.secret() is a call, not a column
+
+        def secret_read(e: ast.AST) -> str:
+            for y in ast.walk(e):
+                if isinstance(y, ast.Attribute) and _SECRET_ATTR.match(y.attr) and id(y) not in called:
+                    return y.attr
+                if isinstance(y, ast.Call) and isinstance(y.func, ast.Attribute):
+                    a = y.func.attr
+                    if a in ("mapped", "read", "search_read", "read_group", "export_data", "get_param", "webRead", "web_read"):
+                        for z in ast.walk(y):
+                            v = _fold_str(z) if isinstance(z, (ast.Constant, ast.JoinedStr, ast.BinOp)) else None
+                            if v and (_SECRET_ATTR.match(v.split(".")[-1]) or (a == "get_param" and re.search(r"secret|password|token|api_?key", v, re.I))):
+                                return v
+                    if (k := next((kk for z in ast.walk(y.func.value) if isinstance(z, ast.Subscript) and (kk := _fold_str(z.slice)) in _SECRET_READ_MODELS), None)):
+                        return k
+                if isinstance(y, ast.Name) and y.id in tainted:
+                    return y.id
+            return ""
+
+        for _ in range(3):
+            for st in ast.walk(f):
+                if isinstance(st, ast.Assign) and secret_read(st.value):
+                    tainted |= {t.id for t in st.targets if isinstance(t, ast.Name)}
+        for st in ast.walk(f):
+            if isinstance(st, (ast.Return, ast.Yield)) and st.value is not None and (w := secret_read(st.value)):
+                reads.append((st.lineno, w))
+            elif isinstance(st, ast.Call) and re.search(r"make_(json_)?response|render|dumps", _dotted(st.func)) and any(secret_read(a) for a in [*st.args, *[k.value for k in st.keywords]]):
+                reads.append((st.lineno, secret_read(st)))
+        # returned to the caller: HIGH under any auth (the response carries the secret)
+        for line, w in reads[:1]:
+            c.add(HIGH, "route-secret-read", path, line,
+                  f"auth='{auth}' route {f.name}() returns secret material ({w}).",
+                  "Never return passwords, API keys, TOTP secrets or tokens from a controller.")  # fmt: skip
+        if not reads:  # M3: secret-holding models read in a route, not (provably) returned
+            for st in ast.walk(f):
+                if isinstance(st, ast.Call) and (w := secret_read(st)) in _SECRET_READ_MODELS:
+                    c.add(HIGH if public else MEDIUM, "route-secret-read", path, st.lineno,
+                          f"auth='{auth}' route {f.name}() reads {w}.",
+                          "Do not read API keys/TOTP devices in controllers.")  # fmt: skip
+                    break
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
@@ -1996,6 +2358,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
     _sensitive_writes(c, path, tree, malias, server_code)
     _auth_bypass(c, path, tree, malias)
     _core_patches(c, path, tree)
+    _review6_py(c, path, tree, malias)
     _server_code_grades(c, path, tree, server_code)
     if server_code:
         for n in ast.walk(tree):
