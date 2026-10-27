@@ -34,6 +34,7 @@ FIELDS = {
     "auth_signup_uninvited": {"type": "selection", "selection": [["b2b", "B"], ["b2c", "C"]]},
     "zz_custom_flag": {"type": "boolean"},
     "group_ids_like": {"type": "many2many"},
+    "external_email_server_default": {"type": "boolean"},
 }
 
 
@@ -46,6 +47,7 @@ class Odoo:
             "default_invoice_policy": "order",
             "auth_signup_uninvited": "b2b",
             "zz_custom_flag": False,
+            "external_email_server_default": False,
         }
         self.admins, self.pending, self.writes = 2, {}, []
         self.on_execute = None
@@ -165,6 +167,24 @@ def test_tiers_approval_and_snapshot(mk) -> None:
     assert r.status == "refused" and "snapshot" in r.refusal.reason and o.writes == []
     assert b.apply(m, spec(snapshot_id="snap-1")).status == "done"
     no(b.undo(st.Result("done", m, {})), "no undo")
+
+
+@pytest.mark.parametrize("v", VS)
+def test_outgoing_mail_server_setting_needs_l2(mk, v) -> None:
+    b, o, _, _ = mk(v)
+    p = ok(b.plan({"external_email_server_default": True}))
+    assert p.tier == 2 and not p.needs_snapshot
+    assert any("outgoing email" in ln and "L2" in ln for ln in p.lines)
+    r = b.apply(p, spec(level=1))
+    assert r.status == "refused" and "L2" in r.refusal.reason and o.writes == []
+    assert b.apply(p, spec(level=2)).status == "done"
+    assert o.state["external_email_server_default"] is True
+    # negative: an ordinary reviewed setting stays L1; a higher class is not lowered
+    if v == 17:  # catalogue row checked on 17
+        assert ok(b.plan({"default_invoice_policy": "delivery"})).tier == 1
+    both = ok(b.plan({"external_email_server_default": False, "group_stock_multi_locations": True}))
+    assert both.tier == 3 and both.cls == "R8"
+    assert set(st.L2_SETTINGS) == {"external_email_server_default"}
 
 
 def test_kill_switch_blocks_and_no_rehearsal_blocks(mk) -> None:

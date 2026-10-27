@@ -38,6 +38,12 @@ _SIMPLE = {
 }
 
 
+# Reviewed: settings that change where outgoing mail goes. Undoable, but a person approves (L2).
+L2_SETTINGS: Mapping[str, str] = {
+    "external_email_server_default": "changes which server sends all outgoing email",
+}
+
+
 def _no(reason: str) -> Refusal:
     return Refusal(RF, MISS, reason[:180])
 
@@ -106,6 +112,9 @@ class SettingsBot:
             if rr.rank(d.cls) > rr.rank(cls):
                 cls = d.cls
             tier = max(tier, d.tier)
+            if f in L2_SETTINGS and tier < 2:
+                tier = 2
+                lines.append(f"{f}: {L2_SETTINGS[f]} (needs L2 approval)")
             if f.startswith("module_"):
                 snap, tier = True, 3
                 lines.append(f"{f}: installs an app (no automatic undo; snapshot required)")
