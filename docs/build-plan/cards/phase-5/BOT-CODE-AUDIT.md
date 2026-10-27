@@ -154,7 +154,7 @@ Tests: `tests/test_nf_bot_code_audit_8.py` (29). Each change has the probe, at l
   | auth_signup | 7/63 |
   | website | 321/259 |
 
-- web-unaudited and file-unaudited are 0 in every module, including `web`.
+- Correction (CODE-AUDIT-10): only the HIGH whole-file `web-unaudited`/`file-unaudited` codes were 0. MEDIUM `data-file-unaudited` (106 per version), `web-unaudited` (web 1) and `owl-expr-unaudited` (web 1, website 1) were not counted. See CODE-AUDIT-10.
 - All `tests/*code_audit*.py`: 1089 passed forward, 1089 passed reverse.
 - gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
 
@@ -180,3 +180,43 @@ Tests: `tests/test_nf_bot_code_audit_8.py` (29). Each change has the probe, at l
 - Stock HIGH/MEDIUM, v17 and v19, including `web`: identical to CODE-AUDIT-8 in all 24 runs. The search_fetch coverage briefly added one mail mass-change; it was removed by the limit rule.
 - All `tests/*code_audit*.py`: 1171 passed forward, 1171 passed reverse.
 - gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed. bl_08: 4 passed. 97-id stale rerun: 95 passed, 1 skipped.
+
+## CODE-AUDIT-10: zero unaudited on stock
+
+Root causes (identical on v17 and v19):
+
+| Module | Code | Count | Cause | Fix |
+|---|---|---|---|---|
+| hr / website_sale / mrp / sale / stock / mail | data-file-unaudited | 42 / 41 / 13 / 2 / 2 / 1 | `file=` binary images were left out of the inventory, so they looked missing | The magic bytes of the inert asset are checked against its extension (`_inert_ref_ok`) |
+| account | data-file-unaudited | 5 | `base/static/img/onboarding_*` lives in the core addons path | Core `odoo/addons` added to the sibling roots. Symlink, `..` and size checks apply. |
+| web | web-unaudited | 1 | hoot `index.html` `<script type="importmap">` was parsed as JS | Script types importmap, speculationrules and `*json` are parsed as JSON. A remote or `data:` importmap target is HIGH. |
+| web | owl-expr-unaudited | 1 | Outer `${…}` in `xml``…`` became an empty `${}` | A parseable placeholder is used. The outer JS audits the real expression. |
+| website | owl-expr-unaudited | 1 | `t-on-click="delete"` (reserved word) | A bare reserved word becomes a ctx lookup |
+
+These inputs still fail closed:
+- Bad magic bytes, a missing file, or a foreign addon that isn't available give MEDIUM `data-file-unaudited`.
+- Invalid JSON in a script gives HIGH `web-unaudited`.
+- An unparseable OWL expression gives `owl-expr-unaudited`.
+
+Why CA8 was wrong: CA8 checked only the HIGH whole-file codes. `stock.py` had no unaudited assertion. Two gates now catch this:
+- `/tmp/ca7/stock.py` asserts unaudited == 0.
+- `tests/test_nf_bot_code_audit_stock_gate.py` runs when `INGENIUM_STOCK_AUDIT=1` is set and `STOCK_ODOO_ADDONS` points at the stock addons. Its run passed 24 of 24.
+
+Stock results (HIGH/MEDIUM, unaudited = 0 in every module). The only change from CA9 is the removed unaudited findings.
+
+| Module | v17 | v19 |
+|---|---|---|
+| mail | 92/339 | 60/338 |
+| sale | 57/160 | 47/159 |
+| crm | 30/277 | 18/277 |
+| hr | 40/201 | 27/199 |
+| website_sale | 83/146 | 78/143 |
+| mrp | 54/136 | 41/136 |
+| account | 83/343 | 57/343 |
+| stock | 112/177 | 81/177 |
+| web | 189/487 | 187/487 |
+| portal | 9/81 | 9/80 |
+| auth_signup | 8/63 | 7/63 |
+| website | 331/260 | 321/258 |
+
+Audit suites: forward and reverse order both gave 1194 passed and 24 skipped (the stock gate is opt-in). gate_live: 2 passed.
