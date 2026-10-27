@@ -79,6 +79,17 @@ def _e(
 
 
 ALLOWLIST: tuple[Entry, ...] = (
+    # --- BOT-REQ-INTAKE: free text -> req2mod requirement -----------------------------
+    _e(
+        "bots/req_intake.py",
+        "_ask_model",
+        "generate_json_with_timeout_retry",
+        "closed_choice",
+        "BOT-REQ-INTAKE",
+        "closed JSON schema; validator refuses keys/types outside closed vocabularies, every "
+        "item must quote the source, extend targets resolved against version data",
+        evidence_test="test_nf_bot_req_intake.py",
+    ),
     # --- GND-GEN: Draft Studio understand / intent / refine -------------------------
     _e(
         "ai_conversation/intent_llm.py",

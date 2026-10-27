@@ -221,7 +221,7 @@ def _prompt(sents: tuple[Sentence, ...], version: int, edition: str) -> str:
     )
 
 
-def _call(model: Any, prompt: str) -> Any:
+def _ask_model(model: Any, prompt: str) -> Any:
     if callable(model) and not hasattr(model, "generate_json"):
         raw = model(prompt=prompt, system=SYSTEM, schema=SCHEMA)
     else:
@@ -599,7 +599,7 @@ def prepare(
         if model is None:
             raise IntakeError("no model configured; cannot structure free text")
         _, sents = normalise(source)
-        out = _call(model, _prompt(sents, version, edition))
+        out = _ask_model(model, _prompt(sents, version, edition))
         base = Intake(
             ok=True,
             sentences=sents,
