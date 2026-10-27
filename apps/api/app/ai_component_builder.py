@@ -40,7 +40,9 @@ def inherit_only_display_name(prompt: str, host_label: str) -> str:
         if named and title_is_grounded(named, text) and not re.search(
             r"(?i)\b(extras|extension)\b$", named.strip()
         ):
-            return named
+            # Keep the prompt's own acronym casing ("SLA", not "Sla").
+            upper = {w.lower(): w for w in re.findall(r"\b[A-Z]{2,}\b", text)}
+            return " ".join(upper.get(w.lower(), w) for w in named.split())
     except Exception:  # noqa: BLE001
         pass
     return f"{host} fields"
@@ -293,7 +295,11 @@ def draft_component_from_prompt(
         # (understanding_json / clarifications / status-hint prose as Char fields).
         from app.ai_field_ir import extract_field_ir
 
-        fields = extract_field_ir(prompt)
+        from app.ai_senior_shape import _SEMANTIC_NOUN_RE
+
+        # A domain noun (SLA, warranty, inspection) names fields from its own pack;
+        # infer_extension_fields applies that guard, so only bypass it otherwise.
+        fields = [] if _SEMANTIC_NOUN_RE.search(prompt.lower()) else extract_field_ir(prompt)
         if not fields:
             fields = infer_extension_fields(
                 prompt, pad=resolved_grain != "field_pack"
