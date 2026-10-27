@@ -1185,6 +1185,11 @@ def main():
         out['errors'].append('admin login failed')
         return
     A = ADMIN[1]
+    fg = ex(uid, A, 'res.users', 'fields_get', [], {'attributes': ['type']})
+    gf = 'group_ids' if 'group_ids' in fg else 'groups_id'
+    gids = list(owned(uid, 'res.groups').values())  # CRUD as admin holding the module's groups
+    if gids:
+        ex(uid, A, 'res.users', 'write', [[uid], {gf: [(4, x) for x in gids]}])
     mids = list(owned(uid, 'ir.model').values())
     for m in ex(uid, A, 'ir.model', 'read', [mids, ['model']]) if mids else []:
         guard('models', m['model'], lambda m=m: crud(uid, m['model']))
@@ -1221,8 +1226,6 @@ def main():
         bids = list(owned(uid, 'base.automation').values())
         for b in ex(uid, A, 'base.automation', 'read', [bids, ['model_id']]) if bids else []:
             guard('crons', 'automation %s' % b['id'], lambda b=b: model_ok(b))
-    fg = ex(uid, A, 'res.users', 'fields_get', [], {'attributes': ['type']})
-    gf = 'group_ids' if 'group_ids' in fg else 'groups_id'
     user_grp = ref(uid, 'base.group_user', 'res.groups')
     users = {}
     for model_x, group_x, perms in C['roles']:
