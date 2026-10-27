@@ -99,6 +99,14 @@ class Fake:
             if o.get("smokedb") is None and "smokedb" in o:
                 return g.RunResult(1, "ERROR")
             return self._out([o.get("smokedb", ["m", "r", "1", "1", "0", "true"])])
+        if "gate:secvals" in sql:
+            if o.get("secvals_rc"):
+                return g.RunResult(1, "ERROR")
+            base = [["A", "1", "a1", "0"], ["R", "1", "r1", "0"], ["G", "1", "g1", "0"]]
+            base.append(["U", "2", "", "0"])
+            if self.state.get(db) == "installed" and "secvals_after" in o:
+                return self._out(o["secvals_after"])
+            return self._out(base)
         if "gate:smokescope" in sql:
             return self._out([["s", m] for m in o.get("scope", ["x.asset"])])
         if "gate:smokerole" in sql:
@@ -1220,3 +1228,61 @@ def test_access_sql_scopes_own_models_to_introduced_not_inherited():
     q = g.sql_access(MOD)
     assert "NOT EXISTS" in q and f"o.module <> '{MOD}'" in q
     assert "AND model = 'ir.model.access'" in q  # module's own rows still match by xmlid
+
+
+# ---- round 9 GATE 1: stock access rows / rules / groups must keep their values
+
+
+_SV_BASE = [
+    ["A", "1", "a1", "0"],
+    ["R", "1", "r1", "0"],
+    ["G", "1", "g1", "0"],
+    ["U", "2", "", "0"],
+]
+
+
+def test_secvals_unchanged_passes(tmp_path):
+    rep, mh = gate(tmp_path)
+    assert rep.checks["install"].status == g.PASS
+    assert "unchanged" in rep.checks["install"].detail
+
+
+@pytest.mark.parametrize(
+    "after, needle",
+    [
+        ([["A", "1", "aX", "0"], *_SV_BASE[1:]], "access row id 1 changed"),
+        ([_SV_BASE[0], ["R", "1", "rX", "0"], *_SV_BASE[2:]], "record rule id 1 changed"),
+        ([*_SV_BASE[:2], ["G", "1", "gX", "0"], _SV_BASE[3]], "group id 1 changed"),
+        ([*_SV_BASE[1:]], "access row id 1 removed"),
+        ([*_SV_BASE, ["F", "ir.rule:1", "demo.x", "1"]], "another module's record"),
+    ],
+)
+def test_secvals_foreign_change_fails_install(tmp_path, after, needle):
+    rep, mh = gate(tmp_path, secvals_after=after)
+    assert rep.checks["install"].status == g.FAIL
+    assert needle in rep.checks["install"].detail
+    assert not passed(rep, mh)
+
+
+def test_secvals_new_rows_and_own_rows_pass(tmp_path):
+    after = [*_SV_BASE, ["A", "9", "new", "1"], ["R", "9", "new", "0"]]
+    rep, mh = gate(tmp_path, secvals_after=after)
+    assert rep.checks["install"].status == g.PASS
+    v0 = g._secvals([["A", "1", "a", "1"], ["U", "1", "", "0"]])
+    v1 = g._secvals([["A", "1", "b", "1"], ["U", "1", "", "0"]])
+    assert g.secvals_diff(v0, v1) == []  # the module's own row (upgrade path) may change
+
+
+def test_secvals_unreadable_is_unverified(tmp_path):
+    rep, mh = gate(tmp_path, secvals_rc=1)
+    assert rep.checks["install"].status == g.UNVERIFIED
+    assert not passed(rep, mh)
+
+
+def test_secvals_malformed_rows_refused():
+    assert g._secvals([["Z", "1", "x", "0"], ["U", "1", "", "0"]]) is None
+    assert g._secvals([["A", "1", "x", "0"]]) is None  # no user-id row
+    sql = g.sql_secvals("demo", 7)
+    assert sql.startswith("-- gate:secvals") and "x.uid <= 7" in sql
+    with pytest.raises(AssertionError):
+        g.sql_secvals("demo'; drop")

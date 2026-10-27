@@ -897,3 +897,37 @@ def test_r7_plain_test_shape_is_clean():
         }
     )
     assert not [f for f in r.findings if f.code == "test-tamper"]
+
+
+# ---- round 9 GATE 1: a module must not rewrite another module's security records by xml id
+
+_FX = (
+    '<?xml version="1.0"?>\n<odoo>\n<record id="{rid}" model="{model}">\n'
+    '<field name="name">x</field>\n</record>\n</odoo>\n'
+)
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["ir.rule", "ir.model.access", "res.groups", "res.users", "ir.config_parameter", "ir.cron"],
+)
+def test_foreign_xmlid_on_guarded_model_is_high(model):
+    t = dict(TREE, **{"data/x.xml": _FX.format(rid="base.some_record", model=model)})
+    f = [x for x in ca.audit(zbytes(t), version=17).findings if x.code == "foreign-record-edit"]
+    assert f and f[0].severity == ca.HIGH
+
+
+@pytest.mark.parametrize(
+    "rid, model",
+    [("demo.my_rule", "ir.rule"), ("my_rule", "ir.rule"), ("base.main_partner", "res.partner")],
+)
+def test_own_or_unguarded_xmlid_not_flagged(rid, model):
+    t = dict(TREE, **{"data/x.xml": _FX.format(rid=rid, model=model)})
+    assert "foreign-record-edit" not in codes(ca.audit(zbytes(t), version=17))
+
+
+def test_foreign_row_in_guarded_csv_is_high():
+    t = dict(TREE, **{"data/ir.rule.csv": "id,name\nbase.res_partner_rule,x\n"})
+    assert "foreign-record-edit" in codes(ca.audit(zbytes(t), version=17))
+    t = dict(TREE, **{"data/ir.rule.csv": "id,name\nmy_rule,x\n"})
+    assert "foreign-record-edit" not in codes(ca.audit(zbytes(t), version=17))

@@ -1175,6 +1175,12 @@ def _top_fields(arch: ET.Element):
             stack.extend(list(el)[::-1])
 
 
+# Records another module owns that a module must never rewrite through an xml id.
+FOREIGN_GUARDED = frozenset(
+    {"ir.rule", "ir.model.access", "res.groups", "res.users", "ir.config_parameter", "ir.cron"}
+)
+
+
 def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
     try:
         root = _parse_xml(body)
@@ -1193,6 +1199,22 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
         rid = el.get("id")
         if rid and el.tag in ("record", "template", "menuitem", "report"):
             c.xmlids.add(rid if "." in rid else f"{c.module}.{rid}")
+        if (
+            rid
+            and el.tag == "record"
+            and "." in rid
+            and rid.split(".", 1)[0] != c.module
+            and el.get("model") in FOREIGN_GUARDED
+        ):
+            c.add(
+                HIGH,
+                "foreign-record-edit",
+                path,
+                _line_of(text, f'"{rid}"'),
+                f"Record {rid} ({el.get('model')}) belongs to another module and is rewritten "
+                "here (access, rules, groups, users, parameters or crons).",
+                "Create your own record instead of editing another module's.",
+            )
         for attr in ("ref", "parent", "action", "inherit_id", "groups"):
             val = el.get(attr)
             if val and attr != "groups":
@@ -1346,6 +1368,23 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
 
 
 def _audit_csv(c: _Ctx, path: str, body: bytes) -> None:
+    model = path.rsplit("/", 1)[-1][: -len(".csv")]  # Odoo loads a csv into the model it names
+    if model in FOREIGN_GUARDED:
+        try:
+            ids = [(r.get("id") or "").strip() for r in csv.DictReader(
+                io.StringIO(body.decode("utf-8-sig")))]  # fmt: skip
+        except (UnicodeDecodeError, csv.Error):
+            ids = []
+        for rid in ids:
+            if "." in rid and rid.split(".", 1)[0] != c.module:
+                c.add(
+                    HIGH,
+                    "foreign-record-edit",
+                    path,
+                    0,
+                    f"Row {rid} ({model}) belongs to another module and is rewritten here.",
+                    "Create your own record instead of editing another module's.",
+                )
     if not path.endswith("ir.model.access.csv"):
         return
     try:

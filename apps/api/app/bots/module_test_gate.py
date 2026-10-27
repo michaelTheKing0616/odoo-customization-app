@@ -683,6 +683,100 @@ def sql_state(module: str) -> str:
     return f"-- gate:state\nSELECT state FROM public.ir_module_module WHERE name = '{module}';\n"
 
 
+SECVALS_GUARDED = ("ir.model.access", "ir.rule", "res.groups")
+
+
+def sql_secvals(module: str, max_uid: int | None = None) -> str:
+    """-- gate:secvals: a VALUE fingerprint of every access row, record rule and group (with its
+    implied groups and its members up to max_uid), each flagged when the module owns it by xml
+    id; 'U' carries the highest user id; 'F' lists module xml ids pointing at a record another
+    module also names. Audit columns (create/write uid/date) are left out so a no-op rewrite is
+    not a change. 4 fields: kind, id, md5, own."""
+    assert MODULE_RE.fullmatch(module)
+    mu = "" if max_uid is None else f" AND x.uid <= {int(max_uid)}"
+    strip = "- 'write_date' - 'write_uid' - 'create_date' - 'create_uid'"
+
+    def own(model: str, ref: str) -> str:
+        return (
+            f"(EXISTS (SELECT 1 FROM public.ir_model_data d WHERE d.module = '{module}' "
+            f"AND d.model = '{model}' AND d.res_id = {ref}))::int::text"
+        )
+
+    guarded = ", ".join(f"'{m}'" for m in SECVALS_GUARDED)
+    return (
+        "-- gate:secvals\n"
+        f"SELECT 'A', a.id::text, md5((to_jsonb(a) {strip})::text), "
+        f"{own('ir.model.access', 'a.id')} FROM public.ir_model_access a\n"
+        "UNION ALL\n"
+        f"SELECT 'R', r.id::text, md5((to_jsonb(r) {strip})::text || '|' || COALESCE(("
+        "SELECT string_agg(x.group_id::text, ',' ORDER BY x.group_id) FROM public.rule_group_rel x "
+        f"WHERE x.rule_group_id = r.id), '')), {own('ir.rule', 'r.id')} FROM public.ir_rule r\n"
+        "UNION ALL\n"
+        f"SELECT 'G', g.id::text, md5((to_jsonb(g) {strip})::text || '|' || COALESCE(("
+        "SELECT string_agg(x.hid::text, ',' ORDER BY x.hid) FROM public.res_groups_implied_rel x "
+        "WHERE x.gid = g.id), '') || '|' || COALESCE((SELECT string_agg(x.uid::text, ',' "
+        f"ORDER BY x.uid) FROM public.res_groups_users_rel x WHERE x.gid = g.id{mu}), '')), "
+        f"{own('res.groups', 'g.id')} FROM public.res_groups g\n"
+        "UNION ALL\n"
+        "SELECT 'U', COALESCE(max(id), 0)::text, '', '0' FROM public.res_users\n"
+        "UNION ALL\n"
+        "SELECT 'F', d.model || ':' || d.res_id::text, d.module || '.' || d.name, '1' "
+        f"FROM public.ir_model_data d WHERE d.module = '{module}' AND d.model IN ({guarded}) "
+        "AND EXISTS (SELECT 1 FROM public.ir_model_data o WHERE o.model = d.model "
+        f"AND o.res_id = d.res_id AND o.module <> '{module}')\n"
+        "ORDER BY 1, 2;\n"
+    )
+
+
+def _secvals(rows) -> dict | None:
+    if rows is None:
+        return None
+    out: dict = {"v": {}, "own": set(), "f": [], "u": None}
+    for k, i, h, o in rows:
+        if k in ("A", "R", "G"):
+            out["v"][(k, i)] = h
+            if o == "1":
+                out["own"].add((k, i))
+        elif k == "U":
+            out["u"] = int(i) if i.isdigit() else None
+        elif k == "F":
+            out["f"].append(f"{h} -> {i}")
+        else:
+            return None
+    return out if out["u"] is not None else None
+
+
+_SECVAL_NAMES = {"A": "access row", "R": "record rule", "G": "group"}
+
+
+def secvals_diff(v0, v1) -> list[str]:
+    """Pre-existing access rows, rules and groups the module does not own must keep their
+    values (and exist); the module's own xml ids must not name another module's records."""
+    bad = [f"module xml id names another module's record: {f}" for f in v1["f"]]
+    for key, h in sorted(v0["v"].items()):
+        if key in v0["own"] or key in v1["own"]:
+            continue
+        name = f"{_SECVAL_NAMES[key[0]]} id {key[1]}"
+        if key not in v1["v"]:
+            bad.append(f"{name} removed")
+        elif v1["v"][key] != h:
+            bad.append(f"{name} changed")
+    return bad
+
+
+def _secvals_check(sb, db: str, mod: str, v0) -> tuple[str, str]:
+    """(status, detail) for stock security values after module code ran in db."""
+    if v0 is None:
+        return UNVERIFIED, "security values unreadable before install"
+    v1 = _secvals(sb.psql(db, sql_secvals(mod, v0["u"]), fields=4))
+    if v1 is None:
+        return UNVERIFIED, "security values unreadable after install"
+    bad = secvals_diff(v0, v1)
+    if bad:
+        return FAIL, "stock security edited: " + "; ".join(bad[:10])
+    return PASS, f"{len(v0['v'])} pre-existing access/rule/group value(s) unchanged"
+
+
 def sql_access(module: str, after: Mapping[str, int] | None = None) -> str:
     """Live access rows and record rules on the module's models, created by its xml ids, or
     created after the baseline (any id above the baseline maximum, whoever made it)."""
@@ -1804,6 +1898,7 @@ def _sandbox_checks(
         "--without-demo=all",
     )
     s0 = sb.snapshot(db) if res.rc == 0 else None
+    v0 = _secvals(sb.psql(db, sql_secvals(mod), fields=4)) if s0 is not None else None
     if s0 is None:
         for c in ("install", "smoke", "tests", "access", "uninstall"):
             checks[c] = Check(UNVERIFIED, "baseline database failed", _tail(res.output))
@@ -1812,12 +1907,16 @@ def _sandbox_checks(
         res = sb.odoo(new_dir, db, "", "-i", mod, "--stop-after-init", "--without-demo=all")
         ok, why = _odoo_ok(res, sb, db)
         warns = len(_WARN.findall(res.output))
-        checks["install"] = Check(
-            PASS if ok else FAIL,
-            why or f"installed; {warns} warning line(s)",
-            _tail(res.output),
-            [] if ok else _classify(res.output, version),
-        )
+        sv_st, sv_why = _secvals_check(sb, db, mod, v0) if ok else (PASS, "")
+        if ok and sv_st != PASS:
+            checks["install"] = Check(sv_st, sv_why, _tail(res.output))
+        else:
+            checks["install"] = Check(
+                PASS if ok else FAIL,
+                why or f"installed; {warns} warning line(s); {sv_why}",
+                _tail(res.output),
+                [] if ok else _classify(res.output, version),
+            )
     if checks.get("install") and checks["install"].status == FAIL:
         for c in ("smoke", "tests", "access", "uninstall"):
             checks[c] = Check(SKIPPED, "install failed")
@@ -1932,6 +2031,10 @@ def _sandbox_checks(
                     f"{len(role_spec.get('rules') or {})} rule(s)); {len(want)} smoke role "
                     "check(s) granted",
                 )
+        # (5b) stock security values still untouched after the module's own tests ran in db
+        sv_st, sv_why = _secvals_check(sb, db, mod, v0)
+        if sv_st != PASS and checks["install"].status == PASS:
+            checks["install"] = Check(sv_st, f"after module tests: {sv_why}")
         # (6) uninstall leaves nothing behind: state and full snapshot read from the database
         res = sb.odoo(new_dir, db, "shell", "--no-http", stdin=uninstall_script(mod))
         st = sb.state(db)
@@ -1968,14 +2071,19 @@ def _sandbox_checks(
                 _classify(r1.output, version),
             )
         else:
+            u0 = _secvals(sb.psql(sb.db_upg, sql_secvals(mod), fields=4))
             r2 = sb.odoo(new_dir, sb.db_upg, "", "-u", mod, "--stop-after-init")
             ok2, why2 = _odoo_ok(r2, sb, sb.db_upg)
-            checks["upgrade"] = Check(
-                PASS if ok2 else FAIL,
-                why2 or "prior -> new upgraded cleanly",
-                _tail(r2.output),
-                [] if ok2 else _classify(r2.output, version),
-            )
+            sv_st, sv_why = _secvals_check(sb, sb.db_upg, mod, u0) if ok2 else (PASS, "")
+            if ok2 and sv_st != PASS:
+                checks["upgrade"] = Check(sv_st, f"upgrade: {sv_why}", _tail(r2.output))
+            else:
+                checks["upgrade"] = Check(
+                    PASS if ok2 else FAIL,
+                    why2 or f"prior -> new upgraded cleanly; {sv_why}",
+                    _tail(r2.output),
+                    [] if ok2 else _classify(r2.output, version),
+                )
 
 
 __all__ = [
