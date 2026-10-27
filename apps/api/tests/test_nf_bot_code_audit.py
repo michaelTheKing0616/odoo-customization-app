@@ -1370,6 +1370,11 @@ def test_web_token_storage_precision(src, hit):
             "tainted-model",
             6,
         ),
+        (
+            "@http.route('/a')\ndef a(self, m):\n    return request.env[m].sudo().search([])\n",
+            "tainted-model",
+            6,
+        ),
     ],
 )
 def test_flow_taint_interprocedural_and_dispatch(body, code, line):
@@ -1390,3 +1395,43 @@ def test_flow_taint_interprocedural_and_dispatch(body, code, line):
 def test_flow_taint_interprocedural_negative(body):
     got = _py(CTRL + body, "controllers/main.py")
     assert not [g for g in got if g[0].startswith("tainted")], got
+
+
+@pytest.mark.parametrize(
+    "el,code,line",
+    [
+        ("<script>\nvar a = <t t-out='user_value'/>;\n</script>", "qweb-script-injection", 4),
+        ("<div style='background: url(https://x.example/a.png)'/>", "css-external-url", 3),
+        ("<div t-attf-style='width: expression(alert(1))'/>", "css-expression", 3),
+    ],
+)
+def test_xml_script_context_and_style(el, code, line):
+    src = f"<odoo>\n<template id='a'>\n{el}\n</template>\n</odoo>\n"
+    assert (code, line) in [(g[0], g[1]) for g in _xml(src)]
+
+
+@pytest.mark.parametrize(
+    "el",
+    [
+        "<script>\nvar a = \"<t t-esc='v'/>\";\n</script>",
+        "<script>\nvar a = <t t-out='json.dumps(v)'/>;\n</script>",
+        "<script>\nvar a = 'x\\' <t t-esc=\"v\"/>';\n</script>",
+        "<div style='background: url(/web/static/a.png)'/>",
+    ],
+)
+def test_xml_script_context_and_style_negative(el):
+    src = f"<odoo>\n<template id='a'>\n{el}\n</template>\n</odoo>\n"
+    bad = {"qweb-script-injection", "css-external-url", "css-expression"}
+    assert not [g for g in _xml(src) if g[0] in bad]
+
+
+def test_flow_tainted_model_severity():
+    low = _py(
+        CTRL + "@http.route('/a')\ndef a(self, m):\n    request.env[m].search([])\n",
+        "controllers/main.py",
+    )
+    high = _py(
+        CTRL + "@http.route('/a')\ndef a(self, m):\n    request.env[m].sudo().search([])\n",
+        "controllers/main.py",
+    )
+    assert ("tainted-model", 6, "low") in low and ("tainted-model", 6, "high") in high

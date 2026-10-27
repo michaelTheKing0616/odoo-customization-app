@@ -424,16 +424,26 @@ def taint_hits(tree: ast.AST, text_fields: frozenset[str], res: Resolver) -> lis
         if isinstance(scope, ast.Lambda):
             continue
         t = Taint(scope, text_fields, res, passthrough)
+        sudo_recv = {
+            id(c.func.value)
+            for c in _own_nodes(scope)
+            if isinstance(c, ast.Call)
+            and isinstance(c.func, ast.Attribute)
+            and c.func.attr in ("sudo", "with_user")
+        }
         for n in _own_nodes(scope):
             if isinstance(n, ast.Subscript) and chain(n.value).endswith("env"):
                 s = t.source(n.slice)
-                if s:
+                if s and not s[0].startswith("record field"):
+                    # the ORM still checks the caller's rights on env[model]; sudo() drops them
+                    su = id(n) in sudo_recv or "sudo" in chain(n.value)
                     out.append(
                         Hit(
-                            MEDIUM,
+                            HIGH if su else LOW,
                             "tainted-model",
                             n.lineno,
-                            f"Model name comes from {s[0]} (line {s[1]}).",
+                            f"Model name comes from {s[0]} (line {s[1]})"
+                            + (" and is used with sudo()." if su else "."),
                             "Accept only model names from a fixed allow-list.",
                         )
                     )

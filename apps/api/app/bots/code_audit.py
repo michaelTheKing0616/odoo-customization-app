@@ -1318,6 +1318,9 @@ FOREIGN_GUARDED = frozenset(
 
 _URL_ATTRS = frozenset({"href", "src", "action", "formaction", "data", "xlink:href", "srcdoc"})
 _JS_URL = re.compile(r"^\W*j\W*a\W*v\W*a\W*s\W*c\W*r\W*i\W*p\W*t\s*:|['\"]\s*javascript:", re.I)
+_STYLE_RISK = re.compile(
+    r"url\(\s*['\"]?\s*((?:https?:)?//)|expression\s*\(|javascript:|behavior\s*:", re.I
+)
 _EXT_URL = re.compile(r"^\s*(?:https?:)?//", re.I)
 _RESOURCE_TAGS = {
     "script": "src",
@@ -1326,6 +1329,27 @@ _RESOURCE_TAGS = {
     "object": "data",
     "embed": "src",
 }
+
+
+_JS_SAFE_OUT = re.compile(r"json\.dumps|json_dumps|\btojson\b|^\s*(?:int|float|bool)\(")
+
+
+def _in_js_string(line: str) -> bool:
+    """Whether the end of `line` (script text so far on this line) is inside a JS string."""
+    q, i = "", 0
+    while i < len(line):
+        ch = line[i]
+        if q:
+            if ch == "\\":
+                i += 1
+            elif ch == q:
+                q = ""
+        elif ch in "'\"`":
+            q = ch
+        elif line.startswith("//", i):
+            return False
+        i += 1
+    return bool(q)
 
 
 def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
@@ -1368,6 +1392,21 @@ def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         parts = [el.text or ""]
         for ch in el:
             raw = etree.tostring(ch, with_tail=False, encoding="unicode")
+            out_attr = next((k for k in ("t-out", "t-esc", "t-raw") if ch.get(k)), None)
+            if (
+                out_attr
+                and not _in_js_string("".join(parts).rsplit("\n", 1)[-1])
+                and not _JS_SAFE_OUT.search(ch.get(out_attr))
+            ):
+                c.add(
+                    MEDIUM,
+                    "qweb-script-injection",
+                    path,
+                    xl.el(ch, out_attr),
+                    f"{out_attr} writes into script code outside a string: HTML escaping does"
+                    " not stop JavaScript injection.",
+                    "Emit json.dumps(value) (or put the value in a data- attribute).",
+                )
             parts.append("__qweb__" + "\n" * raw.count("\n"))
             parts.append(ch.tail or "")
         js = "".join(parts)
@@ -1428,6 +1467,20 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     xl.el(el, a),
                     f"Template expression in {a} calls sudo()/ORM methods or reads credentials.",
                     "Compute values in Python with access checks; templates must only display.",
+                )
+            if (a == "style" or a in ("t-att-style", "t-attf-style")) and (
+                m := _STYLE_RISK.search(val)
+            ):
+                ext = bool(m.group(1))
+                c.add(
+                    MEDIUM if ext else HIGH,
+                    "css-external-url" if ext else "css-expression",
+                    path,
+                    xl.el(el, a),
+                    "Inline style loads from an external host."
+                    if ext
+                    else "Inline style runs script (expression()/javascript:/behavior).",
+                    "Use bundled assets and plain CSS.",
                 )
             if a.startswith("t-") and re.search(r"\b[Mm]arkup\s*\(", val):
                 c.add(
