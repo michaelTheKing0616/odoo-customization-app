@@ -69,10 +69,19 @@ T3_SWITCH_PRECONDITIONS = (
     "in the gate than on a client database. Names are neutral, but this is not a guarantee: "
     "code_audit findings and human diff review stay required, and the first install targets a "
     "staging clone.",
-    "module-test-gate: test results are counted from a harness report at a random path plus the "
-    "stock log line; both still come from the module's own process, so a module that patches "
-    "the runner can in principle forge them. code_audit flags test-runner tampering HIGH; the "
-    "reviewer must confirm none is suppressed.",
+    "module-test-gate: the module's own test results (stock log line, harness report, "
+    "canaries) come from the module's own process and can in principle be forged, so they are "
+    "advisory and never decide gate_passed. Deciding checks are install/upgrade/uninstall state "
+    "read by the trusted reader, the leftover and access diffs, and gate-written smoke tests.",
+    "module-test-gate: smoke tests run from a separate harness container (no mounts, no "
+    "database credentials) over JSON-RPC, but the server answering them runs the module's "
+    "code, so a module could fake its own RPC answers (e.g. a create that reports success). "
+    "Smoke covers CRUD on owned models, owned views, actions, menus, cron/automation model "
+    "references and the spec'd role permissions only where values can be built; anything it "
+    "cannot exercise is UNVERIFIED, not PASS. Smoke role checks confirm granted permissions "
+    "only; extra grants are caught by the trusted access-row diff, not by smoke.",
+    "module-test-gate: live hostile fixtures re-run on odoo:17 and odoo:19 only; 18 and 20 "
+    "must be run live before the switch.",
     "Both capabilities are flipped in tiers._CAPABILITIES in the same reviewed commit that ships "
     "the wiring above, with tests proving tier_ready(T3) is False if either is missing.",
 )
