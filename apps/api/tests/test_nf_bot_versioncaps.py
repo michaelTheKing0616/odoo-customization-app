@@ -425,3 +425,80 @@ def test_corrupt_catalogue_refused(tmp_path, monkeypatch, raw):
         assert C._load_file(17) is None and vc.provenance(17) is None
     finally:
         C._load_file.cache_clear()
+
+
+def _live_script():
+    import importlib.util
+    import pathlib
+
+    p = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "verify_versioncaps_live.py"
+    spec = importlib.util.spec_from_file_location("verify_vc_live", p)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _cmp_caps():
+    from types import SimpleNamespace
+
+    models = {
+        "res.users.log": {
+            "fields": {
+                "create_uid": ["integer", "", False, ["base", "extra_mod"]],
+                "id": ["integer", "", True, ["base"]],
+            }
+        },
+        "res.partner": {"fields": {"name": ["char", "", True, ["base"]]}},
+    }
+    return SimpleNamespace(listed=["base", "extra_mod", "test_x"], models=models)
+
+
+def test_versioncaps_live_compare_match_and_each_diff() -> None:
+    cmp = _live_script().compare
+    caps = _cmp_caps()
+    live = {
+        "res.users.log": {"create_uid": ("integer", ""), "id": ("integer", "")},
+        "res.partner": {"name": ("char", "")},
+    }
+    out = cmp(caps, {"base", "extra_mod", "test_y"}, live, ("test_",), {"base", "extra_mod"})
+    assert out == {
+        "modules_live_not_in_catalogue": [],
+        "modules_catalogue_not_live": [],
+        "models_live_not_in_catalogue": [],
+        "fields_live_not_in_catalogue": [],
+        "fields_type_mismatch": [],
+        "_install_dependent": [],
+    }
+    bad = {
+        "res.partner": {"name": ("text", ""), "zz_new": ("char", "")},
+        "zz.model": {"x": ("char", "")},
+    }
+    out = cmp(caps, {"base", "other"}, bad, ("test_",), {"base"})
+    assert out["modules_live_not_in_catalogue"] == ["other"]
+    assert out["modules_catalogue_not_live"] == ["extra_mod"]
+    assert out["models_live_not_in_catalogue"] == ["zz.model"]
+    assert out["fields_live_not_in_catalogue"] == ["res.partner.zz_new"]
+    # every catalogue module is installed: a type change is a real mismatch
+    assert out["fields_type_mismatch"] == ["res.partner.name"]
+    assert out["_install_dependent"] == []
+
+
+def test_versioncaps_live_compare_install_dependent_types() -> None:
+    cmp = _live_script().compare
+    caps = _cmp_caps()
+    live = {"res.users.log": {"create_uid": ("many2one", "res.users"), "id": ("integer", "")}}
+    # a module behind the catalogue type is not installed: install-dependent, not a mismatch
+    out = cmp(caps, {"base"}, live, (), {"base"})
+    assert out["_install_dependent"] == ["res.users.log.create_uid"]
+    assert out["fields_type_mismatch"] == []
+    # negative: all its modules installed -> mismatch; no installed set given -> mismatch
+    out = cmp(caps, {"base"}, live, (), {"base", "extra_mod"})
+    assert out["fields_type_mismatch"] == ["res.users.log.create_uid"]
+    assert out["_install_dependent"] == []
+    out = cmp(caps, {"base"}, live, ())
+    assert out["fields_type_mismatch"] == ["res.users.log.create_uid"]
+    assert out["_install_dependent"] == []
+    # negative: a matching type is never listed, whatever is installed
+    ok = {"res.users.log": {"create_uid": ("integer", "")}}
+    out = cmp(caps, {"base"}, ok, (), set())
+    assert out["fields_type_mismatch"] == [] and out["_install_dependent"] == []
