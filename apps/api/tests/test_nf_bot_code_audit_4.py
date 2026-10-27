@@ -113,7 +113,7 @@ def _mismatched(central: str, local: str) -> bytes:
 
 @pytest.mark.parametrize(
     "central,local",
-    [("models/a.py", "models/b.py"), ("safe.txt", "evil.py"), ("ok/a.py", "../a.py")],
+    [("models/a.py", "models/b.py"), ("safe.md", "evil.py"), ("ok/a.py", "../a.py")],
 )
 def test_l2_zip_name_mismatch_fails_closed(central, local):
     if len(central) != len(local):

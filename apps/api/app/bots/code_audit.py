@@ -211,6 +211,20 @@ def _check_name(rel: str) -> None:
         raise SourceError("reserved file name .module_dir in source")
 
 
+def _check_local_header(data: bytes, i: zipfile.ZipInfo) -> None:
+    """The local file header must carry the central directory's name: extractors that walk
+    local headers (or stream the archive) would otherwise see a different file."""
+    off = i.header_offset
+    head = data[off : off + 30]
+    if len(head) != 30 or head[:4] != b"PK\x03\x04":
+        raise SourceError(f"zip local header missing: {i.filename[:80]}")
+    n = int.from_bytes(head[26:28], "little")
+    raw = data[off + 30 : off + 30 + n]
+    want = i.orig_filename.encode("utf-8" if i.flag_bits & 0x800 else "cp437", "replace")
+    if raw != want:
+        raise SourceError(f"zip local header name differs from directory: {i.filename[:80]}")
+
+
 def _from_zip(
     data: bytes, skip_assets: bool = False, oversized: list[str] | None = None
 ) -> dict[str, bytes]:
@@ -224,6 +238,7 @@ def _from_zip(
     out: dict[str, bytes] = {}
     total = po_total = 0
     for i in infos:
+        _check_local_header(data, i)  # every entry, also the ones skipped below
         if i.is_dir():
             continue
         rel = _safe_rel(i.filename)
