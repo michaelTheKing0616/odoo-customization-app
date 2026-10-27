@@ -2387,8 +2387,10 @@ _REQ_DATA = re.compile(
     r"\brequest\.(?:params|httprequest|get_http_params|get_json_data)|\bkw\b|\bpost\b"
 )
 _TOKEN_DATA = re.compile(
-    r"session(?:_token|\.sid|\.uid|\.login)?\b|csrf|access_token|password|api_key", re.I
+    r"session(?:_token|\.sid|\.uid|\.login|_id)?\b|csrf|access_token|password|api_key|cookies?\b",
+    re.I,
 )
+_EXT_URL_ANY = re.compile(r"""(?:^\s*|['"])(?:https?:)?//""", re.I)
 
 
 def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str) -> None:
@@ -2415,7 +2417,7 @@ def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str
     if (
         dyn
         and base in ("href", "src", "action", "formaction", "data", "srcset", "poster")
-        and (_EXT_URL.search(val) and _TOKEN_DATA.search(val))
+        and (_EXT_URL_ANY.search(val) and _TOKEN_DATA.search(val))
     ):
         c.add(
             HIGH,
