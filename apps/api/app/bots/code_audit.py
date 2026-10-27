@@ -1911,13 +1911,24 @@ def _in_js_string(line: str) -> bool:
     return _js_ctx(line) in ("'", '"', "`")
 
 
+def _handler_holes_quoted(val: str) -> bool:
+    """True when every interpolation of a t-attf handler lands inside a JS string literal.
+    Still injectable by a value carrying a quote (the attribute is entity-decoded before
+    the script runs), so this lowers HIGH to MEDIUM, never to clean."""
+    holes = list(re.finditer(r"#\{[^}]*\}|\{\{.*?\}\}", val))
+    return bool(holes) and all(_in_js_string(val[: m.start()]) for m in holes)
+
+
 def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str) -> None:
     """Inline event handlers, runtime URLs, srcdoc, external form targets, meta refresh."""
     base = a.removeprefix("t-att-").removeprefix("t-attf-")
     dyn = base != a
     if re.fullmatch(r"on[a-z]{3,30}", base):
+        sev = HIGH if dyn else MEDIUM
+        if a.startswith("t-attf-") and _handler_holes_quoted(val):
+            sev = MEDIUM  # every #{}/{{}} sits inside a JS string literal (M6)
         c.add(
-            HIGH if dyn else MEDIUM,
+            sev,
             "qweb-inline-handler",
             path,
             xl.el(el, a),
@@ -2434,6 +2445,27 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         )
 
 
+def _function_on_own_records(c: _Ctx, model: str, fn: str, el: Any) -> bool:
+    """M6: a core-model <function> provably limited to this module's own records
+    (xmlids it owns / its own ir.module.module row) is MEDIUM, anything else HIGH."""
+    mod = getattr(c, "module", None) or ""
+    if not mod:
+        return False
+    vals = " ".join((v.get("eval") or "") + (v.text or "") for v in el.iter("value"))
+    if model == "ir.model.data" and fn == "_update_xmlids":
+        ids = re.findall(r"""['"]xml_id['"]\s*:\s*['"]([^'"]+)['"]""", vals)
+        return (
+            bool(ids)
+            and all(i.startswith(mod + ".") for i in ids)
+            and (vals.count("xml_id") == len(ids))
+        )
+    if model == "ir.module.module":
+        refs = re.findall(r"""ref\(\s*['"]([^'"]+)['"]\s*\)""", vals)
+        rest = re.sub(r"""ref\(\s*['"][^'"]+['"]\s*\)|[\[\],\s]""", "", vals)
+        return bool(refs) and not rest and all(r == f"base.module_{mod}" for r in refs)
+    return False
+
+
 def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     """Server action / cron / automation code (audited with the Python rules), <function>
     calls and <delete> at install or update."""
@@ -2453,8 +2485,9 @@ def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     if tag == "function":
         m, fn = el.get("model") or "", el.get("name") or ""
         sens = m in SENSITIVE_MODELS and fn not in _READ_ONLY_CALLS
+        own = sens and _function_on_own_records(c, m, fn, el)
         c.add(
-            HIGH if sens else LOW,
+            MEDIUM if own else HIGH if sens else LOW,
             "xml-function-call",
             path,
             xl.el(el, "name" if el.get("name") else None),

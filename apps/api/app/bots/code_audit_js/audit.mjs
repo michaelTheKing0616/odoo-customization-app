@@ -400,6 +400,12 @@ function auditJs(text) {
     if (p.type === "MemberExpression" && p.object === n && n.type === "Identifier" && n.name === "Function" &&
         !p.computed && p.property.name === "prototype") return;
     if (p.type === "BinaryExpression" && p.operator === "instanceof") return;
+    // OWL prop schemas: `static props = { onClick: Function }` / `{ type: Function }` name a
+    // type; calling the constructor still needs a call, which is flagged where it happens
+    if (r === "Function" && (p.type === "Property" || p.type === "ArrayExpression") && anc.some((x) =>
+        ((x.type === "Property" || x.type === "PropertyDefinition") && !x.computed && x.key && (x.key.name || x.key.value) === "props") ||
+        (x.type === "AssignmentExpression" && /(^|\.)props$/.test(resolve(x.left) || "")) ||
+        (x.type === "Property" && x === p && !p.computed && (p.key.name || p.key.value) === "type"))) return;
     if (p.type === "UnaryExpression" && p.operator === "typeof") return;
     if (p.type === "MemberExpression" && p.property === n && !p.computed) return;
     if (p.type === "Property" && p.key === n && !p.computed && p.value !== n) return;

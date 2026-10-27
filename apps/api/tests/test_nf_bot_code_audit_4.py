@@ -370,3 +370,67 @@ def test_po_structure_flags(msgid, msgstr, want):
 )
 def test_po_structure_quiet(msgid, msgstr):
     assert not _po(msgid, msgstr)
+
+
+# --- M6: severity split on stock-like patterns ----------------------------------------
+
+
+def _xml(body: str) -> list:
+    xml = f'<?xml version="1.0"?><odoo>{body}</odoo>'.encode()
+    files = BASE | {"views/v.xml": xml}
+    files["__manifest__.py"] = MANIFEST.replace(b"'data': []", b"'data': ['views/v.xml']")
+    return ca.audit(_zip(files), version=17, module_name=MOD).findings
+
+
+@pytest.mark.parametrize(
+    "attr,sev",
+    [
+        ("t-attf-onclick=\"location.href='#{url}';\"", "medium"),  # hole inside a JS string
+        ('t-attf-onclick="go(#{url})"', "high"),  # hole in code
+        ("t-attf-onclick=\"go('#{a}', #{b})\"", "high"),  # one hole in code
+        ('t-att-onclick="handler"', "high"),
+        ('onclick="go()"', "medium"),
+    ],
+)
+def test_m6_inline_handler_split(attr, sev):
+    fs = _xml(f'<template id="t"><button {attr}>x</button></template>')
+    assert {f.severity for f in fs if f.code == "qweb-inline-handler"} == {sev}
+
+
+@pytest.mark.parametrize(
+    "fn,sev",
+    [
+        (
+            '<function model="ir.model.data" name="_update_xmlids"><value model="base" eval="'
+            f"[{{'xml_id': '{MOD}.a', 'record': obj().env.ref('{MOD}.b')}}]\"/></function>",
+            "medium",
+        ),
+        (
+            '<function model="ir.model.data" name="_update_xmlids"><value model="base" eval="'
+            "[{'xml_id': 'base.group_system', 'record': x}]\"/></function>",
+            "high",
+        ),
+        (
+            '<function model="ir.module.module" name="_generate_primary_snippet_templates">'
+            f"<value eval=\"[ref('base.module_{MOD}')]\"/></function>",
+            "medium",
+        ),
+        (
+            '<function model="ir.module.module" name="button_immediate_uninstall">'
+            "<value eval=\"[ref('base.module_crm')]\"/></function>",
+            "high",
+        ),
+    ],
+)
+def test_m6_function_on_own_records(fn, sev):
+    fs = _xml(fn)
+    assert {f.severity for f in fs if f.code == "xml-function-call"} == {sev}
+
+
+def test_h9_owl_prop_schema_is_not_eval():
+    src = (
+        "class A { static props = { onClick: Function, cb: { type: Function, optional: true },"
+        " any: [Function, Object] }; }\nA.props = { f: Function };\n"
+    )
+    assert not {x for x in _web("js", src) if x[1] == "js-eval"}
+    assert ("high", "js-eval") in _web("js", "const o = { f: Function }; o.f('x')()")
