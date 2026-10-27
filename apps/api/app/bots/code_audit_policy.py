@@ -387,6 +387,13 @@ def specific_findings(model: str, v: dict[str, str], module: str = "") -> list[t
     if ad and (_PRIV_KEYS.search(ad) or _ADMIN.search(ad)):
         out.append(("alias-privilege", "alias_defaults sets privilege fields: inbound mail creates privileged records.",
                     "Keep alias_defaults to plain business fields."))
+    if model == "ir.actions.server" and (v.get("state") == "multi" or v.get("child_ids")):
+        refs = re.findall(r"ref\(\s*['\"]([\w.]+)['\"]\s*\)", v.get("child_ids", ""))
+        foreign = [r for r in refs if not own_ref(r, module)]
+        if foreign or (v.get("child_ids") and not refs):
+            out.append(("server-multi-foreign", "Multi server action runs child actions defined outside this module"
+                        f" ({', '.join(foreign) or 'non-literal child_ids'}): their code is not audited here.",
+                        "List only this module's own server actions as children."))
     for k in _URL_FIELDS:
         if _BAD_SCHEME.search(html.unescape(v.get(k, ""))):
             out.append(("script-url", f"{model}.{k} is a javascript:/data: URL.", "Use relative http(s) URLs."))

@@ -401,3 +401,23 @@ def test_m1_less_import_interp(src, code, sev):
 def test_m1_less_local_import_ok():
     c = codes({"static/src/a.less": "@d:'./parts';\n@import url('@{d}/x.less');\n"})
     assert not {k for k, s in c if k.startswith("css-") and s in ("high", "medium")}, c
+
+
+# ---------------------------------------------------------------- M2 security field widened to public (view inherit)
+@pytest.mark.parametrize("g", ["base.group_public", "base.group_portal", "base.group_public,base.group_user"])
+def test_m2_security_field_public(g):
+    arch = f"<field name='groups_id' position='attributes'><attribute name='groups'>{g}</attribute></field>"
+    assert L3 in codes(X(f"<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>res.users</field><field name='inherit_id' ref='base.view_users_form'/><field name='arch' type='xml'>{arch}</field></record>"))
+
+
+# ---------------------------------------------------------------- M3 multi server action children are followed
+M3 = "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='model_a_a'/><field name='state'>multi</field><field name='child_ids' eval=\"{e}\"/></record>"
+
+
+@pytest.mark.parametrize("e", ["[(4,ref('base.action_x'))]", "[(6,0,[ref('other.a'), ref('s2')])]", "[(6,0,[1,2])]"])
+def test_m3_multi_foreign_children(e):
+    assert has(X(M3.format(e=e)), "server-multi-foreign")
+
+
+def test_m3_multi_own_children_ok():
+    assert not has(X(M3.format(e="[(4,ref('s2')),(4,ref('x.s3'))]")), "server-multi-foreign")
