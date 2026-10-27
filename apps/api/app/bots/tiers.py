@@ -141,7 +141,9 @@ def module_of(task_id: str, module_hint: str | None = None, version: Any = None)
         mod, dot, name = rest.partition(".")
         return mod if dot and name and _MODULE_RE.fullmatch(mod) else None
     if kind == "cron":
-        owner = caps.cron_owner(version, rest)
+        owner = classifier.cron_owner_row(task_id, version)
+        if owner != caps.cron_owner(version, rest):  # row and version catalogue must agree
+            return None
         if owner is None or (module_hint is not None and module_hint != owner):
             return None
         return owner
@@ -352,6 +354,14 @@ def _installed_ok(installed_modules: Any) -> bool:
     )
 
 
+def _enterprise_app(version: Any, name: str | None) -> bool:
+    try:
+        info = caps.module_info(version, name) if isinstance(name, str) else None
+    except Exception:  # noqa: BLE001 - fail closed (not Enterprise -> unknown)
+        return False
+    return isinstance(info, dict) and info.get("edition") == "enterprise"
+
+
 def _assess_by_module(
     tid: str,
     tier: int,
@@ -367,6 +377,17 @@ def _assess_by_module(
         row = classifier.catalogue()[0].get(tid)
     except Exception:  # noqa: BLE001 - fail closed
         return _unknown(tid, tier, "The task list could not be read, so nothing runs.", floor=floor)
+    if row is None and tid.startswith("cron:") and _enterprise_app(version, module_hint):
+        return Assessment(
+            tid,
+            tier,
+            NEEDS_EDITION,
+            f"This scheduled action comes from the Odoo Enterprise app '{module_hint}'. "
+            "Ingenium's task list is read from Community, so it cannot confirm Enterprise "
+            "scheduled actions or their owner (needs-Enterprise); it will not run.",
+            ("run it from Odoo directly, or ask for the Enterprise scheduled action to be added",),
+            floor,
+        )
     if row is None:
         return _unknown(
             tid,

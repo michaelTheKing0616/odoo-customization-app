@@ -198,13 +198,37 @@ def module_info(version: Any, name: str) -> dict[str, Any] | None:
 
 
 def cron_owner(version: Any, name: Any) -> str | None:
-    """The one app whose xml id names scheduled action ``name`` in stock ``version`` (read by
-    the generator from ir.model.data); None when unknown or ambiguous (fail closed)."""
+    """The one app that owns scheduled action ``name`` in stock ``version``: the module whose
+    xml id names it (generator, ir.model.data), else, for a scheduled action Odoo creates per
+    record at runtime, the app defining the model of the one matching probed template
+    ("cron_templates", e.g. "Lunch: send automatic email to {}"). None when unknown or
+    ambiguous (fail closed)."""
     c = load(version)
-    mods = c.data.get("crons", {}).get(name) if c is not None and isinstance(name, str) else None
-    if isinstance(mods, list) and len(mods) == 1 and isinstance(mods[0], str):
-        return mods[0]
-    return None
+    if c is None or not isinstance(name, str):
+        return None
+    mods = c.data.get("crons", {}).get(name)
+    if mods is not None:
+        ok = isinstance(mods, list) and len(mods) == 1 and isinstance(mods[0], str)
+        return mods[0] if ok else None
+    hits = {
+        t["model"]
+        for t in c.data.get("cron_templates", [])
+        if isinstance(t, dict) and _template_match(t.get("template"), name)
+    }
+    if len(hits) != 1:
+        return None
+    m = c.models.get(next(iter(hits)))
+    return _definer(c, list(m.get("modules", ()))) if m else None
+
+
+def _template_match(template: Any, name: str) -> bool:
+    """``template`` has one "{}" for the record's name; ``name`` may carry a placeholder
+    such as "{supplier}" (catalogue) or a real record name (runtime)."""
+    if not isinstance(template, str) or template.count("{}") != 1:
+        return False
+    head, tail = template.split("{}")
+    mid = name[len(head) : len(name) - len(tail) if tail else None]
+    return name.startswith(head) and name.endswith(tail) and bool(mid.strip())
 
 
 def model_info(version: Any, model: str) -> dict[str, Any] | None:

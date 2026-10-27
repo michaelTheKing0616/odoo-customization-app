@@ -295,6 +295,72 @@ SOURCES = [
 ]
 
 
+# Scheduled actions Odoo creates per record at runtime (no xml id, so not in "crons"). Each is
+# probed over RPC: create one record of `model` with `vals` (plus a partner named PROBE where
+# `partner` is set), then read the ir.cron rows that appeared. The name with PROBE replaced by
+# "{}" is the template; the cron's own model must equal `model` (else the probe fails).
+CRON_PROBES = [
+    {
+        "module": "lunch",
+        "model": "lunch.supplier",
+        "vals": {"send_by": "mail", "automatic_email_time": 12.0},
+        "partner": "partner_id",
+    },
+]
+PROBE = "Ingenium Probe Supplier"
+
+
+def probe_cron_templates(b: Box) -> list[dict]:
+    out = []
+    for pr in CRON_PROBES:
+        mod = b.call(
+            "ir.module.module", "search_read", [["name", "=", pr["module"]]], fields=["state"]
+        )
+        if not mod:
+            continue
+        if mod[0]["state"] != "installed":
+            b.call("ir.module.module", "button_immediate_install", [mod[0]["id"]])
+            b.wait()
+        before = set(b.call("ir.cron", "search", [["active", "in", [True, False]]]))
+        vals = dict(pr["vals"])
+        if pr.get("partner"):
+            vals[pr["partner"]] = b.call("res.partner", "create", {"name": PROBE})
+        b.call(pr["model"], "create", vals)
+        new = [
+            c
+            for c in b.call(
+                "ir.cron",
+                "search_read",
+                [["active", "in", [True, False]]],
+                fields=["name", "model_id"],
+            )
+            if c["id"] not in before
+        ]
+        if len(new) != 1 or PROBE not in new[0]["name"]:
+            raise RuntimeError(f"cron probe {pr['model']}: {len(new)} new cron(s)")
+        m = b.call("ir.model", "read", [new[0]["model_id"][0]], fields=["model"])[0]["model"]
+        if m != pr["model"]:
+            raise RuntimeError(f"cron probe {pr['model']}: cron model {m}")
+        out.append({"template": new[0]["name"].replace(PROBE, "{}"), "model": m})
+    return out
+
+
+def write_cron_templates(v: int, templates: list[dict], date: str) -> Path:
+    """Add the probed templates to the existing caps file, with their own provenance."""
+    p = OUT / f"caps_{v}.json.gz"
+    caps = json.loads(gzip.decompress(p.read_bytes()))
+    caps["cron_templates"] = templates
+    caps["provenance"]["cron_templates"] = {
+        "generated": date,
+        "image_id": image_id(v),
+        "method": "public XML-RPC: create one record per CRON_PROBES row, read the new ir.cron",
+    }
+    raw = json.dumps(caps, sort_keys=True, separators=(",", ":")).encode()
+    with open(p, "wb") as fh, gzip.GzipFile(fileobj=fh, mode="wb", mtime=0, filename="") as gz:
+        gz.write(raw)
+    return p
+
+
 def image_id(v: int) -> str:
     return sh("docker", "image", "inspect", f"odoo:{v}", "--format", "{{.Id}}").strip()
 
@@ -335,12 +401,19 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--port-base", type=int, default=18300)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--depends-only", action="store_true", help="refresh depends in existing files")
+    ap.add_argument("--cron-templates-only", action="store_true", help="probe runtime crons")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     a = ap.parse_args(argv)
     for v in a.versions:
         b = Box(v, a.port_base + v)
         try:
             b.up()
+            if a.cron_templates_only:
+                t = probe_cron_templates(b)
+                print(
+                    f"[{v}] cron templates {t} -> {write_cron_templates(v, t, a.date)}", flush=True
+                )
+                continue
             if a.depends_only:
                 print(f"[{v}] depends refreshed {refresh_depends(b)}", flush=True)
                 continue

@@ -312,3 +312,46 @@ def test_required_read_only_and_claim_scopes_reports_and_crons():
         tt.REQUIRED[3] = ()  # type: ignore[index]
     assert "not graded yet" not in tt.CLAIM
     assert "Report tasks" in tt.CLAIM and "name the app" in tt.CLAIM
+
+
+LUNCH = "cron:Lunch: send automatic email to {supplier}"  # created per supplier at runtime
+
+
+@pytest.mark.parametrize("ver", [17, 18, 19, 20])
+def test_runtime_cron_owner_from_probed_template(ver):
+    a = tt.assess(LUNCH, version=ver, installed_modules=["base"])
+    assert a.grade == tt.NEEDS_STEP and a.prior_steps == ("mod:lunch:install",)
+    assert tt.caps.cron_owner(ver, "Lunch: send automatic email to Acme Foods") == "lunch"
+    assert tt.caps.cron_owner(ver, "Lunch: send automatic email to ") is None  # no record
+    assert tt.caps.cron_owner(ver, "Lunch: send automatic sms to Acme") is None
+
+
+def test_cron_owner_on_row_equals_version_catalogue():
+    """Regenerate-and-verify: every scheduled-action row carries its owner per version, and
+    it equals what the version catalogue derives today (gen_risk_rows.py wrote it)."""
+    import json
+
+    doc = json.loads(tt.classifier.ROWS_FILE.read_text())
+    rows = [k for k in tt.classifier.catalogue()[0] if k.startswith("cron:")]
+    assert set(doc["cron_owners"]) == set(rows)
+    for tid, per in doc["cron_owners"].items():
+        for v, owner in per.items():
+            assert owner == tt.caps.cron_owner(int(v), tid[5:]), (tid, v)
+            assert owner, (tid, v)  # every catalogue scheduled action has a known owner
+
+
+def test_cron_row_and_catalogue_disagree_refused(monkeypatch):
+    monkeypatch.setattr(tt.classifier, "cron_owner_row", lambda *_a: "sale")
+    assert tt.module_of(CRON, None, 17) is None
+    assert tt.assess(CRON, version=17, installed_modules=["base", "mail"]).grade == tt.UNKNOWN
+
+
+def test_enterprise_cron_graded_needs_enterprise():
+    a = tt.assess(
+        "cron:Helpdesk: SLA check", version=17, installed_modules=["base"], module_hint="helpdesk"
+    )
+    assert a.grade == tt.NEEDS_EDITION and "needs-Enterprise" in a.reason and not a.allowed
+    b = tt.assess(
+        "cron:Helpdesk: SLA check", version=17, installed_modules=["base"], module_hint="mail"
+    )
+    assert b.grade == tt.UNKNOWN  # a Community app's unknown job stays unknown
