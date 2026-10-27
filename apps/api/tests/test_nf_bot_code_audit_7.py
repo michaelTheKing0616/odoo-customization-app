@@ -59,3 +59,28 @@ def test_js_probe_and_variants_high(key):
 def test_js_benign_twin_quiet(key):
     c = hm(jsf(JS_C[key]))
     assert not {x for x in c if x[0] in ("js-mass-change", "owl-js-url", "owl-srcdoc", "js-eval")}, (key, c)
+
+
+# ---------------------------------------------------------------- H8: record context privilege defaults
+_AW = "<record id='a' model='ir.actions.act_window'><field name='name'>a</field><field name='res_model'>%s</field><field name='context'>%s</field></record>"
+H8_POS = {
+    "probe": _AW % ("res.users", "{'default_groups_id':[(4,ref('base.group_system'))]}"),
+    "share": _AW % ("res.users", "{'default_share': False}"),
+    "filter-users": "<record id='f' model='ir.filters'><field name='name'>f</field><field name='model_id'>res.groups</field><field name='context'>{\"default_users\": [(4, 2)]}</field></record>",
+    "dict-call": _AW % ("res.users", "dict(default_groups_id=[(6,0,[1])])"),
+}
+
+
+@pytest.mark.parametrize("key", sorted(H8_POS))
+def test_h8_record_context_privilege_default(key):
+    assert ("context-privilege-default", "high") in codes({"views/v.xml": "<odoo>\n" + H8_POS[key] + "\n</odoo>\n"})
+
+
+def test_h8_csv_act_window_context():
+    csv = "id,name,res_model,context\na,a,res.users,\"{'default_groups_id': [(4, 1)]}\"\n"
+    assert ("context-privilege-default", "high") in codes({"data/ir.actions.act_window.csv": csv})
+
+
+def test_h8_stock_like_action_context_quiet():
+    x = _AW % ("a.a", "{'default_partner_id': active_id, 'search_default_my': 1, 'default_login': 'x'}")
+    assert not hm({"views/v.xml": "<odoo>\n" + x + "\n</odoo>\n"})

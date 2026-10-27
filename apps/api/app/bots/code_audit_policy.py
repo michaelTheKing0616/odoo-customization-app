@@ -358,6 +358,10 @@ def data_record_policy(
     )
 
 
+CTX_PRIV_DEFAULT = re.compile(
+    r"""['"]default_(groups_id|group_ids|implied_ids|share|password|company_ids|"""
+    r"""sel_groups_\w+|in_group_\w+|user_ids|users)['"]\s*:|\bdefault_(groups_id|group_ids|implied_ids|share|password)\s*="""
+)
 _URL_FIELDS = frozenset({"url", "url_to", "url_from", "website_url", "redirect_url", "button_url"})
 _BAD_SCHEME = re.compile(r"^\s*(?:javascript|data|vbscript)\s*:", re.I)
 _EXTERNAL = re.compile(r"^\s*(?:[a-z][\w+.-]*:)?//", re.I)
@@ -394,6 +398,14 @@ def specific_findings(model: str, v: dict[str, str], module: str = "") -> list[t
             out.append(("server-multi-foreign", "Multi server action runs child actions defined outside this module"
                         f" ({', '.join(foreign) or 'non-literal child_ids'}): their code is not audited here.",
                         "List only this module's own server actions as children."))
+    # H8 (review 6): a record's context field (act_window, server action, filter, menu...)
+    # defaulting privilege fields: every record created from it gets them server-side
+    for k in ("context", "default_context"):
+        pk = CTX_PRIV_DEFAULT.search(html.unescape(v.get(k, "")))
+        if pk:
+            out.append(("context-privilege-default", f"{model}.{k} sets default_{pk.group(1) or pk.group(2)}: records created"
+                        " from it get privilege fields (used server-side by create()).",
+                        "Do not default security fields from an action/record context."))
     for k in _URL_FIELDS:
         if _BAD_SCHEME.search(html.unescape(v.get(k, ""))):
             out.append(("script-url", f"{model}.{k} is a javascript:/data: URL.", "Use relative http(s) URLs."))
