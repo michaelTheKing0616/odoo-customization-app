@@ -250,7 +250,11 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
         ):
             return
         pg = re.compile(r"ws-[0-9a-f]{12}-pg")
-        if len(argv) == 6 and pg.fullmatch(argv[2]) and argv[3:] == ["pg_isready", "-U", PG_ADMIN]:
+        if (
+            len(argv) == 8
+            and pg.fullmatch(argv[2])
+            and argv[3:] == ["pg_isready", "-h", "127.0.0.1", "-U", PG_ADMIN]
+        ):
             return
         if (
             len(argv) == 9 + len(_PSQL_TAIL)
@@ -1386,7 +1390,9 @@ class _Sandbox:
         import time
 
         for _ in range(60):
-            ready = ["docker", "exec", self.pg, "pg_isready", "-U", PG_ADMIN]
+            # over TCP: the image's init-time server listens on the socket only and then
+            # restarts, so a socket probe can pass before the real server is up (r7 flake)
+            ready = ["docker", "exec", self.pg, "pg_isready", "-h", "127.0.0.1", "-U", PG_ADMIN]
             if self.r.run(ready, timeout=10).rc == 0:
                 break
             time.sleep(1)

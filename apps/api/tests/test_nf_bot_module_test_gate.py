@@ -1204,3 +1204,13 @@ def test_smoke_facts_accepts_dotless_custom_model():
     raw = json.dumps({"trail": {"x_asset": {"kept": 1, "field": "x_name", "gone": 2}},
                       "role_users": {}}).encode()  # fmt: skip
     assert g.smoke_facts(raw) == ({"x_asset": {"kept": 1, "field": "x_name", "gone": 2}}, {})
+
+
+# ---- round 8 GATE 3: sandbox readiness is probed over TCP (the init-time server is socket-only)
+
+
+def test_sandbox_ready_probe_uses_tcp(tmp_path):
+    fk = Fake(tmp_path)
+    g.run_gate(files(NEW), module=MOD, version=17, runner=fk, role_spec=role_spec())
+    probes = [c for c in fk.calls if "pg_isready" in c]
+    assert probes and all(c[c.index("-h") + 1] == "127.0.0.1" for c in probes)
