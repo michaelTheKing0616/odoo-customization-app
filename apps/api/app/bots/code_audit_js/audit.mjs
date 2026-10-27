@@ -641,12 +641,14 @@ function auditJs(text) {
     }
   });
   const mentions = (e, name) => { let h = false; if (e) walk.full(e, (x) => { if (x.type === "Identifier" && x.name === name) h = true; }); return h; };
-  const SINK_CALL = { "eval": "high", "Function": "high", "setTimeout": null, "setInterval": null, "document.write": "medium",
+  // null prototype + own-key lookups: inherited keys (toString, constructor...) are not sinks
+  const SINK_CALL = { __proto__: null, "eval": "high", "Function": "high", "setTimeout": null, "setInterval": null, "document.write": "medium",
     "document.writeln": "medium", "insertAdjacentHTML": "medium", "markup": "medium", "Markup": "medium",
     "createContextualFragment": "medium", "importScripts": "high", "loadJS": "high", "getScript": "high" };
   const summ = new Map(); // name -> Map(paramIdx -> sev)
   const rank = { high: 2, medium: 1 };
   const addSumm = (name, i, sev) => {
+    if (!rank[sev]) return false;
     const m = summ.get(name) || new Map();
     if ((rank[m.get(i)] || 0) >= rank[sev]) return false;
     m.set(i, sev); summ.set(name, m); return true;
@@ -661,7 +663,7 @@ function auditJs(text) {
           let sev = null;
           if (x.type === "CallExpression" || x.type === "NewExpression") {
             const r = resolve(x.callee) || "";
-            const k = SINK_CALL[r] !== undefined ? r : (SINK_CALL[last(r)] !== undefined && last(r) !== "eval" ? last(r) : null);
+            const k = Object.hasOwn(SINK_CALL, r) ? r : (Object.hasOwn(SINK_CALL, last(r)) && last(r) !== "eval" ? last(r) : null);
             if (k) {
               const args = x.arguments;
               if ((k === "setTimeout" || k === "setInterval") ? args[0] && args[0].type !== "ArrowFunctionExpression" && args[0].type !== "FunctionExpression" && mentions(args[0], pn) : args.some((a) => mentions(a, pn))) {

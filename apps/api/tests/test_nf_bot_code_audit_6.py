@@ -506,3 +506,22 @@ def test_l3_build_chmods_inner_dir():
     import inspect
     from app.bots import code_audit_web as w
     assert "tmp.chmod(0o700)" in inspect.getsource(w._private_node)
+
+
+# ---------------------------------------------------------------- mrp js-flow-incomplete (inherited keys were "sinks")
+@pytest.mark.parametrize("call", ["x.toString()", "x.constructor(1)", "o.hasOwnProperty(x)", "x.valueOf()", "Object.prototype.isPrototypeOf(x)"])
+def test_mrp_js_flow_converges(call):
+    src = f"export function f(x) {{ return {call}; }}\nexport function g(y) {{ return f(y); }}\ng(window.q);\n"
+    c = codes({"static/src/a.js": src})
+    assert ("js-flow-incomplete", "high") not in c and ("js-flow-sink", "high") not in c, c
+
+
+def test_mrp_js_flow_real_sink_still_found():
+    src = "export function f(x) { eval(x); }\nexport function g(y) { f(y); }\ng(location.hash);\n"
+    assert has({"static/src/a.js": src}, "js-flow-sink")
+
+
+def test_mrp_stock_file_converges():
+    from pathlib import Path
+    src = (Path(__file__).parent / "fixtures" / "mrp17_mo_overview_line.js").read_text()
+    assert ("js-flow-incomplete", "high") not in codes({"static/src/a.js": src})
