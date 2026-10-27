@@ -502,3 +502,15 @@ def test_versioncaps_live_compare_install_dependent_types() -> None:
     ok = {"res.users.log": {"create_uid": ("integer", "")}}
     out = cmp(caps, {"base"}, ok, (), set())
     assert out["fields_type_mismatch"] == [] and out["_install_dependent"] == []
+
+
+# ---- round 8 VERSION-CAPS 7: load() takes a plain int major only
+
+
+@pytest.mark.parametrize("bad", ["17", 17.0, "17.x", "17.0", True, False, None, b"17"])
+def test_load_refuses_non_int_major(bad):
+    assert C.load(bad) is None
+
+
+def test_load_accepts_plain_int_major():
+    assert C.load(17) is not None and C.load(16) is None

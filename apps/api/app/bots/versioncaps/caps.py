@@ -136,10 +136,9 @@ _OVERRIDE: dict[int, Caps | None] = {}
 
 def load(major: Any) -> Caps | None:
     """Catalogue for ``major`` or None (fail closed). Tests may inject via ``_OVERRIDE``."""
-    try:
-        m = int(str(major).split(".")[0])
-    except (TypeError, ValueError):
+    if type(major) is not int:  # plain int major only: '17', 17.0, '17.x', True are refused
         return None
+    m = major
     if m in _OVERRIDE:
         return _OVERRIDE[m]
     return _load_file(m) if m in MAJORS else None
