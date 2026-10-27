@@ -1094,13 +1094,24 @@ def read_harness(
 # process; the harness writes its report (0600) only after the server is gone, and the gate
 # reads it host-side with docker cp.
 SMOKE_HARNESS = Path(__file__).resolve().parents[1] / "sandbox_harness" / "smoke.py"
+# Reviewed content of the harness. It lives outside app/bots (so the kill_audit raw-RPC ban on
+# app/bots stays unconditional); this pin is checked at gate start and again when it is sent.
+SMOKE_HARNESS_SHA256 = "ee1b54252e4b4a6b8be6cafa3d69a5c9bafdabfa5743b5c6db2f53d84571ac3b"
+
+
+def smoke_source() -> str:
+    """The harness text, refused unless it is byte-identical to the reviewed pin."""
+    raw = SMOKE_HARNESS.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != SMOKE_HARNESS_SHA256:
+        raise GateError("smoke harness changed since review (sha256 mismatch)")
+    return raw.decode()
 
 
 def smoke_script(cfg: Mapping[str, Any]) -> str:
     assert set(cfg) == {"host", "db", "module", "pw", "ready", "out", "roles"}
     assert _HFILE_RE.fullmatch(cfg["ready"]) and _HFILE_RE.fullmatch(cfg["out"])
     assert re.fullmatch(r"ws-[0-9a-f]{12}-s1", cfg["host"]) and DB_RE.fullmatch(cfg["db"])
-    src = SMOKE_HARNESS.read_text()
+    src = smoke_source()
     assert src.count("__CFG__") == 1
     return src.replace("__CFG__", repr(json.dumps(dict(cfg))))
 
@@ -1139,7 +1150,7 @@ def read_smoke(raw: bytes | None) -> tuple[str, str, dict[str, str]]:
     return PASS, f"smoke ok: {counts}", roles
 
 
-_MODEL_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+")
+_MODEL_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*")  # x_asset (no dot) too
 _COL_RE = re.compile(r"[a-z_][a-z0-9_]{0,62}")
 _LOGIN_RE = re.compile(r"smoke_[0-9]{1,10}")
 _SEQ_OK = "true"
@@ -1623,6 +1634,7 @@ def run_gate(
         raise GateError("module name invalid")
     if caps.module_info(version, module) is not None:
         raise GateError("module name is a stock Odoo module")
+    smoke_source()  # pinned harness, checked before anything runs
     try:
         files = _load(src)
         old = _load(prior) if prior is not None else None

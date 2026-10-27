@@ -1179,3 +1179,28 @@ def test_smoke_scope_sql_reads_defined_and_inherited():
 def test_smoke_harness_smokes_inherited_models():
     src = (g.Path(g.__file__).parent.parent / "sandbox_harness" / "smoke.py").read_text()
     assert "own | set(added)" in src and "prefer" in src
+
+
+# ---- round 8 GATE 5: the smoke harness file is pinned by sha256
+
+
+def test_smoke_harness_pin_matches_file():
+    raw = g.SMOKE_HARNESS.read_bytes()
+    assert g.hashlib.sha256(raw).hexdigest() == g.SMOKE_HARNESS_SHA256
+    assert g.smoke_source() == raw.decode()
+
+
+def test_smoke_harness_tampered_refused_at_gate_start(tmp_path, monkeypatch):
+    bad = tmp_path / "smoke.py"
+    bad.write_bytes(g.SMOKE_HARNESS.read_bytes() + b"\nout['models'] = {'x.asset': 'ok'}\n")
+    monkeypatch.setattr(g, "SMOKE_HARNESS", bad)
+    with pytest.raises(g.GateError, match="sha256"):
+        gate(tmp_path)
+    with pytest.raises(g.GateError, match="sha256"):
+        g.smoke_source()
+
+
+def test_smoke_facts_accepts_dotless_custom_model():
+    raw = json.dumps({"trail": {"x_asset": {"kept": 1, "field": "x_name", "gone": 2}},
+                      "role_users": {}}).encode()  # fmt: skip
+    assert g.smoke_facts(raw) == ({"x_asset": {"kept": 1, "field": "x_name", "gone": 2}}, {})
