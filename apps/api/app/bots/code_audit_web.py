@@ -98,19 +98,44 @@ def _find_node() -> str | None:
 _SEALED = ("/usr/lib/", "/System/")
 
 
-def _deps(obj: Path, loader: Path) -> list[str]:
-    """Direct dynamic-library dependencies of one object (otool -L / ldd)."""
+def _raw_deps(obj: Path) -> list[str]:
+    """Install names exactly as recorded in a Mach-O object (otool -L), unresolved."""
+    r = subprocess.run(
+        ["/usr/bin/otool", "-L", str(obj)], capture_output=True, text=True, timeout=30
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"otool failed on {obj.name}")
+    out = []
+    for line in r.stdout.splitlines()[1:]:
+        p = line.strip().split(" (compatibility", 1)[0].strip()
+        if p:
+            out.append(p)
+    return out
+
+
+def _rpaths(obj: Path) -> list[str]:
+    r = subprocess.run(
+        ["/usr/bin/otool", "-l", str(obj)], capture_output=True, text=True, timeout=30
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"otool failed on {obj.name}")
+    out, inrp = [], False
+    for line in r.stdout.splitlines():
+        t = line.strip()
+        if t.startswith("cmd "):
+            inrp = t == "cmd LC_RPATH"
+        elif inrp and t.startswith("path "):
+            out.append(t[5:].rsplit(" (offset", 1)[0].strip())
+    return out
+
+
+def _deps(obj: Path, loader: Path) -> list[tuple[str, str]]:
+    """Direct dynamic-library dependencies of one object as (load name, path):
+    otool -L install names on macOS, ldd sonames (and the ELF interpreter) on Linux."""
     if sys.platform == "darwin":
-        r = subprocess.run(
-            ["/usr/bin/otool", "-L", str(obj)], capture_output=True, text=True, timeout=30
-        )
-        if r.returncode != 0:
-            raise RuntimeError(f"otool failed on {obj.name}")
         out = []
-        for line in r.stdout.splitlines()[1:]:
-            p = line.strip().split(" (compatibility", 1)[0].strip()
-            if not p:
-                continue
+        for raw in _raw_deps(obj):
+            p = raw
             for pre, base in (
                 ("@rpath/", loader.parent.parent / "lib"),
                 ("@loader_path/", obj.parent),
@@ -121,7 +146,7 @@ def _deps(obj: Path, loader: Path) -> list[str]:
                     if pre == "@rpath/" and not cand.exists():
                         cand = obj.parent / p[len(pre) :]
                     p = str(cand)
-            out.append(p)
+            out.append((Path(raw).name, p))
         return out
     ldd = shutil.which("ldd")
     if not ldd:
@@ -132,30 +157,43 @@ def _deps(obj: Path, loader: Path) -> list[str]:
     out = []
     for line in r.stdout.splitlines():
         if "=>" in line:
-            p = line.split("=>", 1)[1].strip().split(" (", 1)[0].strip()
+            name, rest = line.split("=>", 1)
+            p = rest.strip().split(" (", 1)[0].strip()
             if p == "not found":
                 raise RuntimeError(f"unresolved library: {line.strip()[:80]}")
             if p:
-                out.append(p)
+                out.append((name.strip(), p))
         elif line.strip().startswith("/"):
-            out.append(line.strip().split(" (", 1)[0])
+            p = line.strip().split(" (", 1)[0]
+            out.append((INTERP + Path(p).name, p))
     return out
 
 
-def _node_closure(node: Path) -> list[Path]:
-    """Every non-sealed dynamic library Node loads, transitively (pin-time; fail closed)."""
+INTERP = "interp:"  # name prefix marking the ELF program interpreter (ld.so)
+
+
+def _node_closure(node: Path) -> dict[str, Path]:
+    """{load name: real path} for every non-sealed dynamic library Node loads, transitively
+    (pin-time; fail closed on a missing library or two different files under one name)."""
     seen: dict[str, Path] = {}
     todo = [node]
+    done: set[Path] = set()
     while todo:
         obj = todo.pop()
-        for d in _deps(obj, node):
+        if obj in done:
+            continue
+        done.add(obj)
+        for name, d in _deps(obj, node):
             if sys.platform == "darwin" and d.startswith(_SEALED):
                 continue
             p = Path(d).resolve(strict=True)  # a listed library that is missing: refuse
-            if str(p) not in seen and p != node:
-                seen[str(p)] = p
-                todo.append(p)
-    return sorted(seen.values())
+            if p == node:
+                continue
+            if name in seen and seen[name] != p:
+                raise RuntimeError(f"two libraries load as {name}")
+            seen[name] = p
+            todo.append(p)
+    return dict(sorted(seen.items()))
 
 
 def _libs_digest(libs: list[Path]) -> str:
@@ -165,37 +203,61 @@ def _libs_digest(libs: list[Path]) -> str:
     return h.hexdigest()
 
 
+PIN_FORMAT = 2
+
+
 def pin_node(cand: str | None = None) -> dict[str, Any]:
     """Operator step (like npm ci): pin this host's Node binary by real path and hash, with
-    the full dynamic-library closure it loads (otool -L / ldd, transitively)."""
+    the full dynamic-library closure it loads (otool -L / ldd, transitively), each library
+    by load name, real path and its own hash."""
     c = cand or _find_node()
     if not c:
-        raise RuntimeError("Node.js not found")
+        raise RuntimeError(
+            "Node.js not found: install Node >= "
+            f"{NODE_MIN_MAJOR}, then run: python -m app.bots.code_audit_web --pin-node "
+            "(or set INGENIUM_NODE=/path/to/node)"
+        )
     real = Path(c).resolve(strict=True)
-    libs = _node_closure(real)
+    names = _node_closure(real)
+    libs = sorted(set(names.values()))
     doc = {
+        "format": PIN_FORMAT,
         "path": str(real),
         "sha256": _sha(real),
         "libs": [str(p) for p in libs],
         "libs_sha256": _libs_digest(libs),
+        "lib_sha256": {str(p): _sha(p) for p in libs},
+        "names": {n: str(p) for n, p in names.items()},
     }
+    d, why = _private_node(doc)
+    if why or d is None:
+        raise RuntimeError(why or "private Node.js build failed")
+    doc["private_sha256"] = _tree_shas(d)
     NODE_PIN.write_text(json.dumps(doc, indent=1) + "\n")
     return doc
 
 
 def _pin() -> dict[str, Any] | None:
     """The pin, re-verified now (binary and every pinned library); None when unpinned,
-    old-format (no library closure) or changed."""
+    old-format (no per-library hashes) or changed."""
     try:
         pin = json.loads(NODE_PIN.read_text())
+        if pin.get("format") != PIN_FORMAT or not isinstance(pin.get("private_sha256"), dict):
+            return None
         real = Path(pin["path"])
         libs = [Path(p) for p in pin["libs"]]
         if real.is_symlink() or not real.is_file() or any(p.is_symlink() for p in libs):
             return None
+        if set(pin["lib_sha256"]) != set(pin["libs"]) or set(pin["names"].values()) != set(
+            pin["libs"]
+        ):
+            return None
         if _sha(real) != pin["sha256"] or _libs_digest(libs) != pin["libs_sha256"]:
             return None
+        if any(_sha(p) != pin["lib_sha256"][str(p)] for p in libs):
+            return None
         return pin
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
 
 
@@ -280,14 +342,28 @@ def _cmd(node: str, helper_dir: Path) -> list[str] | None:
     sb = _os_sandbox()
     if sb is None:
         return None
+    pre = [node]
+    interp = Path(node).parent.parent / "lib.interp"
+    if sys.platform.startswith("linux"):
+        if not interp.is_file():
+            return None
+        pre = [
+            str(interp.parent / "lib" / interp.read_text()),
+            "--library-path",
+            str(interp.parent / "lib"),
+            node,
+        ]
     return [
         *sb,
-        node,
+        *pre,
         "--disallow-code-generation-from-strings",
         "--permission",
         f"--allow-fs-read={helper_dir}",
         str(helper_dir / "audit.mjs"),
     ]
+
+
+NODE_CACHE_ROOT = Path.home() / ".cache" / "ingenium-node"
 
 
 def _private_copy() -> tuple[Path, str | None]:
@@ -298,27 +374,139 @@ def _private_copy() -> tuple[Path, str | None]:
     shutil.copy2(HELPER_DIR / "package.json", d / "package.json")
     shutil.copy2(HELPER_DIR / "package-lock.json", d / "package-lock.json")
     shutil.copytree(HELPER_DIR / "node_modules", d / "node_modules", symlinks=False)
-    pin = _pin()
-    if pin is None:
-        return d, "Node.js binary changed since pinning"
-    # the binary Node runs from is a private copy hashed after copying (no swap window on
-    # the original); @rpath libraries sit beside it in the private lib/ for the loader
-    (d / "bin").mkdir()
-    (d / "lib").mkdir()
-    shutil.copy2(pin["path"], d / "bin" / "node")
-    rpath_dir = Path(pin["path"]).parent.parent / "lib"
-    for lib in (Path(p) for p in pin["libs"]):
-        if lib.parent == rpath_dir:
-            shutil.copy2(lib, d / "lib" / lib.name)
-            if _sha(d / "lib" / lib.name) != _sha(lib):
-                return d, "Node.js library copy does not match its pin"
-    if _sha(d / "bin" / "node") != pin["sha256"]:
-        return d, "Node.js binary copy does not match its pin"
     if _sha(d / "audit.mjs") != HELPER_SHA256:
         return d, "parser helper does not match its pin"
     if _sha(d / "package-lock.json") != LOCK_SHA256 or modules_tree_sha(d) != MODULES_SHA256:
         return d, "installed parser dependencies do not match the lockfile pin"
     return d, None
+
+
+def _build_private(pin: dict[str, Any], d: Path) -> str | None:
+    """Node and its whole non-sealed library closure as private copies in d, each hashed
+    against its own pin after copying (no swap window on the originals), then relinked so
+    the loader can only resolve them inside d."""
+    (d / "bin").mkdir()
+    (d / "lib").mkdir()
+    shutil.copy2(pin["path"], d / "bin" / "node")
+    if _sha(d / "bin" / "node") != pin["sha256"]:
+        return "Node.js binary copy does not match its pin"
+    (d / "bin" / "node").chmod(0o700)
+    for name, src in pin["names"].items():
+        dst = d / "lib" / name.removeprefix(INTERP)
+        shutil.copy2(src, dst)
+        if _sha(dst) != pin["lib_sha256"][src]:
+            return "Node.js library copy does not match its pin"
+        dst.chmod(0o700)
+        if name.startswith(INTERP):
+            (d / "lib.interp").write_text(dst.name)
+    if sys.platform == "darwin":
+        return _relink(d, pin)
+    if not (d / "lib.interp").is_file():
+        return "Node.js program interpreter not pinned"
+    return None
+
+
+def _tree_shas(d: Path) -> dict[str, str]:
+    out = {}
+    for f in sorted(d.rglob("*")):
+        if f.is_symlink():
+            out[str(f.relative_to(d))] = "symlink"
+        elif f.is_file():
+            out[str(f.relative_to(d))] = _sha(f)
+    return out
+
+
+def _private_dir_ok(p: Path) -> bool:
+    try:
+        st = p.lstat()
+    except OSError:
+        return False
+    import stat
+
+    return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077
+
+
+def _private_node(pin: dict[str, Any]) -> tuple[Path | None, str | None]:
+    """The relinked private Node closure for this pin: built once (the first launch of a
+    freshly signed binary costs seconds of OS verification), re-verified file by file
+    against the pinned post-relink hashes before every use, rebuilt when it differs."""
+    root = NODE_CACHE_ROOT
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not _private_dir_ok(root):
+        return None, "private Node.js directory is not owner-only"
+    want = pin.get("private_sha256")
+    d = root / (pin["sha256"][:16] + pin["libs_sha256"][:16])
+    if d.exists() or d.is_symlink():
+        if want and _private_dir_ok(d) and _tree_shas(d) == want:
+            return d, None
+        if d.is_symlink() or not d.is_dir():
+            d.unlink()
+        else:
+            shutil.rmtree(d)
+    tmp = Path(tempfile.mkdtemp(dir=root))
+    try:
+        why = _build_private(pin, tmp)
+        if why:
+            return None, why
+        if want is not None and _tree_shas(tmp) != want:
+            return None, "Node.js private closure does not match its pin"
+        os.rename(tmp, d)
+    except OSError as e:
+        return None, f"private Node.js build failed ({type(e).__name__})"
+    finally:
+        if tmp.exists():
+            shutil.rmtree(tmp, ignore_errors=True)
+    return d, None
+
+
+def _tool(args: list[str]) -> bool:
+    try:
+        return subprocess.run(args, capture_output=True, timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _relink(d: Path, pin: dict[str, Any]) -> str | None:
+    """macOS: point every non-sealed load command of the private node and libraries at the
+    private lib/ copies, drop absolute rpaths, ad-hoc re-sign, then verify nothing outside
+    the private directory or the sealed system can be loaded."""
+    names = set(pin["names"])
+    objs = [d / "bin" / "node", *(d / "lib" / n for n in sorted(names))]
+    try:
+        for o in objs:
+            is_node = o.parent.name == "bin"
+            args = []
+            for raw in _raw_deps(o)[0 if is_node else 1 :]:
+                if raw.startswith(_SEALED):
+                    continue
+                n = Path(raw).name
+                if n not in names:
+                    return "Node.js loads a library outside its pin"
+                new = f"@rpath/{n}" if is_node else f"@loader_path/{n}"
+                if raw != new:
+                    args += ["-change", raw, new]
+            for rp in _rpaths(o):
+                if not rp.startswith("@loader_path") and not rp.startswith("@executable_path"):
+                    args += ["-delete_rpath", rp]
+            if not is_node:
+                args += ["-id", f"@loader_path/{o.name}"]
+            if args and not _tool(["/usr/bin/install_name_tool", *args, str(o)]):
+                return "Node.js library relink failed"
+            if not _tool(["/usr/bin/codesign", "-f", "-s", "-", str(o)]):
+                return "Node.js library re-sign failed"
+        for o in objs:
+            is_node = o.parent.name == "bin"
+            for raw in _raw_deps(o)[0 if is_node else 1 :]:
+                if raw.startswith(_SEALED):
+                    continue
+                pre = "@rpath/" if is_node else "@loader_path/"
+                if not raw.startswith(pre) or raw[len(pre) :] not in names:
+                    return "Node.js library closure not private after relink"
+            if any(not rp.startswith(("@loader_path", "@executable_path")) for rp in _rpaths(o)):
+                return "Node.js library closure not private after relink"
+    except (RuntimeError, OSError, subprocess.SubprocessError):
+        return "Node.js library relink failed"
+    return None
 
 
 def decode(body: bytes, kind: str) -> tuple[str, str | None]:
@@ -416,7 +604,16 @@ def run(files: list[tuple[str, str, str]]) -> dict[str, dict[str, Any]] | str:
     try:
         if why:
             return why
-        node = str(helper_dir / "bin" / "node")  # the verified private copy
+        pin = _pin()
+        if pin is None:
+            return "Node.js binary changed since pinning"
+        try:
+            priv, why = _private_node(pin)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
+            return f"private Node.js build failed ({type(e).__name__})"
+        if why or priv is None:
+            return why or "private Node.js build failed"
+        node = str(priv / "bin" / "node")  # the verified private, relinked copy
         out: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(WORKERS) as ex:
             batches = _batches(files)
@@ -434,6 +631,26 @@ def run(files: list[tuple[str, str, str]]) -> dict[str, dict[str, Any]] | str:
         shutil.rmtree(helper_dir, ignore_errors=True)
 
 
-if __name__ == "__main__":  # operator: pin this host's node binary
-    if sys.argv[1:] == ["--pin-node"]:
-        print(json.dumps(pin_node()))
+def main(argv: list[str]) -> int:
+    """Operator command: `python -m app.bots.code_audit_web --pin-node [/path/to/node]`."""
+    if not argv or argv[0] != "--pin-node" or len(argv) > 2:
+        print(
+            "usage: python -m app.bots.code_audit_web --pin-node [/path/to/node]", file=sys.stderr
+        )
+        return 2
+    try:
+        doc = pin_node(argv[1] if len(argv) == 2 else None)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+        print(f"pin failed: {e}", file=sys.stderr)
+        return 1
+    major = _node_major(doc["path"])
+    if major < NODE_MIN_MAJOR:
+        NODE_PIN.unlink(missing_ok=True)
+        print(f"pin refused: Node.js {major} is older than {NODE_MIN_MAJOR}", file=sys.stderr)
+        return 1
+    print(f"pinned Node.js {major} with {len(doc['libs'])} libraries -> {NODE_PIN.name}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

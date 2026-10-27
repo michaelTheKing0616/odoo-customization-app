@@ -179,7 +179,7 @@ def test_m4_runs_private_copy(monkeypatch):
     res = web.run([("a.js", "js", "x = 1")])
     assert isinstance(res, dict) and res["a.js"]["ok"]
     node, d = seen[0]
-    assert node == str(d / "bin" / "node")
+    assert node.startswith(str(web.NODE_CACHE_ROOT)) and node.endswith("/bin/node")
 
 
 # --- JS / CSS helper: H8-H11, M3, fixpoint summaries, ts/tsx/jsx/sass ---------------

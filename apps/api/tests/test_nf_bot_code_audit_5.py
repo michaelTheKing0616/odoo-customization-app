@@ -817,3 +817,141 @@ B3 = [
 def test_batch3_probe_classes(name, pos, want, neg):
     assert want in codes(pos), name
     assert (want[0], "high") not in codes(neg) and (want[0], want[1]) not in codes(neg), name
+
+
+# --- H1/M1: private Node library closure, per-library pinned hashes; L3 pin command ----
+
+
+def _webmod():
+    from app.bots import code_audit_web as web
+
+    return web
+
+
+def test_h1_private_closure_has_no_outside_library(monkeypatch):
+    import subprocess
+    import sys
+
+    web = _webmod()
+    if web.helper_problem():
+        pytest.skip("helper unavailable")
+    if sys.platform != "darwin":
+        pytest.skip("macOS relink")
+    seen = []
+    real = web._run_batch
+
+    def spy(node, d, b):
+        root = web.Path(node).parent.parent
+        for o in [root / "bin" / "node", *sorted((root / "lib").iterdir())]:
+            out = subprocess.run(["/usr/bin/otool", "-L", str(o)], capture_output=True, text=True)
+            for line in out.stdout.splitlines()[1:]:
+                p = line.strip().split(" (", 1)[0]
+                seen.append(p)
+        return real(node, d, b)
+
+    monkeypatch.setattr(web, "_run_batch", spy)
+    res = web.run([("a.js", "js", "x = 1")])
+    assert isinstance(res, dict) and res["a.js"]["ok"]
+    outside = [p for p in seen if p.startswith("/") and not p.startswith(("/usr/lib/", "/System/"))]
+    assert seen and not outside
+
+
+@pytest.mark.parametrize("mutate", ["one_lib", "format", "names"])
+def test_m1_per_lib_pin_fails_closed(tmp_path, monkeypatch, mutate):
+    import json
+
+    web = _webmod()
+    if web._pin() is None:
+        pytest.skip("node not pinned on this host")
+    pin = json.loads(web.NODE_PIN.read_text())
+    if mutate == "one_lib":
+        pin["lib_sha256"][pin["libs"][0]] = "0" * 64
+    elif mutate == "format":
+        pin.pop("format")
+    else:
+        pin["names"].popitem()
+    p = tmp_path / "node.pin.json"
+    p.write_text(json.dumps(pin))
+    monkeypatch.setattr(web, "NODE_PIN", p)
+    assert web._pin() is None
+    assert isinstance(web.run([("a.js", "js", "x = 1")]), str)
+
+
+def test_m1_copy_compared_with_pin_not_original(tmp_path, monkeypatch):
+    web = _webmod()
+    monkeypatch.setattr(web, "NODE_CACHE_ROOT", tmp_path / "c")
+    if web.helper_problem():
+        pytest.skip("helper unavailable")
+    pin = web._pin()
+    victim = next(iter(pin["names"]))
+    real = web.shutil.copy2
+
+    def swap(src, dst, *a, **k):
+        r = real(src, dst, *a, **k)
+        if str(dst).endswith("/lib/" + victim):
+            web.os.chmod(dst, 0o600)
+            with open(dst, "ab") as f:
+                f.write(b"\0")
+        return r
+
+    monkeypatch.setattr(web.shutil, "copy2", swap)
+    assert web.run([("a.js", "js", "x = 1")]) == "Node.js library copy does not match its pin"
+
+
+def test_h1_relink_refuses_unpinned_library(tmp_path, monkeypatch):
+    import sys
+
+    web = _webmod()
+    monkeypatch.setattr(web, "NODE_CACHE_ROOT", tmp_path / "c")
+    if web.helper_problem() or sys.platform != "darwin":
+        pytest.skip("macOS helper")
+    monkeypatch.setattr(web, "_raw_deps", lambda o: ["x", "/opt/evil/libevil.dylib"])
+    assert web.run([("a.js", "js", "x = 1")]) == "Node.js loads a library outside its pin"
+
+
+def test_l3_pin_command_usage_and_missing_node(tmp_path, monkeypatch, capsys):
+    web = _webmod()
+    monkeypatch.setattr(web, "NODE_PIN", tmp_path / "node.pin.json")
+    assert web.main([]) == 2
+    assert "--pin-node" in capsys.readouterr().err
+    monkeypatch.setattr(web, "_find_node", lambda: None)
+    assert web.main(["--pin-node"]) == 1
+    err = capsys.readouterr().err
+    assert "Node.js not found" in err and "--pin-node" in err
+    assert not (tmp_path / "node.pin.json").exists()
+    assert web.main(["--pin-node", str(tmp_path / "nope")]) == 1
+
+
+def test_l3_unpinned_reason_names_the_command(tmp_path, monkeypatch):
+    web = _webmod()
+    monkeypatch.setattr(web, "NODE_PIN", tmp_path / "missing.json")
+    assert "--pin-node" in web.helper_problem()
+
+
+def test_h1_tampered_private_closure_rebuilt_and_verified(tmp_path, monkeypatch):
+    web = _webmod()
+    if web.helper_problem():
+        pytest.skip("helper unavailable")
+    monkeypatch.setattr(web, "NODE_CACHE_ROOT", tmp_path / "c")
+    pin = web._pin()
+    d, why = web._private_node(pin)
+    assert why is None and web._tree_shas(d) == pin["private_sha256"]
+    lib = sorted((d / "lib").iterdir())[0]
+    lib.write_bytes(lib.read_bytes() + b"\0")
+    d2, why = web._private_node(pin)
+    assert why is None and d2 == d and web._tree_shas(d) == pin["private_sha256"]
+    bad = dict(pin, private_sha256={"bin/node": "0" * 64})
+    lib.write_bytes(b"x")
+    assert web._private_node(bad) == (None, "Node.js private closure does not match its pin")
+
+
+def test_h1_private_root_must_be_owner_only(tmp_path, monkeypatch):
+    web = _webmod()
+    pin = web._pin()
+    if pin is None:
+        pytest.skip("node not pinned on this host")
+    root = tmp_path / "c"
+    root.mkdir(mode=0o755)
+    root.chmod(0o755)
+    monkeypatch.setattr(web, "NODE_CACHE_ROOT", root)
+    assert web._private_node(pin) == (None, "private Node.js directory is not owner-only")
