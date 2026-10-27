@@ -1,4 +1,6 @@
-"""BOT-GENERIC-WALKER live: Odoo 17 (18117) and 20 (18120) over JSON-RPC, ODOO_LIVE=1.
+"""BOT-GENERIC-WALKER live: Odoo 17/19/20 (1811<v>) over JSON-RPC, ODOO_LIVE=1.
+
+ODOO_LIVE_VERSIONS (default "17,20") picks the stacks that are up.
 
 One walk over three models (create res.partner.category, write res.partner incl. a many2many,
 write res.partner.industry) through WriteGate; a re-run replays from the ledger; the undo walk
@@ -7,6 +9,7 @@ restores the start state. Refusals checked live: res.users, an unknown field, an
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from pathlib import Path
@@ -36,7 +39,10 @@ EVIDENCE = Path.home() / ".ingenium_nf" / "nfwt" / "BOT-GENERIC-WALKER_live.txt"
 S = wk.Step
 
 
-@pytest.mark.parametrize("v", [17, 20])
+VERSIONS = [int(x) for x in os.environ.get("ODOO_LIVE_VERSIONS", "17,20").split(",")]
+
+
+@pytest.mark.parametrize("v", VERSIONS)
 def test_live_walk_change_replay_undo(v, engine, tmp_path, monkeypatch) -> None:  # noqa: F811
     o = Json(v)
     t0, tag = time.time(), uuid.uuid4().hex[:6]
@@ -55,10 +61,10 @@ def test_live_walk_change_replay_undo(v, engine, tmp_path, monkeypatch) -> None:
     )
     partner = o("res.partner", "create", [{"name": f"walk p {tag}"}])  # setup
     tag0 = o("res.partner.category", "create", [{"name": f"walk t0 {tag}"}])  # setup
-    bank = o("res.partner.industry", "create", [{"name": f"walk ind {tag}"}])  # setup
+    ind = o("res.partner.industry", "create", [{"name": f"walk ind {tag}"}])  # setup
     snap = lambda: (  # noqa: E731
         o("res.partner", "read", [[partner]], {"fields": ["name", "comment", "category_id"]}),
-        o("res.partner.industry", "read", [[bank]], {"fields": ["name", "full_name"]}),
+        o("res.partner.industry", "read", [[ind]], {"fields": ["name", "full_name"]}),
         o("res.partner.category", "search_count", [[("name", "like", f"walk new {tag}")]], {}),
     )
     start = snap()
@@ -86,7 +92,7 @@ def test_live_walk_change_replay_undo(v, engine, tmp_path, monkeypatch) -> None:
         S(
             "write",
             "res.partner.industry",
-            (bank,),
+            (ind,),
             {"name": f"walk ind2 {tag}", "full_name": "walk full"},
         ),
     ]
@@ -109,10 +115,23 @@ def test_live_walk_change_replay_undo(v, engine, tmp_path, monkeypatch) -> None:
         w.plan([S("write", "res.users", (bot,), {"name": "x"})], "r1"),
         w.plan([S("write", "res.partner", (partner,), {"nope_x": 1})], "r2"),
         w.plan([S("call", "res.partner", (partner,), method="action_unknown_x")], "r3"),
+        w.plan(  # nested create of a refused model through a relation
+            [
+                S(
+                    "write",
+                    "res.partner",
+                    (partner,),
+                    {"user_ids": [(0, 0, {"name": "x", "login": f"x{tag}"})]},
+                )
+            ],
+            "r4",
+        ),
+        w.plan([S("write", "res.partner.category", (tag0,), {"name": " "})], "r5"),  # required
+        w.plan([S("write", "x_unreviewed_model", (1,), {"x_name": "x"})], "r6"),
     ]
     assert all(isinstance(r, Refusal) for r in refusals), refusals
     for m, i in (
-        ("res.partner.industry", bank),
+        ("res.partner.industry", ind),
         ("res.partner", partner),
         ("res.partner.category", tag0),
     ):

@@ -27,7 +27,7 @@ ME = sk.SessionActor(OWNER, "live-session-0001")
 LIVE = os.environ.get("ODOO_LIVE") == "1"
 pytestmark = [pytest.mark.no_app_db, pytest.mark.skipif(not LIVE, reason="live: ODOO_LIVE=1")]
 EVIDENCE = Path.home() / ".ingenium_nf" / "nfwt" / "BOT-SINKHOLE_live.txt"
-PORTS = {17: 18117, 20: 18120}
+PORTS = {17: 18117, 19: 18119, 20: 18120}
 
 
 class Json:
