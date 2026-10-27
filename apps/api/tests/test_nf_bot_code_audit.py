@@ -448,7 +448,7 @@ def test_r2_b3_tests_dir_capped_low_and_static_skipped():
     files = _tree(
         **{
             "tests/test_x.py": "def t(cr, c):\n    cr.execute('SELECT ' + c)\n",
-            "static/img/big.png": "x" * 3_000_000,
+            "static/img/big.png": b"\x89PNG\r\n\x1a\n" + b"x" * 3_000_000,
             "static/src/x.xml": "<t t-name='a'><div attrs=\"{'a': 1}\"/></t>",
             "i18n/fr.po": 'msgid "Save"\nmsgstr "Enregistrer"\n',
         }

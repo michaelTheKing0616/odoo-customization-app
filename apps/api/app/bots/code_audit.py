@@ -33,6 +33,7 @@ from app.bots.versioncaps import caps
 
 VERSIONS = (17, 18, 19, 20)
 MAX_FILES, MAX_FILE, MAX_TOTAL, MAX_DEPTH, MAX_RATIO = 2000, 2_000_000, 20_000_000, 12, 100
+HEAD_BYTES = 262_144  # inert files: only this much is read, for type/content sniffing
 MAX_AST_NODES = 200_000
 HIGH, MEDIUM, LOW, INFO = "high", "medium", "low", "info"
 _SEV_RANK = {HIGH: 0, MEDIUM: 1, LOW: 2, INFO: 3}
@@ -228,7 +229,10 @@ def _check_local_header(data: bytes, i: zipfile.ZipInfo) -> None:
 
 
 def _from_zip(
-    data: bytes, skip_assets: bool = False, oversized: list[str] | None = None
+    data: bytes,
+    skip_assets: bool = False,
+    oversized: list[str] | None = None,
+    heads: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -248,6 +252,11 @@ def _from_zip(
         if stat.S_ISLNK(i.external_attr >> 16):
             raise SourceError(f"symlink in archive: {rel}")
         if skip_assets and _is_asset(rel):
+            if heads is not None and not (
+                i.compress_size and i.file_size / i.compress_size > MAX_RATIO
+            ):
+                with zf.open(i) as fh:
+                    heads[rel] = fh.read(HEAD_BYTES)  # content sniffing of inert files
             continue
         if i.compress_size and i.file_size / i.compress_size > MAX_RATIO:
             raise SourceError(f"file too large or over-compressed: {rel}")
@@ -275,7 +284,10 @@ def _from_zip(
 
 
 def _from_dir(
-    root: Path, skip_assets: bool = False, oversized: list[str] | None = None
+    root: Path,
+    skip_assets: bool = False,
+    oversized: list[str] | None = None,
+    heads: dict[str, bytes] | None = None,
 ) -> dict[str, bytes]:
     if root.is_symlink() or not root.is_dir():
         raise SourceError("source directory missing or a symlink")
@@ -299,6 +311,9 @@ def _from_dir(
             rel = _safe_rel(p.relative_to(root).as_posix())
             _check_name(rel)
             if skip_assets and _is_asset(rel):
+                if heads is not None:
+                    with p.open("rb") as fh:
+                        heads[rel] = fh.read(HEAD_BYTES)
                 continue
             if st.st_size > MAX_FILE and oversized is not None:
                 oversized.append(rel)
@@ -316,15 +331,19 @@ def _from_dir(
 
 
 def load_tree(
-    src: bytes | Path, *, skip_assets: bool = False, oversized: list[str] | None = None
+    src: bytes | Path,
+    *,
+    skip_assets: bool = False,
+    oversized: list[str] | None = None,
+    heads: dict[str, bytes] | None = None,
 ) -> tuple[dict[str, bytes], str | None]:
     """Return (module-relative files, top folder or None). The folder name never enters files.
     With `oversized`, files over MAX_FILE are listed there (top folder kept) instead of
     refusing the whole tree."""
     if isinstance(src, (bytes, bytearray)):
-        files = _from_zip(bytes(src), skip_assets, oversized)
+        files = _from_zip(bytes(src), skip_assets, oversized, heads)
     elif isinstance(src, Path):
-        files = _from_dir(src, skip_assets, oversized)
+        files = _from_dir(src, skip_assets, oversized, heads)
     else:
         raise SourceError("source must be zip bytes or a directory path")
     top = None
@@ -333,6 +352,10 @@ def load_tree(
     if len(tops) == 1 and all("/" in f for f in every):
         top = tops.pop()
         files = {f.split("/", 1)[1]: b for f, b in files.items()}
+        if heads:
+            moved = {f.split("/", 1)[1]: b for f, b in heads.items() if "/" in f}
+            heads.clear()
+            heads.update(moved)
         if oversized:
             oversized[:] = [f.split("/", 1)[1] for f in oversized]
     return files, top
@@ -2229,10 +2252,47 @@ def _handler_holes_quoted(val: str) -> bool:
     return bool(holes) and all(_in_js_string(val[: m.start()]) for m in holes)
 
 
+_REQ_DATA = re.compile(
+    r"\brequest\.(?:params|httprequest|get_http_params|get_json_data)|\bkw\b|\bpost\b"
+)
+_TOKEN_DATA = re.compile(
+    r"session(?:_token|\.sid|\.uid|\.login)?\b|csrf|access_token|password|api_key", re.I
+)
+
+
 def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str) -> None:
-    """Inline event handlers, runtime URLs, srcdoc, external form targets, meta refresh."""
+    """Inline event handlers, runtime URLs, srcdoc, external form targets, meta refresh,
+    dynamic t-call targets and tokens sent to other hosts."""
     base = a.removeprefix("t-att-").removeprefix("t-attf-")
     dyn = base != a
+    if a == "t-call" and re.search(r"\{\{|#\{", val or ""):
+        req = bool(_REQ_DATA.search(val))
+        c.add(
+            HIGH if req else MEDIUM,
+            "qweb-dynamic-call",
+            path,
+            xl.el(el, a),
+            "t-call target computed at render time"
+            + (
+                " from request input: any template (incl. admin-only ones) can be rendered."
+                if req
+                else "."
+            ),
+            "Call fixed template ids; choose between them with t-if.",
+        )
+    if (
+        dyn
+        and base in ("href", "src", "action", "formaction", "data", "srcset", "poster")
+        and (_EXT_URL.search(val) and _TOKEN_DATA.search(val))
+    ):
+        c.add(
+            HIGH,
+            "qweb-token-leak",
+            path,
+            xl.el(el, a),
+            f"{a} sends a session/CSRF/access token to an external host.",
+            "Never put tokens in URLs to other hosts.",
+        )
     if re.fullmatch(r"on[a-z]{3,30}", base):
         sev = HIGH if dyn else MEDIUM
         if a.startswith("t-attf-") and _handler_holes_quoted(val):
@@ -2260,7 +2320,7 @@ def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str
         fixed = a.startswith("t-attf-") and re.match(r"\s*(?:/|#|https?:|mailto:|tel:)", val)
         if not fixed:
             c.add(
-                LOW,
+                MEDIUM if _REQ_DATA.search(val) else LOW,
                 "qweb-dynamic-url",
                 path,
                 xl.el(el, a),
@@ -2370,8 +2430,9 @@ def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
                 "`": "a template literal (${...} is not escaped)",
                 "comment": "a comment (a newline or */ ends it)",
             }.get(ctx, "a string literal (a trailing backslash or U+2028 can break out)")
+            req = bool(_REQ_DATA.search(ch.get(out_attr) or ""))
             c.add(
-                LOW if ctx in ("'", '"') else MEDIUM,
+                (MEDIUM if req else LOW) if ctx in ("'", '"') else (HIGH if req else MEDIUM),
                 "qweb-script-injection",
                 path,
                 xl.el(ch, out_attr),
@@ -2733,6 +2794,32 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     name = el.get("name") or ""
     if el.get("eval") is not None:
         _audit_expr(c, path, xl.el(el, "eval"), el.get("eval"), f"{model}.{name} eval=")
+    if el.get("file"):
+        ref = el.get("file").strip()
+        rel = ref.split("/", 1)[1] if ref.split("/", 1)[0] == getattr(c, "module", None) else ref
+        body = c.files.get(rel) if hasattr(c, "files") else None
+        if body is None:
+            c.add(
+                MEDIUM,
+                "data-file-unaudited",
+                path,
+                xl.el(el, "file"),
+                f"{model}.{name} is loaded from {ref}, which is not in the module: unaudited.",
+                "Ship the file inside the module (module/path), or inline the value.",
+            )
+        elif name in _STORED_MARKUP or name in ("code", "arch_db"):
+            ftxt = body.decode("utf-8", "replace")
+            if name == "code":
+                c.add(
+                    HIGH,
+                    "server-code",
+                    path,
+                    xl.el(el, "file"),
+                    f"{model}.code loaded from {ref}: server code kept outside Python files.",
+                    "Write server logic in Python model methods.",
+                )
+            else:
+                _audit_template_html(c, rel, 1, ftxt, f"{model}.{name} (file={ref})")
     text = el.text or ""
     lead = len(text) - len(text.lstrip())
     if name in _EXPR_FIELDS and text.strip() and len(el) == 0:
@@ -2802,6 +2889,28 @@ def _record_checks(
     """Data-record rules shared by XML <record> and CSV rows (column names: groups_id/id,
     model_id:id, ...). vals maps field name -> text / eval / ref."""
     v = {k.split("/")[0].split(":")[0]: (x or "").strip() for k, x in vals.items()}
+    if model == "ir.actions.server" and re.search(r"\.unlink\s*\(", v.get("code", "")):
+        c.add(
+            MEDIUM,
+            "server-action-unlink",
+            path,
+            line,
+            "Server action deletes records"
+            + (f" of {v.get('model_id')}" if v.get("model_id") else "")
+            + ": wired to an automation it deletes data on every trigger.",
+            "Archive instead of deleting, or limit the action to this module's own model.",
+        )
+    if model == "ir.default" and re.search(
+        r"field_(?:res_users|res_groups|ir_|res_company|auth_)", v.get("field_id", "")
+    ):
+        c.add(
+            MEDIUM,
+            "sensitive-default",
+            path,
+            line,
+            f"ir.default sets a default on a security-core field ({v.get('field_id')}).",
+            "Do not ship defaults for users/groups/company/ir.* fields.",
+        )
     if model == "ir.model.access" and not v.get("group_id"):
         if any(v.get(p) in _TRUE for p in ("perm_write", "perm_create", "perm_unlink")):
             c.add(
@@ -3598,6 +3707,23 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
         return
     if root is None:
         return
+    # parser differential: lxml (HTML4/XML) and a browser (HTML5) may disagree on a malformed
+    # tag; any script-like opening the parse did not yield is reported (fail closed)
+    parsed_scripts = sum(
+        1
+        for el in root.iter()
+        if isinstance(el.tag, str) and el.tag.rsplit("}", 1)[-1].lower() == "script"
+    )
+    raw_open = len(re.findall(rb"<\s*script\b", body, re.I))
+    if raw_open > parsed_scripts:
+        c.add(
+            HIGH,
+            "markup-script",
+            path,
+            1,
+            "Malformed <script> markup the parser did not read as a script (a browser may).",
+            "Ship well-formed static documents without scripts.",
+        )
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
@@ -3617,6 +3743,29 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
             if an in ("href", "src", "action", "formaction", "data") and _JS_URL.search(val):
                 c.add(
                     HIGH, "markup-js-url", path, ln, f"{an} holds a javascript: URL.", "Remove it."
+                )
+            if an == "srcdoc":
+                active = re.search(r"<\s*script|\bon[a-z]+\s*=|javascript:", val, re.I)
+                c.add(
+                    HIGH if active else MEDIUM,
+                    "markup-script" if active else "markup-srcdoc",
+                    path,
+                    ln,
+                    f"<{tag} srcdoc> holds an inline document"
+                    + (" with script." if active else " (unaudited HTML)."),
+                    "Remove srcdoc; ship static documents without embedded pages.",
+                )
+            if (an in ("data", "src") and tag in ("object", "embed", "applet")) or (
+                an == "href" and tag == "feimage" and _EXT_URL.search(val)
+            ):
+                plugin = tag in ("object", "embed", "applet")
+                c.add(
+                    HIGH if plugin and _EXT_URL.search(val) else MEDIUM,
+                    "markup-plugin" if plugin else "markup-external-resource",
+                    path,
+                    ln,
+                    f"<{tag}> {'embeds plugin content' if plugin else 'loads'} {val[:80]}.",
+                    "Ship plain images/documents; no plugins or remote filter inputs.",
                 )
             if an in ("href", "src") and tag in ("script", "iframe", "use", "image", "link"):
                 if _EXT_URL.search(val):
@@ -3668,6 +3817,203 @@ def _manifest_files(manifest: dict[str, Any] | None) -> set[str]:
         if isinstance(v, (list, tuple)):
             out |= {str(x) for x in v}
     return out
+
+
+_MAGIC_OF = {
+    (".png",): (b"\x89PNG\r\n\x1a\n",),
+    (".jpg", ".jpeg"): (b"\xff\xd8\xff",),
+    (".gif",): (b"GIF87a", b"GIF89a"),
+    (".ico",): (b"\x00\x00\x01\x00",),
+    (".cur",): (b"\x00\x00\x02\x00",),
+    (".bmp",): (b"BM",),
+    (".tif", ".tiff"): (b"II*\x00", b"MM\x00*"),
+    (".woff",): (b"wOFF",),
+    (".woff2",): (b"wOF2",),
+    (".ttf",): (b"\x00\x01\x00\x00", b"true", b"ttcf"),
+    (".otf",): (b"OTTO", b"\x00\x01\x00\x00"),
+    (".ogg",): (b"OggS",),
+    (".webm",): (b"\x1aE\xdf\xa3",),
+    (".pdf",): (b"%PDF",),
+    (".docx", ".xlsx", ".odt", ".ods"): (b"PK\x03\x04",),
+    (".doc", ".xls"): (b"\xd0\xcf\x11\xe0",),
+    (".mp3",): (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"),
+}
+_FTYP = (".mp4", ".mov", ".m4a", ".avif")
+_ACTIVE = re.compile(
+    rb"<\s*(script|html|svg|iframe|object|embed)\b|javascript:|\bon[a-z]+\s*=", re.I
+)
+_PIP_SRC = re.compile(
+    r"^\s*(-i\s|--index-url|--extra-index-url|--trusted-host|-f\s|--find-links|-e\s|--editable)"
+    r"|^\s*\S*(git\+|hg\+|svn\+|https?://|file:)",
+    re.M,
+)
+
+
+def _audit_inert(c: _Ctx, path: str, head: bytes) -> None:
+    """Inert files are never executed, but only when they are what their name says: sniff
+    the first HEAD_BYTES. A mismatch, an embedded document or active content is reported."""
+    low = path.lower()
+    name = low.rsplit("/", 1)[-1]
+    if not head:
+        return
+    egg = [seg for seg in low.split("/")[:-1] if seg.endswith((".egg-info", ".dist-info"))]
+    if egg and name in ("entry_points.txt", "requires.txt", "top_level.txt", "pkg-info", "record"):
+        c.add(
+            MEDIUM,
+            "packaging-metadata",
+            path,
+            0,
+            "Python packaging metadata shipped in the module (entry points install console"
+            " scripts or plugins when the folder is pip-installed).",
+            "Remove the .egg-info/.dist-info folder; Odoo modules are not pip packages.",
+        )
+    for exts, magics in _MAGIC_OF.items():
+        if low.endswith(exts):
+            ok = head.startswith(magics) or (low.endswith(".webp") and head[8:12] == b"WEBP")
+            break
+    else:
+        ok = None
+        if low.endswith(".webp"):
+            ok = head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+        elif low.endswith(".wav"):
+            ok = head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+        elif low.endswith(_FTYP):
+            ok = head[4:8] == b"ftyp"
+    if ok is False:
+        active = bool(_ACTIVE.search(head[:65536]))
+        media = any(head.startswith(m) for ms in _MAGIC_OF.values() for m in ms if len(m) >= 3)
+        media = media and not head.startswith((b"PK", b"%PDF", b"\xd0\xcf"))
+        c.add(
+            HIGH if active else INFO if media else MEDIUM,
+            "content-mismatch",
+            path,
+            0,
+            f"Content is not a {name.rsplit('.', 1)[-1]} file"
+            + (" and holds markup/script a browser can sniff and run." if active else "."),
+            "Ship the real file type, or rename it to what it is (then it is audited).",
+        )
+        return
+    if ok and not low.endswith((".pdf", ".docx", ".xlsx", ".odt", ".ods", ".doc", ".xls")):
+        if _ACTIVE.search(head):
+            c.add(
+                MEDIUM,
+                "polyglot-content",
+                path,
+                0,
+                "Media file also contains markup/script (polyglot): served with a sniffable type"
+                " or re-used as a document, it runs.",
+                "Re-export the file from a clean source.",
+            )
+        return
+    if low.endswith(".pdf"):
+        if re.search(rb"/(JavaScript|JS|Launch|EmbeddedFile|RichMedia)\b", head):
+            c.add(
+                MEDIUM,
+                "pdf-active-content",
+                path,
+                0,
+                "PDF with JavaScript, launch actions or embedded files.",
+                "Ship a flattened PDF without actions or attachments.",
+            )
+        return
+    if low.endswith((".docx", ".xlsx", ".odt", ".ods", ".doc", ".xls")):
+        macro = b"vbaProject" in head or b"_\x00V\x00B\x00A\x00_\x00P" in head
+        macro = macro or b"Basic/" in head or b"macros/" in head.lower()
+        if head.startswith(b"PK") and len(head) < HEAD_BYTES:
+            try:
+                with zipfile.ZipFile(io.BytesIO(head)) as z:
+                    names = z.namelist()
+                macro = macro or any(
+                    "vbaproject" in n.lower() or n.startswith("Basic/") for n in names
+                )
+            except (zipfile.BadZipFile, ValueError, OSError):
+                c.add(
+                    MEDIUM,
+                    "content-mismatch",
+                    path,
+                    0,
+                    "Office document that is not a readable archive: unaudited.",
+                    "Ship a valid document or remove it.",
+                )
+                return
+        if macro:
+            c.add(
+                HIGH,
+                "office-macro",
+                path,
+                0,
+                "Office document with macros (VBA/Basic): runs code when opened.",
+                "Remove the macros or the document.",
+            )
+        return
+    # text inert files: active content, dependency sources, external import maps
+    text = head.decode("utf-8", "replace")
+    if low.endswith((".txt", ".json", ".md", ".map")) and re.match(
+        r"\s*<\s*(script|html|svg|!doctype)", text, re.I
+    ):
+        c.add(
+            MEDIUM,
+            "content-mismatch",
+            path,
+            0,
+            "Text/data file that is really an HTML/SVG document (sniffable as a page).",
+            "Rename it to .html/.svg (then it is audited) or remove it.",
+        )
+    if low.endswith(".txt") and ("requirements" in name or "constraints" in name):
+        m = _PIP_SRC.search(text)
+        if m:
+            c.add(
+                MEDIUM,
+                "dependency-source",
+                path,
+                text[: m.start()].count("\n") + 1,
+                "Requirements point pip at a custom index, VCS or URL source.",
+                "Depend on released PyPI packages by name and pinned version only.",
+            )
+    if low.endswith(".rst"):
+        raw = re.search(r"^\s*\.\.\s+raw::\s*html", text, re.M | re.I)
+        if raw and _ACTIVE.search(text.encode()):
+            c.add(
+                MEDIUM,
+                "doc-active-content",
+                path,
+                text[: raw.start()].count("\n") + 1,
+                "reStructuredText raw HTML with script/handlers: module descriptions are"
+                " rendered from it.",
+                "Remove the raw HTML block.",
+            )
+        elif re.search(r"javascript:", text, re.I):
+            c.add(
+                MEDIUM,
+                "doc-active-content",
+                path,
+                0,
+                "javascript: link in a rendered document.",
+                "Use http(s) links only.",
+            )
+    if low.endswith(".md") and _ACTIVE.search(text.encode()):
+        c.add(
+            LOW,
+            "doc-active-content",
+            path,
+            0,
+            "Markdown with raw HTML/script or javascript: links (dangerous where rendered).",
+            "Remove raw HTML and javascript: links.",
+        )
+    if low.endswith(".json"):
+        for m in re.finditer(
+            r'"(imports|scopes|import|src|url|script|scripts)"\s*:\s*[\[{]?\s*"((?:https?:)?//[^"]+)"',
+            text,
+        ):
+            c.add(
+                MEDIUM,
+                "json-external-url",
+                path,
+                text[: m.start()].count("\n") + 1,
+                f"JSON {m.group(1)} entry points at an external host ({m.group(2)[:60]}).",
+                "Ship the resource in the module; never load code from other hosts.",
+            )
+            break
 
 
 def _audit_other_file(c: _Ctx, path: str, body: bytes, manifest: dict[str, Any] | None) -> None:
@@ -4262,7 +4608,8 @@ def audit(
         )
     big: list[str] = []
     try:
-        files, top = load_tree(src, skip_assets=True, oversized=big)
+        heads: dict[str, bytes] = {}
+        files, top = load_tree(src, skip_assets=True, oversized=big, heads=heads)
     except SourceError as e:
         return Report(False, None, False, False, version, error=str(e))
     except Exception as e:  # noqa: BLE001 - fail closed
@@ -4290,6 +4637,8 @@ def audit(
         c.prod_tests = _prod_tests(files, name, manifest)
         c.text_fields, c.db_helpers = _module_index(files)
         c.flow_pt, c.flow_sinks = _module_flow(files)
+        for rel in sorted(heads):
+            _audit_inert(c, rel, heads[rel])
         for path in sorted(files):
             body = files[path]
             try:

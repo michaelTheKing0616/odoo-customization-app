@@ -32,6 +32,7 @@ const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|
 // per-file: identifiers bound once to a constant string, and those holding document.cookie
 let CONSTS = new Map();
 let COOKIE_VARS = new Set();
+let DEPTH = 0;
 function lit(n) {
   if (!n) return null;
   if (n.type === "Literal" && typeof n.value === "string") return n.value;
@@ -49,7 +50,38 @@ function lit(n) {
     const a = lit(n.left), b = lit(n.right);
     return a !== null && b !== null ? a + b : null;
   }
+  // ['ev', 'al'].join('') / 'a'.concat('b') / String.fromCharCode(..literals)
+  if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && !n.callee.computed) {
+    const m = n.callee.property.name;
+    if (m === "join" && n.callee.object.type === "ArrayExpression") {
+      const parts = n.callee.object.elements.map((e) => lit(e));
+      const sep = n.arguments.length ? lit(n.arguments[0]) : ",";
+      if (sep !== null && parts.every((x) => x !== null)) return parts.join(sep);
+    }
+    if (m === "concat") {
+      const parts = [n.callee.object, ...n.arguments].map((e) => lit(e));
+      if (parts.every((x) => x !== null)) return parts.join("");
+    }
+    if (m === "fromCharCode" && n.callee.object.type === "Identifier" && n.callee.object.name === "String" &&
+        n.arguments.every((a) => a.type === "Literal" && typeof a.value === "number")) {
+      return String.fromCharCode(...n.arguments.map((a) => a.value));
+    }
+  }
   return null;
+}
+// a URL-controlled source (DOM XSS): location.hash/search/href, document.URL/referrer, window.name
+function readsUrl(n) {
+  let hit = false;
+  if (!n) return false;
+  walk.full(n, (x) => {
+    if (x.type !== "MemberExpression") return;
+    const p = x.computed ? lit(x.property) : x.property.name;
+    const o = x.object.type === "Identifier" ? x.object.name : x.object.type === "MemberExpression" && !x.object.computed ? x.object.property.name : "";
+    if (o === "location" && ["hash", "search", "href"].includes(p)) hit = true;
+    if (o === "document" && ["URL", "documentURI", "referrer", "baseURI"].includes(p)) hit = true;
+    if (["window", "self", "top"].includes(o) && p === "name") hit = true;
+  });
+  return hit;
 }
 
 // does this expression read document.cookie anywhere (exfiltration through a URL or body)
@@ -60,6 +92,10 @@ function readsCookie(n) {
     if (x.type === "MemberExpression" && ((!x.computed && x.property.name === "cookie") ||
         lit(x.property) === "cookie")) hit = true;
     if (x.type === "Identifier" && COOKIE_VARS.has(x.name)) hit = true;
+    if (x.type === "CallExpression" && x.callee.type === "MemberExpression" &&
+        /^(Reflect\.get|Object\.getOwnPropertyDescriptor|Reflect\.getOwnPropertyDescriptor)$/.test(
+          `${x.callee.object.name || ""}.${x.callee.property.name || ""}`) &&
+        lit(x.arguments[1]) === "cookie") hit = true;
   });
   return hit;
 }
@@ -102,6 +138,12 @@ function auditJs(text) {
   }
   const out = [];
   const add = (sev, code, node, msg) => out.push({ sev, code, line: node.loc.start.line, msg });
+  for (const m of text.matchAll(/[#@]\s*source(?:Mapping)?URL\s*=\s*(\S+)/g)) {
+    if (/^(https?:|\/\/|data:)/i.test(m[1]) && !/^data:application\/json/i.test(m[1])) {
+      out.push({ sev: "medium", code: "js-external-request", line: text.slice(0, m.index).split("\n").length,
+        msg: "sourceMappingURL points at an external host (devtools fetch it; it can also mask the real source)." });
+    }
+  }
   // H10: fold identifiers bound to constant strings (once, never reassigned) and track
   // variables that hold document.cookie, to a fixpoint
   CONSTS = new Map();
@@ -163,6 +205,7 @@ function auditJs(text) {
           const key = p.computed ? null : (p.key.name || p.key.value);
           if (key === null) alias.set(p.value.name, "?dynamic");
           else alias.set(p.value.name, base ? `${base}.${key}` : key);
+          if (key === "cookie" && /(^|\.)document$/.test(base || "")) COOKIE_VARS.add(p.value.name);
         }
       }
     }
@@ -265,8 +308,60 @@ function auditJs(text) {
       if ((markupNames.has(r)) && a0 && lit(a0) === null) {
         const inner = a0.type === "CallExpression" ? last(resolve(a0.callee)) : "";
         if (!ESCAPERS.test(inner)) {
-          add("low", "js-markup", n, "markup() of non-constant text: rendered unescaped by t-out; make sure it is sanitized.");
+          const data = /\b(props|record|data|state|result|res|response)\b/.test(text.slice(a0.start, a0.end));
+          add(data ? "medium" : "low", "js-markup", n, data
+            ? "markup() of record/server data: rendered unescaped by t-out (stored XSS unless sanitized)."
+            : "markup() of non-constant text: rendered unescaped by t-out; make sure it is sanitized.");
         }
+      }
+      // postMessage to any origin: the message is readable by whatever page embeds this one
+      if (last(r) === "postMessage" && lit(n.arguments[1]) === "*") {
+        add(readsCookie(a0) ? "high" : "medium", "js-postmessage", n,
+            "postMessage(..., '*') hands the message to any origin" + (readsCookie(a0) ? " (carries document.cookie)." : "."));
+      }
+      // WebAssembly: compiled code the JS audit cannot read
+      if (/^WebAssembly\.(instantiate|instantiateStreaming|compile|compileStreaming|Module|Instance)$/.test(r)) {
+        add("high", "js-eval", n, `${r}() runs compiled code the audit cannot read.`);
+      }
+      // patching Odoo's session / user / rpc / network primitives rewrites who the client is
+      if (last(r) === "patch" && a0 && /^(session|user|rpc|browser|odoo|window|XMLHttpRequest\.prototype|fetch|navigator)$|(^|\.)(session|user)$/.test(resolve(a0) || "")) {
+        add("high", "js-patch-core", n, `patch(${resolve(a0)}) rewrites a core session/network object.`);
+      }
+      // prototype pollution / network hooks through defineProperty
+      if (/^(Object|Reflect)\.(defineProperty|defineProperties|setPrototypeOf|assign)$/.test(r) && a0 &&
+          /^(Object|Array|Function|String|Element|Node|HTMLElement|EventTarget|XMLHttpRequest|Document)\.prototype$|^(window|document|navigator)$/.test(resolve(a0) || "") &&
+          !(r.endsWith("assign") && resolve(a0) === "window")) {
+        const base = resolve(a0) || "";
+        add(base === "Object.prototype" || base === "window" || base === "document" || base === "navigator" ? "high" : "medium",
+            "js-prototype-tamper", n, `${r}(${base}, ...) changes built-in behaviour for every script (a polyfill is MEDIUM; review it).`);
+      }
+      // keylogger: key/input listeners on the whole page that send data out
+      if (last(r) === "addEventListener" && /^(keydown|keyup|keypress|input|paste|change)$/.test(lit(a0) || "") &&
+          n.callee.type === "MemberExpression" && /^(document|window|document\.body|this\.el|el)$/.test(resolve(n.callee.object) || "")) {
+        let sends = false;
+        if (n.arguments[1]) walk.full(n.arguments[1], (x) => {
+          if (x.type === "CallExpression" || x.type === "NewExpression") {
+            const q = resolve(x.callee) || "";
+            if (/^(fetch|navigator\.sendBeacon|WebSocket|XMLHttpRequest|Image|\$\.ajax|\$\.post|rpc)$/.test(q) || /\.(send|sendBeacon|setItem)$/.test(q)) sends = true;
+          }
+          if (x.type === "AssignmentExpression" && /(^|\.)src$/.test(resolve(x.left) || "")) sends = true;
+        });
+        if (sends) add("high", "js-keylogger", n, `Page-wide ${lit(a0)} listener sends what is typed elsewhere.`);
+      }
+      // JSX / createElement props (TSX compiled by sucrase): src/href into a loaded element
+      if (last(r) === "createElement" && n.arguments[1] && n.arguments[1].type === "ObjectExpression") {
+        for (const pr of n.arguments[1].properties) {
+          const k = pr.type === "Property" && !pr.computed ? (pr.key.name || pr.key.value) : null;
+          if (["src", "href", "srcdoc", "data"].includes(k)) loadSink(n, (lit(a0) || "?").toLowerCase(), pr.value, k);
+          if (k === "dangerouslySetInnerHTML" && readsUrl(pr.value)) add("high", "js-dom-xss", n, "dangerouslySetInnerHTML from a URL-controlled value.");
+        }
+      }
+      // M3: URL-controlled source into an HTML/code sink
+      if ((["document.write", "document.writeln", "eval", "Function", "setTimeout", "setInterval"].includes(r) ||
+           ["insertAdjacentHTML", "createContextualFragment"].includes(last(r)) ||
+           (JQ_HTML.has(last(r)) && n.callee.type === "MemberExpression") || markupNames.has(r)) &&
+          n.arguments.some(readsUrl)) {
+        add("high", "js-dom-xss", n, `${last(r)}() of a URL-controlled value (location/referrer/window.name): DOM XSS.`);
       }
       // network
       const net = new Set(["fetch", "navigator.sendBeacon", "WebSocket", "EventSource", "Worker",
@@ -355,7 +450,24 @@ function auditJs(text) {
         if (readsCookie(n.right)) add("high", "js-cookie-leak", n, "Navigation URL carries document.cookie.");
       }
       if ((prop === "innerHTML" || prop === "outerHTML") && lit(n.right) === null) {
-        add("medium", "js-html-sink", n, `${prop} assigned non-constant HTML.`);
+        if (readsUrl(n.right)) add("high", "js-dom-xss", n, `${prop} from a URL-controlled value (location/referrer/window.name): DOM XSS.`);
+        else add("medium", "js-html-sink", n, `${prop} assigned non-constant HTML.`);
+      }
+      {
+        const o = n.left.object;
+        const t = elemOf(o) || (o.type === "Identifier" ? elems.get(o.name) : null);
+        if (t === "script" && ["text", "textContent", "innerText", "innerHTML"].includes(prop) && lit(n.right) === null) {
+          add("high", "js-eval", n, `<script>.${prop} set from a runtime value: runs code built at runtime.`);
+        }
+      }
+      // prototype pollution / network hooks: built-ins rewritten for every script on the page
+      if (/^(Object|Array|Function|String|Element|Node|HTMLElement|EventTarget|Document)\.prototype(\.|$)/.test(r) ||
+          /(^|\.)__proto__(\.|$)/.test(r)) {
+        add(/^Object\.prototype|__proto__/.test(r) ? "high" : "medium", "js-prototype-tamper", n,
+            `Assigns ${r}: changes built-in behaviour for every script.`);
+      }
+      if (/^(fetch|XMLHttpRequest|XMLHttpRequest\.prototype\.(open|send|setRequestHeader)|navigator\.sendBeacon|WebSocket|WebSocket\.prototype\.send|EventSource)$/.test(r)) {
+        add("high", "js-network-hook", n, `Replaces ${r}: intercepts every request on the page.`);
       }
       if (r === "document.cookie" || r.endsWith(".document.cookie")) {
         const v = n.right;
@@ -463,6 +575,22 @@ function auditJs(text) {
         if (mk && !/^\s*(['"`][^'"`$]*['"`])\s*$/.test(mk[1])) add("high", "owl-t-out", n, "t-out of markup(...) of runtime data renders it as raw HTML.");
         else if (!mk && /\b(props|record|env|state)\b|\.data\b/.test(v)) add("medium", "owl-t-out", n, "t-out of props/record data: unescaped when the value is a Markup.");
       }
+      // H12: event handlers and dynamic attributes are JS expressions: audit them as code
+      for (const m of text.matchAll(/\b(t-on-[\w.-]+|t-att-[\w-]+|t-attf-[\w-]+|t-att|t-props|t-call-context)\s*=\s*(["'])(.*?)\2/gs)) {
+        const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + (a1 || a2) + "}") + "`" : m[3];
+        if (DEPTH < 2) {
+          DEPTH++;
+          const saved = [CONSTS, COOKIE_VARS];
+          let r2;
+          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS] = saved; DEPTH--; }
+          if (!r2.ok) add("medium", "owl-expr-unaudited", n, `${m[1]} expression does not parse: unaudited.`);
+          else for (const f of r2.findings) if (f.sev === "high" || f.sev === "medium") add(f.sev, f.code, n, `${m[1]}: ${f.msg}`);
+        }
+        if (/^t-att(f)?-(href|src|action|formaction|xlink:href|data)$/.test(m[1]) && !/^\s*(['"`])[^'"`]*\1\s*$/.test(m[3]) &&
+            !(m[1].startsWith("t-attf-") && /^\s*\/[^/{#]/.test(m[3]))) {
+          add("medium", "owl-url-attr", n, `${m[1]} from runtime data: OWL does not block javascript: URLs.`);
+        }
+      }
     }
   });
   // JS fixpoint summaries: a function whose parameter reaches a code/HTML/navigation sink
@@ -554,6 +682,12 @@ const INTERP = /#\{|@\{|\$\{|var\(|attr\(|@[a-zA-Z_-]+/;
 
 // TypeScript / JSX: strip types and compile JSX (sucrase keeps line numbers), then audit
 function auditTyped(text, kind) {
+  // sucrase silently drops non-declare namespaces/modules (their code would vanish unaudited)
+  const ns = String(text).match(/(^|[\s;}])(?<!declare\s+)(namespace|module)\s+[\w.]+\s*\{/);
+  if (ns) {
+    return { ok: false, error: "TypeScript namespace/module block: the type stripper drops it, unaudited",
+      line: text.slice(0, ns.index).split("\n").length };
+  }
   let code;
   try {
     code = sucrase(text, {
@@ -613,9 +747,59 @@ function auditCss(text, kind) {
   const out = [];
   const add = (sev, code, node, msg) =>
     out.push({ sev, code, line: (node.source && node.source.start && node.source.start.line) || 0, msg });
+  // H13: preprocessor values: variables, interpolation, string concatenation, unquote(),
+  // mixin/function arguments. Substitute what is known, then look for external hosts anywhere
+  const vars = new Map();
+  root.walk((n) => {
+    if (n.type === "decl" && /^\$[\w-]+$/.test(n.prop)) vars.set(n.prop.slice(1), cssUnescape(n.value));
+    if (n.type === "atrule" && (n.variable || /:$/.test(n.name))) vars.set(n.name.replace(/:$/, ""), cssUnescape(n.value || n.params || ""));
+  });
+  const subst = (v) => {
+    let t = cssUnescape(v);
+    for (let i = 0; i < 8; i++) {
+      const before = t;
+      t = t.replace(/#\{\s*\$([\w-]+)\s*\}|@\{([\w-]+)\}|\$([\w-]+)|@([\w-]+)/g, (m, a1, a2, a3, a4) => {
+        const k = a1 || a2 || a3 || a4;
+        return vars.has(k) ? vars.get(k) : m;
+      });
+      t = t.replace(/(["'])\s*\+\s*(["'])/g, "").replace(/\b(unquote|quote|string\.unquote)\(\s*(["'][^"']*["'])\s*\)/g, "$2");
+      if (t === before) break;
+    }
+    return t;
+  };
+  const EXT_ANY = /(["'(]\s*|\burl\(\s*["']?)(https?:|\/\/[\w.-]+\.|ftp:)/i;
+  root.walk((n) => {
+    if (n.type === "atrule" && !n.variable && !["import", "use", "forward", "require", "plugin", "media", "supports", "font-face", "keyframes", "charset", "namespace"].includes(cssUnescape(n.name).toLowerCase())) {
+      const p = subst(n.params || "");
+      if (/^(include|return|mixin|function|each|if|else|while|for|extend|debug|warn|error)$/i.test(n.name) || /load-css/.test(p)) {
+        if (/load-css|loadCss/.test(p) && (EXT_ANY.test(p) || /load-css\(\s*\$|load-css\(\s*#\{/.test(n.params || ""))) {
+          add("high", "css-external-import", n, "meta.load-css() of an external or runtime-chosen stylesheet.");
+        } else if (EXT_ANY.test(p)) {
+          add("medium", "css-external-url", n, `@${n.name} passes an external URL (preprocessor argument).`);
+        }
+      }
+    }
+    if (n.type === "decl" && !/^\$[\w-]+$/.test(n.prop)) {
+      const raw = cssUnescape(n.value || "");
+      const v = subst(n.value || "");
+      if (v !== raw && /url\(|image-set\(/i.test(v) && EXT_ANY.test(v)) {
+        add("medium", "css-external-url", n, "url() resolves (after variables/interpolation) to an external host.");
+      }
+    }
+    // overlay phishing: a fixed, full-screen, top-most layer that prints its own text
+    if (n.type === "rule") {
+      const d = {};
+      n.each((x) => { if (x.type === "decl") d[cssUnescape(x.prop).toLowerCase()] = cssUnescape(x.value); });
+      const full = /^0(px)?(\s+0(px)?)*$/.test((d.inset || "").trim()) || (/100(vw|%)/.test(d.width || "") && /100(vh|%)/.test(d.height || ""));
+      if (/fixed/.test(d.position || "") && full && parseInt(d["z-index"] || "0", 10) >= 1000 &&
+          /^["'][^"']{12,}["']/.test((d.content || "").trim())) {
+        add("medium", "css-overlay", n, "Full-screen top-most layer with its own text (can impersonate a login or alert).");
+      }
+    }
+  });
   root.walk((n) => {
     if (n.type === "atrule" && ["import", "use", "forward", "require", "plugin"].includes(cssUnescape(n.name).toLowerCase())) {
-      const p = cssUnescape(n.params || "");
+      const p = subst(n.params || "").replace(/^\s*\([^)]*\)\s*/, ""); // LESS @import (css) url(...)
       if (EXT.test(p)) add("high", "css-external-import", n, "@import from an external host.");
       else if (/url\(/.test(p) && INTERP.test(p.replace(/^[^(]*\(/, ""))) add("medium", "css-dynamic-url", n, "@import of a URL built from variables: undecidable, flagged.");
     }
