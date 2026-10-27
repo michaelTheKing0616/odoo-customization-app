@@ -465,6 +465,11 @@ def _compile_thin(
         old_leaf == tok or old_leaf.endswith(f"_{tok}") or old_leaf.startswith(f"{tok}_")
         for tok in _keep_leaf
     )
+    # x_ticket already names the head noun of "help desk tickets": no rename to x_help_desk_tickets.
+    want_head = str(want_id or "").removeprefix("x_")
+    want_head = want_head[:-1] if want_head.endswith("s") else want_head
+    if old_leaf and (want_head == old_leaf or want_head.endswith(f"_{old_leaf}")):
+        want_id = old_id
     if want_id and old_id != want_id and not preserve:
         header["model"] = want_id
         if _display and not str(header.get("description") or "").strip():
