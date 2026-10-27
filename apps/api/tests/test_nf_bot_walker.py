@@ -500,6 +500,9 @@ def test_field_validation_refusals(v, W) -> None:
         "required field(s) missing",
     )
     assert refused(P({"name": "Azure"}), "nothing would change")
+    for blank in ("", "   ", False):
+        c = w.plan([S("create", "res.partner.category", values={"name": blank})], "p")
+        assert refused(c, "is required"), blank
     assert refused(P({"email": "b@x"}), "not simulated")  # R8 login email: lockout cannot simulate
     walk = ok(P({"barcode": "B1", "name": "Azure 2"}))
     assert any("company-dependent" in x for x in walk.steps[0].reasons)

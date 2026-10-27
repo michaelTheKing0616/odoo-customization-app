@@ -341,6 +341,8 @@ class Walker:
             return 0
         if t in ("char", "text", "html"):
             ok = isinstance(v, str)
+            if ok and m.get("required") and not v.strip():
+                raise _no(f"{name} is required (blank value)")
         elif t == "boolean":
             ok = isinstance(v, bool)
         elif t == "integer":
@@ -433,7 +435,7 @@ class Walker:
                         f"{model} #{r['id']}: e-invoice {f}={r[f]!r}: sent documents are final"
                     )
             if r.get("is_move_sent"):
-                why.append(f"{model} #{r['id']} was already sent to the customer")
+                why.append(f"{model} #{r['id']} was already sent out")
             if locks and lock_f and r.get("date"):
                 cid = r["company_id"][0] if isinstance(r["company_id"], list) else r["company_id"]
                 c = self.read("res.company", "read", [[cid], lock_f], RA)[0]
