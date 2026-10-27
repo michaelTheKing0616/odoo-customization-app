@@ -15,6 +15,7 @@ from dataclasses import dataclass
 HIGH, MEDIUM, LOW, INFO = "high", "medium", "low", "info"
 
 # builtins that are only dangerous by name; a re-binding (e = eval) makes them aliases
+_GETTERS = {"operator.methodcaller": "@mc:", "operator.attrgetter": "@ag:"}
 _BUILTIN_DANGER = frozenset({"eval", "exec", "compile", "__import__", "getattr", "open"})
 DB_CALLS = frozenset({"search", "search_count", "browse", "read", "search_read", "read_group"})
 DB_CALLS |= {"search_fetch", "_read_group", "fetch", "create", "write", "unlink", "execute"}
@@ -242,6 +243,7 @@ class Resolver:
             or d.startswith(("builtins.", "sys.modules"))
             or d in _BUILTIN_DANGER
             or d.rsplit(".", 1)[-1] == "Markup"
+            or d.startswith(("@mc:", "@ag:"))
         )
 
     def expr(self, n: ast.AST) -> str:
@@ -270,6 +272,11 @@ class Resolver:
                 if isinstance(name, ast.Constant) and isinstance(name.value, str) and base:
                     return f"{base}.{name.value}"
                 return ""
+            if f in _GETTERS and lit:
+                return _GETTERS[f] + lit  # methodcaller / attrgetter with a literal name
+            if f.startswith("@ag:") and n.args:
+                base = self.expr(n.args[0])
+                return f"{base}.{f[4:]}" if base else ""
             if f in ("__import__", "builtins.__import__", "importlib.import_module") and lit:
                 return lit if f == "importlib.import_module" else lit.split(".")[0]
             if f in ("globals", "locals") and not n.args:
@@ -299,6 +306,9 @@ class Resolver:
 
     def call_target(self, call: ast.Call) -> str:
         d = self.expr(call.func)
+        if d.startswith("@mc:"):
+            base = self.expr(call.args[0]) if call.args else ""
+            return f"{base}.{d[4:]}" if base else ""
         if (
             isinstance(call.func, ast.Name)
             and call.func.id not in self.alias
@@ -369,6 +379,7 @@ class Taint:
         res: Resolver,
         passthrough: frozenset[str] = frozenset(),
         seed_params: bool = False,
+        seed_only: str | None = None,
     ):
         self.fields = text_fields
         self.res = res
@@ -380,7 +391,8 @@ class Taint:
             a = scope.args
             for arg in [*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg]:
                 if arg is not None and arg.arg not in ("self", "cls"):
-                    self.src[arg.arg] = (f"route parameter {arg.arg}", scope.lineno)
+                    if seed_only is None or arg.arg == seed_only:
+                        self.src[arg.arg] = (f"route parameter {arg.arg}", scope.lineno)
         assigns = []
         for n in _own_nodes(scope):
             if isinstance(n, ast.Assign):
@@ -537,23 +549,150 @@ def call_name(n: ast.Call, maliases: dict[str, str]) -> str:
 _NOT_HELPER = DB_CALLS | _STR_PASS | _ORM_API | _SQL_EXEC | {"sudo", "with_user", "with_context"}
 
 
-def sink_summaries(
-    tree: ast.AST, res: Resolver, passthrough: frozenset[str]
-) -> dict[str, tuple[str, str]]:
-    """Functions whose parameters reach a sink: name -> (severity, code). A tainted argument
-    in a call to one of them (any file of the module) is reported at the call."""
-    out: dict[str, tuple[str, str]] = {}
-    for fn in ast.walk(tree):
-        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) or fn.name in _NOT_HELPER:
-            continue
-        if fn.name.startswith("__") or _is_route(fn):
-            continue
-        t = Taint(fn, frozenset(), res, passthrough, seed_params=True)
-        hits = _scope_hits(fn, t, res, {}, method_aliases(fn))
-        if hits:
-            h = min(hits, key=lambda h: (h.sev != HIGH, h.sev != MEDIUM))
-            out[fn.name] = (h.sev, h.code)
+# Summary of a helper: parameter key (position after self/cls, name, "*", "**") ->
+# (severity, code, guard). guard names a parameter defaulting to a falsy literal that must be
+# truthy for the sink to be reached (if body_is_html: Markup(body)); "" = unconditional.
+Summary = dict[str | int, tuple[str, str, str]]
+_RANK = {HIGH: 0, MEDIUM: 1, LOW: 2, INFO: 3, "": 9}
+_CLEAN = ("", "", "")  # a declared parameter that reaches no sink
+
+
+def _params(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str | int, str]]:
+    a = fn.args
+    pos = [x for x in [*a.posonlyargs, *a.args] if x.arg not in ("self", "cls")]
+    out: list[tuple[str | int, str]] = [(i, x.arg) for i, x in enumerate(pos)]
+    out += [(x.arg, x.arg) for x in a.kwonlyargs]
+    if a.vararg:
+        out.append(("*", a.vararg.arg))
+    if a.kwarg:
+        out.append(("**", a.kwarg.arg))
     return out
+
+
+def _falsy_defaults(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    a = fn.args
+    pos = [*a.posonlyargs, *a.args]
+    pairs = list(zip(pos[len(pos) - len(a.defaults) :], a.defaults, strict=False))
+    pairs += [(x, d) for x, d in zip(a.kwonlyargs, a.kw_defaults, strict=False) if d is not None]
+    return {
+        x.arg for x, d in pairs if isinstance(d, ast.Constant) and d.value in (False, None, 0, "")
+    }
+
+
+def _guard(fn: ast.AST, line: int, flags: set[str], seeded: str) -> str:
+    """A falsy-default flag parameter whose truth the sink at `line` depends on."""
+    for n in ast.walk(fn):
+        if not isinstance(n, ast.If) or not n.body:
+            continue
+        if not (n.body[0].lineno <= line <= (n.body[-1].end_lineno or n.body[-1].lineno)):
+            continue
+        t = n.test
+        terms = t.values if isinstance(t, ast.BoolOp) and isinstance(t.op, ast.And) else [t]
+        for x in terms:
+            if isinstance(x, ast.Name) and x.id in flags and x.id != seeded:
+                pos = [
+                    p.arg
+                    for p in [*fn.args.posonlyargs, *fn.args.args]
+                    if p.arg not in ("self", "cls")
+                ]
+                return f"{x.id}:{pos.index(x.id) if x.id in pos else -1}"
+    return ""
+
+
+def function_defs(tree: ast.AST) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    return [
+        fn
+        for fn in ast.walk(tree)
+        if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and fn.name not in _NOT_HELPER
+        and not fn.name.startswith("__")
+        and not _is_route(fn)
+    ]
+
+
+def function_summary(
+    fn: ast.FunctionDef | ast.AsyncFunctionDef,
+    res: Resolver,
+    passthrough: frozenset[str],
+    sinks: dict[str, Summary],
+) -> Summary:
+    """Which parameters of fn reach a sink, directly or through helpers already summarised
+    (sinks): computed per parameter so a call is reported only for the argument that flows."""
+    malias = method_aliases(fn)
+    t = Taint(fn, frozenset(), res, passthrough, seed_params=True)
+    if not _scope_hits(fn, t, res, sinks, malias):
+        return {}
+    flags = _falsy_defaults(fn)
+    out: Summary = {}
+    for key, name in _params(fn):
+        t = Taint(fn, frozenset(), res, passthrough, seed_params=True, seed_only=name)
+        hits = _scope_hits(fn, t, res, sinks, malias)
+        if not hits:
+            out.setdefault(key, _CLEAN)
+            if isinstance(key, int):
+                out.setdefault(name, _CLEAN)
+            continue
+        h = min(hits, key=lambda h: _RANK[h.sev])
+        guards = {_guard(fn, x.line, flags, name) for x in hits if x.sev == h.sev}
+        g = "" if "" in guards else sorted(guards)[0]
+        out[key] = (h.sev, h.code, g)
+        if isinstance(key, int):
+            out[name] = (h.sev, h.code, g)
+    return out if any(v[0] for v in out.values()) else {}
+
+
+def merge_summary(a: Summary, b: Summary) -> Summary:
+    out = dict(a)
+    for k, v in b.items():
+        old = out.get(k)
+        if old is None or _RANK[v[0]] < _RANK[old[0]] or (v[0] == old[0] and not v[2]):
+            out[k] = v
+    return out
+
+
+def _sink_arg(n: ast.Call, summ: Summary, t: Taint) -> tuple[tuple[str, int], tuple] | None:
+    """The tainted argument of call n that lands on a summarised sink parameter."""
+
+    def guard_on(g: str) -> bool:
+        if not g:
+            return True
+        name, _, idx = g.partition(":")
+        for k in n.keywords:
+            if k.arg == name:
+                return not (isinstance(k.value, ast.Constant) and not k.value.value)
+            if k.arg is None:
+                return True  # **kwargs may carry the flag
+        if any(isinstance(a, ast.Starred) for a in n.args):
+            return True
+        i = int(idx or -1)
+        if 0 <= i < len(n.args):
+            a = n.args[i]
+            return not (isinstance(a, ast.Constant) and not a.value)
+        return False  # flag left at its falsy default: the sink is not reached
+
+    for i, a in enumerate(n.args):
+        s = t.source(a)
+        if not s:
+            continue
+        if isinstance(a, ast.Starred):
+            cand = [v for k, v in summ.items() if isinstance(k, int) or k == "*"]
+        else:
+            cand = [summ[i]] if i in summ else ([summ["*"]] if "*" in summ else [])
+        for v in cand:
+            if v[0] and guard_on(v[2]):
+                return s, v
+    for k in n.keywords:
+        s = t.source(k.value)
+        if not s:
+            continue
+        if k.arg is None:
+            cand = [v for kk, v in summ.items() if isinstance(kk, str)]
+        else:
+            cand = [summ[k.arg]] if k.arg in summ else ([summ["**"]] if "**" in summ else [])
+        for v in cand:
+            if v[0] and guard_on(v[2]):
+                return s, v
+    return None
 
 
 def taint_hits(
@@ -561,7 +700,7 @@ def taint_hits(
     text_fields: frozenset[str],
     res: Resolver,
     module_passthrough: frozenset[str] = frozenset(),
-    module_sinks: dict[str, tuple[str, str]] | None = None,
+    module_sinks: dict[str, Summary] | None = None,
 ) -> list[Hit]:
     out: list[Hit] = []
     passthrough = passthrough_functions(tree, res, module_passthrough) | module_passthrough
@@ -578,7 +717,7 @@ def _scope_hits(
     scope: ast.AST,
     t: Taint,
     res: Resolver,
-    sinks: dict[str, tuple[str, str]],
+    sinks: dict[str, Summary],
     malias: dict[str, str],
 ) -> list[Hit]:
     out: list[Hit] = []
@@ -625,12 +764,9 @@ def _scope_hits(
                     )
                 )
         if name in sinks and isinstance(n.func, (ast.Name, ast.Attribute)):
-            s = next(
-                (r for a in [*n.args, *(k.value for k in n.keywords)] if (r := t.source(a))),
-                None,
-            )
-            if s:
-                sev, code = sinks[name]
+            got = _sink_arg(n, sinks[name], t)
+            if got:
+                s, (sev, code, _g) = got
                 out.append(
                     Hit(
                         sev,
