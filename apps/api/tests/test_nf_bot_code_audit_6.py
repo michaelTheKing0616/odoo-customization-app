@@ -469,11 +469,13 @@ def test_m5_test_tamper_once_per_line(call):
 # ---------------------------------------------------------------- L1 document.domain
 @pytest.mark.parametrize("src", ["document.domain='e.v';", "window.document.domain = 'odoo.com';", "globalThis.document.domain = h;"])
 def test_l1_document_domain(src):
-    assert ("js-document-domain", "low") in codes({"static/src/a.js": src + "\n"})
+    # graded MEDIUM since code-audit-7 L1 (relaxing same-origin has no legitimate module use)
+    assert ("js-document-domain", "medium") in codes({"static/src/a.js": src + "\n"})
 
 
 def test_l1_read_document_domain_ok():
-    assert not has({"static/src/a.js": "const d = document.domain;\n"}, "js-document-domain", "low")
+    c = codes({"static/src/a.js": "const d = document.domain;\n"})
+    assert not {x for x in c if x[0] == "js-document-domain"}, c
 
 
 # ---------------------------------------------------------------- L2 .po Plural-Forms code
@@ -483,12 +485,13 @@ def _po(expr):
 
 @pytest.mark.parametrize("e", ["(alert(1))", "constructor.constructor('x')()", "n.toString()"])
 def test_l2_po_plural_code(e):
-    assert ("po-plural-forms", "low") in codes(_po(e))
+    # code-shaped expressions graded MEDIUM since code-audit-7 L2
+    assert ("po-plural-forms", "medium") in codes(_po(e))
 
 
 @pytest.mark.parametrize("e", ["(n > 1)", "(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2)"])
 def test_l2_po_plural_standard_ok(e):
-    assert ("po-plural-forms", "low") not in codes(_po(e))
+    assert not {x for x in codes(_po(e)) if x[0] == "po-plural-forms"}
 
 
 # ---------------------------------------------------------------- L3 private Node dirs are owner-only

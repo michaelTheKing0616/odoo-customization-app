@@ -173,3 +173,27 @@ def test_h10_super_with_literal_domain_is_high():
 
 def test_h12_public_mapped_password_also_public_sudo():
     assert ("route-secret-read", "high") in codes(_pyfiles("h12b"))
+
+
+# ---------------------------------------------------------------- L1 / L2
+@pytest.mark.parametrize("src", ["document.domain = 'e.v';", "const d = document; d.domain = 'e.v';", "window['document'].domain = h;"])
+def test_l1_document_domain_medium(src):
+    assert ("js-document-domain", "medium") in codes(jsf(src + "\n"))
+
+
+def _po(expr):
+    return {"i18n/fr.po": 'msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n"Plural-Forms: nplurals=2; plural=' + expr + ';\\n"\n'}
+
+
+@pytest.mark.parametrize("e", ["__import__('os').system('id')", "globalThis.eval(1)", "n.constructor"])
+def test_l2_po_plural_code_medium(e):
+    assert ("po-plural-forms", "medium") in codes(_po(e))
+
+
+def test_l2_po_plural_odd_arithmetic_low():
+    assert ("po-plural-forms", "low") in codes(_po("n ** 2 ^ 1"))
+
+
+@pytest.mark.parametrize("e", ["(n != 1)", "(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2)", "0"])
+def test_l2_stock_plural_forms_quiet(e):
+    assert not {x for x in codes(_po(e)) if x[0] == "po-plural-forms"}

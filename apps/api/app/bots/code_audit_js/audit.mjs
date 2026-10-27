@@ -481,7 +481,7 @@ function auditJs(text) {
         const t = elemOf(o) || (o.type === "Identifier" ? elems.get(o.name) : null);
         loadSink(n, t, n.right, prop);
       }
-      if (/(^|\.)document\.domain$/.test(r)) add("low", "js-document-domain", n,
+      if (/(^|\.)document\.domain$/.test(r)) add("medium", "js-document-domain", n,
         "document.domain relaxed: same-origin policy widened to sibling subdomains.");
       if (/(^|\.)location(\.href)?$/.test(r) && !/\.(hash|search|pathname)$/.test(r)) {
         const s = lit(n.right);

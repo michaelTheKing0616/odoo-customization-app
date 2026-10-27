@@ -4181,9 +4181,11 @@ def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
         text = None
     pf = re.search(r"Plural-Forms:[^\n\"]*?plural\s*=\s*([^;\\\"]*)", text or "")
     if pf and not re.fullmatch(r"[\sn0-9%<>=!&|?:()+\-*/]*", pf.group(1)):
-        # L2: not evaluated server-side; the web client uses its own parser - LOW
+        # L2: Odoo does not evaluate it; non-standard arithmetic stays LOW, but code-shaped text
+        # (names, calls, quotes, attribute access) has no place in a translation file: MEDIUM
+        code_like = re.search(r"[A-Za-mo-z_'\"\[\].]|\bn\w", pf.group(1))
         c.add(
-            LOW,
+            MEDIUM if code_like else LOW,
             "po-plural-forms",
             path,
             (text or "")[: pf.start()].count("\n") + 1,
