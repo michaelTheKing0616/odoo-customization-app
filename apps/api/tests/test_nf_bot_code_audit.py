@@ -776,3 +776,65 @@ def test_clean_req2mod_module_audits_clean_at_its_own_version(v):
     if v != 17:
         wrong = ca.audit(build_module_zip(r.spec), version=17, owned_names={"x_clean"})
         assert {f.code for f in wrong.findings} & {"version-list", "version-manifest"}
+
+
+R6_TAMPER = [
+    "from odoo.tests.common import TransactionCase as T\nT.assertEqual = lambda *a, **k: None\n",
+    "from odoo.tests import common\ncommon.TransactionCase.assertTrue = lambda *a: None\n",
+    "from odoo.tests.common import TransactionCase\n"
+    "setattr(TransactionCase, 'assertTrue', print)\n",
+    "from odoo.tests.common import TransactionCase\nfor n in dir(TransactionCase):\n"
+    "    setattr(TransactionCase, n, None)\n",
+    "from unittest import mock\n"
+    "mock.patch('odoo.tests.common.TransactionCase.assertEqual').start()\n",
+    "from unittest import mock\nfrom odoo.tests.common import TransactionCase as T\n"
+    "mock.patch.object(T, 'assertEqual').start()\n",
+    "import unittest\nunittest.TestCase.failureException = Exception\n",
+    "from odoo.tests.common import TransactionCase as T\nT.run = lambda *a: None\n",
+    "import sys\nsys.modules['odoo.tests.result'] = object()\n",
+    "import sys\nsys.modules.update({})\n",
+    "import os\nfor f in os.listdir('/var/tmp'):\n    pass\n",
+    "import os\nfd = os.open('/var/tmp/r/x.xml', 1)\nos.write(fd, b'x')\n",
+    "from pathlib import Path\nPath(p).write_text('ok')\n",
+    "from pathlib import Path\nlist(Path(d).glob('*.xml'))\n",
+    "import glob\nglob.glob(p)\n",
+    "x = open(p, 'w')\n",
+    "import threading\nthreading.Thread(target=f).start()\n",
+    "s = '/proc/self/environ'\n",
+]
+
+
+@pytest.mark.parametrize("src", R6_TAMPER)
+def test_r6_result_forging_is_high_test_tamper(src):
+    for path in ("models/m.py", "tests/test_x.py"):
+        r = _r5_files({path: src})
+        hits = [f for f in r.findings if f.code == "test-tamper"]
+        assert hits and all(f.severity == ca.HIGH for f in hits), (path, src)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE FUNCTION f() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'select 1'",
+        "SET ROLE postgres",
+        "SET SESSION AUTHORIZATION postgres",
+        "CREATE EVENT TRIGGER t ON ddl_command_start EXECUTE FUNCTION f()",
+        "GRANT ALL ON ALL TABLES IN SCHEMA public TO PUBLIC",
+        "CREATE ROLE r",
+    ],
+)
+def test_r6_privilege_sql_is_high(sql):
+    src = f"def hook(env):\n    env.cr.execute({sql!r})\n"
+    r = _r5_files({"models/m.py": src})
+    assert any(f.code == "sql-dangerous" and f.severity == ca.HIGH for f in r.findings), sql
+
+
+def test_r6_ordinary_code_not_flagged():
+    src = (
+        "from odoo import models, fields\n\n\nclass X(models.Model):\n"
+        "    _inherit = 'res.partner'\n"
+        "    failed = fields.Boolean()\n\n    def go(self):\n        for r in self:\n"
+        "            r.failed = True\n            setattr(r, 'name', 'x')\n"
+        "        with open(__file__) as fh:\n            return fh.read()\n"
+    )
+    assert "test-tamper" not in codes(_r5_files({"models/m.py": src}))

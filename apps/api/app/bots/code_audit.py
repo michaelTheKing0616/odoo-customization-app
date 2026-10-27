@@ -299,7 +299,9 @@ _SQL_DANGER = re.compile(
     r"|\bCREATE\s+SCHEMA\b|\bSET\s+(?:SESSION\s+|LOCAL\s+)?search_path\b"
     r"|\bset_config\s*\(\s*'search_path'|\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b"
     r"[\s\S]*\bLANGUAGE\s+(?:plpython\w*|plperlu|c)\b|\bpg_(?:read|write)_(?:binary_)?file\b"
-    r"|\blo_(?:import|export)\b|\bdblink\w*\s*\(|\bCREATE\s+EXTENSION\b",
+    r"|\blo_(?:import|export)\b|\bdblink\w*\s*\(|\bCREATE\s+EXTENSION\b"
+    r"|\bSECURITY\s+DEFINER\b|\bSET\s+(?:SESSION\s+|LOCAL\s+)?ROLE\b|\bSET\s+SESSION\s+AUTHORIZATION\b"
+    r"|\bCREATE\s+EVENT\s+TRIGGER\b|\bGRANT\b|\bCREATE\s+(?:ROLE|USER)\b",
     re.IGNORECASE,
 )
 # SQL entry points and the position of their query argument.
@@ -455,14 +457,196 @@ def _resolve(d: str, aliases: dict[str, str]) -> str:
     return d
 
 
+# ---- result forging: what a module can do in-process to make failing tests look green
+_ASSERT_ATTR = re.compile(
+    r"^(?:assert\w*|fail|failIf\w*|failUnless\w*|failureException|_?callTestMethod|_outcome"
+    r"|longMessage|skipTest|subTest|_addSkip|doCleanups|setUpClass|tearDownClass)$"
+)
+_CASE_ATTR = frozenset({"run", "debug", "__call__", "setUp", "tearDown", "__init__"})
+_FS_WRITE = frozenset(
+    {
+        "write_text",
+        "write_bytes",
+        "touch",
+        "replace",
+        "rename",
+        "symlink_to",
+        "hardlink_to",
+        "link_to",
+        "unlink",
+        "rmtree",
+        "copyfile",
+        "copy",
+        "copy2",
+        "move",
+        "truncate",
+        "chmod",
+        "utime",
+    }
+)
+_OS_WRITE = frozenset(
+    {
+        "write",
+        "open",
+        "fdopen",
+        "pwrite",
+        "writev",
+        "rename",
+        "replace",
+        "remove",
+        "unlink",
+        "symlink",
+        "link",
+        "makedirs",
+        "mkdir",
+        "truncate",
+        "ftruncate",
+        "chmod",
+        "utime",
+        "listdir",
+        "scandir",
+        "walk",
+    }
+)
+_LIST_CALLS = frozenset({"listdir", "scandir", "walk", "iterdir", "glob", "rglob", "iglob"})
+_THREAD_ROOTS = ("threading", "_thread", "multiprocessing", "concurrent", "signal", "sched")
+_PRIV_PATH = re.compile(r"^/(?:var/tmp|proc|tmp|dev/shm|run)(?:/|$)")
+
+
+def _chain(n: ast.AST) -> str:
+    parts = []
+    while isinstance(n, (ast.Attribute, ast.Call, ast.Subscript)):
+        if isinstance(n, ast.Attribute):
+            parts.append(n.attr)
+            n = n.value
+        else:
+            n = n.func if isinstance(n, ast.Call) else n.value
+    if isinstance(n, ast.Name):
+        parts.append(n.id)
+    return ".".join(reversed(parts))
+
+
+def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
+    """Every way found so far to neuter assertions, reach the result file or race the
+    runner. Fails closed: anything matching is HIGH test-tamper, also in tests/."""
+
+    def hit(n: ast.AST, why: str) -> None:
+        c.add(
+            HIGH,
+            "test-tamper",
+            path,
+            getattr(n, "lineno", 1),
+            why[:200],
+            "Remove it: module code never patches tests, reaches the result path or "
+            "runs background workers.",
+        )
+
+    test_names = {"unittest"}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and (n.module or "").startswith(
+            ("odoo.tests", "unittest")
+        ):
+            test_names |= {a.asname or a.name for a in n.names}
+        elif isinstance(n, ast.Import):
+            test_names |= {
+                (a.asname or a.name).split(".")[0]
+                for a in n.names
+                if a.name.startswith(("odoo.tests", "unittest"))
+            }
+    for n in ast.walk(tree):
+        targets: list[ast.AST] = []
+        if isinstance(n, (ast.Assign, ast.Delete)):
+            targets = list(n.targets)
+        elif isinstance(n, (ast.AugAssign, ast.AnnAssign)):
+            targets = [n.target]
+        for t in targets:
+            for e in t.elts if isinstance(t, ast.Tuple) else [t]:
+                if isinstance(e, ast.Attribute):
+                    d = _chain(e)
+                    r0 = d.split(".")[0]
+                    if (
+                        _ASSERT_ATTR.match(e.attr)
+                        or r0 in ("unittest", "sys")
+                        or (r0 in test_names and (e.attr in _CASE_ATTR or "." in d))
+                    ):
+                        hit(e, f"Overrides {d or e.attr}: can turn failing tests into passes.")
+                if isinstance(e, ast.Subscript) and _chain(e.value).endswith("modules"):
+                    hit(e, "Writes sys.modules: can swap the test framework under the runner.")
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and _PRIV_PATH.match(n.value):
+            hit(n, f"Reaches {n.value[:40]!r}: the gate's result and process area.")
+        if isinstance(n, ast.JoinedStr):
+            head = n.values[0] if n.values else None
+            if isinstance(head, ast.Constant) and _PRIV_PATH.match(str(head.value)):
+                hit(n, "Builds a path under the gate's result and process area.")
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            names = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or ""]
+            if any(m.split(".")[0] in _THREAD_ROOTS for m in names):
+                hit(n, "Imports a thread/process/signal module: can race the test runner.")
+            if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in (
+                "glob",
+                "shutil",
+            ):
+                hit(n, "Imports file listing/copy helpers.")
+            if isinstance(n, ast.ImportFrom) and n.module == "os":
+                bad = [a.name for a in n.names if a.name in _OS_WRITE or a.name == "*"]
+                if bad:
+                    hit(n, f"Imports os.{bad[0]}: raw file access.")
+        if not isinstance(n, ast.Call):
+            continue
+        f, d = n.func, _chain(n.func)
+        name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
+        args = [_const(a) for a in n.args]
+        if name in ("setattr", "delattr") and len(n.args) >= 2:
+            a1, tgt = args[1], _chain(n.args[0])
+            on_test = tgt.split(".")[0] in test_names | {"sys"} or bool(
+                re.search(r"Case|Test", tgt)
+            )
+            if (isinstance(a1, str) and _ASSERT_ATTR.match(a1)) or (on_test and tgt):
+                hit(n, f"{name}() on {tgt or 'an object'}: can neuter assertions.")
+        if name in ("patch", "object", "dict", "multiple") and ("patch" in d or "mock" in d):
+            txt = " ".join(str(a) for a in args if isinstance(a, str))
+            if (
+                re.search(r"assert|fail|unittest|odoo\.tests|sys\.modules|TestCase", txt)
+                or (name == "object" and n.args and re.search(r"Case|Test", _chain(n.args[0])))
+                or name == "dict"
+            ):
+                hit(n, "Patches the test framework or sys.modules.")
+        if d.startswith("sys.modules.") or d in ("sys.modules.update", "sys.modules.setdefault"):
+            hit(n, "Changes sys.modules.")
+        root = d.split(".")[0]
+        if root == "os" and name in _OS_WRITE:
+            hit(n, f"os.{name}(): raw file access outside the ORM.")
+        if (
+            isinstance(f, ast.Attribute)
+            and name in _FS_WRITE
+            and root not in ("self", "cls", "env", "record", "records")
+        ):
+            if root in ("Path", "pathlib", "shutil", "os") or "path" in d.lower():
+                hit(n, f"{d}(): file system write.")
+        if name in _LIST_CALLS and (
+            root in ("os", "glob", "Path", "pathlib") or "path" in d.lower()
+        ):
+            hit(n, f"{d}(): lists files (result path discovery).")
+        if root in _THREAD_ROOTS or name in ("Thread", "Timer", "start_new_thread", "Process"):
+            hit(n, f"{d}(): starts a background worker.")
+        if name == "open" and root in ("", "open", "io", "builtins", "codecs"):
+            mode = (
+                args[1]
+                if len(args) > 1
+                else next((_const(k.value) for k in n.keywords if k.arg == "mode"), "r")
+            )
+            if not isinstance(mode, str) or set(mode) & set("wax+"):
+                hit(n, "open() for writing: file system write outside the ORM.")
+
+
 def _py_danger(call: ast.Call, aliases: dict[str, str] | None = None) -> str:
-    raw = _dotted(call.func)
+    raw = _chain(call.func)
     d = _resolve(raw, aliases or {})
     shown = d if d == raw else f"{raw} ({d})"
     if d in _DANGER_EXACT or d.startswith(_DANGER_PREFIX):
         return f"{shown}()"
     if d == "getattr" and call.args:
-        first = _resolve(_dotted(call.args[0]), aliases or {})
+        first = _resolve(_chain(call.args[0]), aliases or {})
         if first in ("__builtins__", "builtins") or (
             len(call.args) > 1
             and not isinstance(call.args[1], ast.Constant)
@@ -561,7 +745,7 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
                 isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Attribute)
                 and n.func.attr == "execute"
-            ) or (isinstance(n, ast.Call) and _dotted(n.func).split(".")[-1] == "SQL"):
+            ) or (isinstance(n, ast.Call) and _chain(n.func).split(".")[-1] == "SQL"):
                 safe_of[id(n)] = safe
             if (
                 isinstance(n, ast.Call)
@@ -880,6 +1064,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 f"Reaches {n.id} (sandbox escape).",
                 "Remove builtins access.",
             )
+    _tamper_scan(c, path, tree)
     seen_idx = c.seen_idx
     for fname, ln in searched:
         for m, flds in c.model_fields.items():
