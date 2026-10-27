@@ -631,7 +631,7 @@ B3 = [
         J(
             "import {Component,xml} from '@odoo/owl';\nclass A extends Component{static template=xml`<a t-att-href='props.url'>x</a>`}"
         ),
-        ("owl-url-attr", "medium"),
+        ("owl-url-attr", "low"),
         J(
             "import {Component,xml} from '@odoo/owl';\nclass A extends Component{static template=xml`<a t-attf-href='/web#id={{props.id}}'>x</a>`}"
         ),
@@ -967,3 +967,42 @@ def test_h9_request_data_in_script_string_high():
         "</script></xpath></template></odoo>"
     )
     assert ("qweb-script-injection", "high") in codes({"views/x.xml": v})
+
+
+# --- H12: static OWL template expressions go through the JS checks --------------------
+
+
+@pytest.mark.parametrize(
+    "attr,want",
+    [
+        ("t-on-click='()=>eval(props.c)'", ("js-eval", "high")),
+        ('t-on-click=\'() => window["ev"+"al"](props.c)\'', ("js-eval", "high")),
+        ("t-att-href='location.hash'", ("owl-url-attr", "high")),
+        ("t-att-href='props.record.data.url'", ("owl-url-attr", "medium")),
+    ],
+)
+def test_h12_static_owl_expressions(attr, want):
+    x = f"<templates><t t-name='a'><a {attr}/></t></templates>"
+    assert want in codes({"static/src/a.xml": x})
+
+
+@pytest.mark.parametrize(
+    "attr",
+    [
+        "t-att-class='class'",
+        "t-att-id='props.id and props.x or \"y\"'",
+        "t-attf-id='{{props.id or \"a\"}}_{{i}}'",
+        "t-att-style=\"'padding-left:' + (props.level * 10) + 'px';\"",
+        "t-call-context='{ this, props: props }'",
+        "t-att-href=\"props.v ? 'mailto:' + props.v : undefined\"",
+    ],
+)
+def test_h12_owl_syntax_parses_and_safe_prefix_quiet(attr):
+    x = f"<templates><t t-name='a'><a {attr}/></t></templates>"
+    got = {c for c in codes({"static/src/a.xml": x}) if c[1] in ("high", "medium")}
+    assert got == set()
+
+
+def test_h12_owl_dynamic_call_low_server_medium():
+    x = "<templates><t t-name='a'><t t-call='{{ tpl }}'/></t></templates>"
+    assert ("qweb-dynamic-call", "low") in codes({"static/src/a.xml": x})

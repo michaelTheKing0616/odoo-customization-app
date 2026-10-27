@@ -577,7 +577,14 @@ function auditJs(text) {
       }
       // H12: event handlers and dynamic attributes are JS expressions: audit them as code
       for (const m of text.matchAll(/\b(t-on-[\w.-]+|t-att-[\w-]+|t-attf-[\w-]+|t-att|t-props|t-call-context)\s*=\s*(["'])(.*?)\2/gs)) {
-        const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + (a1 || a2) + "}") + "`" : m[3];
+        // OWL/QWeb expression syntax: word operators compile to JavaScript ones
+        const owlOps = (e) => e.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(and|or|not|gte|lte|gt|lt)\b/g,
+          (_q, str, op) => str || { and: "&&", or: "||", not: "!", gte: ">=", lte: "<=", gt: ">", lt: "<" }[op])
+          // OWL scope lookups: bare reserved names (class) read ctx, `{ this }` shorthand
+          .replace(/(^|[^.\w$'"])class\b(?!\s*:)/g, "$1ctx_class")
+          .replace(/([{,]\s*)this(\s*[,}])/g, "$1this: this$2")
+          .replace(/[\s;]+$/, "");
+        const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + owlOps(a1 || a2) + "}") + "`" : owlOps(m[3]);
         if (DEPTH < 2) {
           DEPTH++;
           const saved = [CONSTS, COOKIE_VARS];
@@ -587,8 +594,13 @@ function auditJs(text) {
           else for (const f of r2.findings) if (f.sev === "high" || f.sev === "medium") add(f.sev, f.code, n, `${m[1]}: ${f.msg}`);
         }
         if (/^t-att(f)?-(href|src|action|formaction|xlink:href|data)$/.test(m[1]) && !/^\s*(['"`])[^'"`]*\1\s*$/.test(m[3]) &&
-            !(m[1].startsWith("t-attf-") && /^\s*\/[^/{#]/.test(m[3]))) {
-          add("medium", "owl-url-attr", n, `${m[1]} from runtime data: OWL does not block javascript: URLs.`);
+            !(m[1].startsWith("t-attf-") && /^\s*(\/[^/{#]|mailto:|tel:|sms:|https?:\/\/)/.test(m[3])) &&
+            // a fixed safe scheme/path prefix + data (optionally in a ternary with a null branch)
+            !/^\s*(?:[^?'"]*\?\s*)?(['"])(?:mailto:|tel:|sms:|https?:\/\/[^'"\/]+\/|\/(?!\/))[^'"]*\1\s*\+[^:?]*(?::\s*(?:undefined|null|false|''|""))?\s*$/.test(m[3])) {
+          // graded by source: URL-controlled HIGH, stored record data MEDIUM, else LOW (flagged)
+          const sev = /\b(location|document\.referrer|window\.name)\b/.test(m[3]) ? "high"
+            : /\brecord\b|\.data\b/.test(m[3]) ? "medium" : "low";
+          add(sev, "owl-url-attr", n, `${m[1]} from runtime data: OWL does not block javascript: URLs.`);
         }
       }
     }

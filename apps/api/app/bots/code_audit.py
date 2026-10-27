@@ -2267,8 +2267,9 @@ def _qweb_attr_checks(c: _Ctx, path: str, xl: _XLines, el: Any, a: str, val: str
     dyn = base != a
     if a == "t-call" and re.search(r"\{\{|#\{", val or ""):
         req = bool(_REQ_DATA.search(val))
+        # OWL (static/) resolves names only among registered client templates: LOW
         c.add(
-            HIGH if req else MEDIUM,
+            HIGH if req else (LOW if path.startswith("static/") else MEDIUM),
             "qweb-dynamic-call",
             path,
             xl.el(el, a),
@@ -2765,6 +2766,20 @@ def _owl_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
                 f"OWL {a}: {g[1]}.",
                 "Pass plain strings (escaped) or build Markup only from escaped, fixed parts.",
             )
+    # H12: t-on-*/t-att*/t-props are JavaScript run by OWL: audit each one through the
+    # JS helper exactly like an inline xml`` template (eval, cookie, URL attributes)
+    for a, v in el.attrib.items():
+        if not isinstance(a, str) or not _OWL_JS_ATTR.fullmatch(a) or not (v or "").strip():
+            continue
+        q = "'" if '"' in v and "'" not in v else '"'
+        val = v.replace(q, "&quot;") if q == '"' else v
+        src = f"<x {a}={q}{val}{q}/>".replace("\\", "\\\\").replace("`", "\\`")
+        src = src.replace("${", "\\${")
+        line = xl.el(el, a)
+        c.web.append((f"{path}#owl:{line}:{a}", path, line, "js", f"xml`{src}`;\n"))
+
+
+_OWL_JS_ATTR = re.compile(r"t-on-[\w.-]+|t-att-[\w-]+|t-attf-[\w-]+|t-att|t-props|t-call-context")
 
 
 def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
