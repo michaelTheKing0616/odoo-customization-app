@@ -244,7 +244,17 @@ class Resolver:
             or d in _BUILTIN_DANGER
             or d.rsplit(".", 1)[-1] == "Markup"
             or d.startswith(("@mc:", "@ag:"))
+            or d in _GETTERS
+            or d in ("getattr", "builtins.getattr", "functools.reduce")
         )
+
+    def _reroot(self, d: str) -> str:
+        """os.path.os.system -> os.system: re-root a dotted path at its last module root."""
+        segs = d.split(".")
+        for i in range(len(segs) - 2, 0, -1):
+            if segs[i] in self.roots:
+                return ".".join(segs[i:])
+        return d
 
     def expr(self, n: ast.AST) -> str:
         """Dotted origin of an expression, '' when unknown."""
@@ -261,7 +271,11 @@ class Resolver:
             base = self.expr(n.value)
             if n.attr == "__dict__" and base and self._risky(base + ".x"):
                 return base  # module namespace dict
-            return f"{base}.{n.attr}" if base else ""
+            if not base:
+                return ""
+            if n.attr == "__call__":
+                return base
+            return self._reroot(f"{base}.{n.attr}")
         if isinstance(n, ast.Call):
             f = self.expr(n.func)
             a0 = n.args[0] if n.args else None
@@ -276,7 +290,16 @@ class Resolver:
                 return _GETTERS[f] + lit  # methodcaller / attrgetter with a literal name
             if f.startswith("@ag:") and n.args:
                 base = self.expr(n.args[0])
-                return f"{base}.{f[4:]}" if base else ""
+                return self._reroot(f"{base}.{f[4:]}") if base else ""
+            if f == "functools.reduce" and len(n.args) >= 3:
+                if self.expr(n.args[0]) in ("getattr", "builtins.getattr") and isinstance(
+                    n.args[1], (ast.List, ast.Tuple)
+                ):
+                    names = [_c.value for _c in n.args[1].elts if isinstance(_c, ast.Constant)]
+                    base = self.expr(n.args[2])
+                    if base and len(names) == len(n.args[1].elts):
+                        return self._reroot(".".join([base, *map(str, names)]))
+                return ""
             if f in ("__import__", "builtins.__import__", "importlib.import_module") and lit:
                 return lit if f == "importlib.import_module" else lit.split(".")[0]
             if f in ("globals", "locals") and not n.args:
@@ -1068,10 +1091,11 @@ def dynamic_hits(tree: ast.AST, res: Resolver) -> list[Hit]:
             if mod:
                 out.append(
                     Hit(
-                        LOW,
+                        HIGH if res._risky(mod + ".x") else LOW,
                         "dynamic-dispatch",
                         n.lineno,
-                        f"getattr({mod}, <computed name>): call target cannot be decided.",
+                        f"getattr({mod}, <computed name>): any function of the module (os.system,"
+                        " eval) can be reached; the target cannot be decided.",
                         "Use explicit attribute names.",
                     )
                 )

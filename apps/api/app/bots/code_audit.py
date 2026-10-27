@@ -20,7 +20,7 @@ import re
 import stat
 import zipfile
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -1378,9 +1378,32 @@ def _mass_search(x: ast.AST) -> bool:
     return dom is None or (isinstance(dom, (ast.List, ast.Tuple)) and not dom.elts)
 
 
-def _server_code_grades(c: _Ctx, path: str, tree: ast.AST) -> None:
-    """Stored server/cron/automation code runs unattended (crons as their user, often
-    root): mass unlink/write over a whole model and write-DML through cr.execute are HIGH."""
+_UNBOUNDED_DML = re.compile(
+    r"^\s*(?:delete\s+from\s+\"?\w+\"?\s*;?\s*$|truncate\b|drop\s+(?:table|schema|database)\b)",
+    re.I,
+)
+
+
+def _hook_lines(path: str, tree: ast.AST) -> Callable[[int], bool]:
+    """Install/uninstall hooks and migration scripts run once as the superuser, unattended."""
+    if path == "hooks.py" or path.startswith(("migrations/", "upgrades/")):
+        return lambda _ln: True
+    spans = [
+        (d.lineno, d.end_lineno or d.lineno)
+        for d in ast.walk(tree)
+        if isinstance(d, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and (d.name in _HOOK_DEFS or d.name.endswith("_hook") or d.name == "migrate")
+    ]
+    return lambda ln: any(a <= ln <= b for a, b in spans)
+
+
+def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) -> None:
+    """Stored server/cron/automation code, hooks and migrations run unattended (as root):
+    mass unlink/write over a whole model (also looping over search([])) and write-DML
+    through cr.execute are HIGH. In ordinary code a mass change is MEDIUM and only an
+    unbounded DELETE/TRUNCATE/DROP is HIGH."""
+    hook = (lambda _ln: True) if server else _hook_lines(path, tree)
+    where = "Stored server code" if server else "Hook/migration code"
     mass_vars = {
         t.id
         for n in ast.walk(tree)
@@ -1388,33 +1411,184 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST) -> None:
         for t in n.targets
         if isinstance(t, ast.Name)
     }
+    mass_vars |= {
+        t.id
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension))
+        and (_mass_search(n.iter) or (isinstance(n.iter, ast.Name) and n.iter.id in mass_vars))
+        for t in ast.walk(n.target)
+        if isinstance(t, ast.Name)
+    }
     for n in ast.walk(tree):
         if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
             continue
         recv, attr = n.func.value, n.func.attr
+        h = hook(n.lineno)
         if attr in ("unlink", "write", "action_archive", "toggle_active") and (
             _mass_search(recv) or (isinstance(recv, ast.Name) and recv.id in mass_vars)
         ):
             c.add(
-                HIGH,
-                "server-mass-change",
+                HIGH if h else MEDIUM,
+                "server-mass-change" if server else "mass-change",
                 path,
                 n.lineno,
-                f"Stored server code runs {attr}() on every record of a model (search([])).",
+                f"{where if h else 'Code'} runs {attr}() on every record of a model"
+                " (search([]) or a loop over it).",
                 "Restrict the domain to the records the action is about (records / record).",
             )
         if attr in ("execute", "execute_values", "execute_batch") and n.args:
             q = _sql_text(n.args[0]) or ast.unparse(n.args[0])
-            if _SERVER_DML.search(q):
+            if (server and _SERVER_DML.search(q)) or _UNBOUNDED_DML.search(q):
                 c.add(
                     HIGH,
-                    "server-raw-dml",
+                    "server-raw-dml" if server else "mass-raw-dml",
                     path,
                     n.lineno,
-                    "Stored server code changes the database with raw SQL (no access rights,"
-                    " no ORM, no audit trail).",
-                    "Use the ORM on the intended records; never raw DML in stored code.",
+                    f"{where if h else 'Code'} changes the database with raw SQL"
+                    + ("" if server else " over a whole table (no WHERE)")
+                    + " (no access rights, no ORM, no audit trail).",
+                    "Use the ORM on the intended records; never unbounded raw DML.",
                 )
+
+
+_AUTH_METHODS = frozenset(
+    {
+        "_check_credentials",
+        "check_credentials",
+        "check_access_rights",
+        "check_access_rule",
+        "check_access",
+        "_check_access",
+        "check_field_access_rights",
+        "has_group",
+        "_has_group",
+        "user_has_groups",
+        "has_access",
+        "_compute_session_token",
+        "_get_session_token_fields",
+        "authenticate",
+        "_login",
+        "_is_admin",
+        "_is_system",
+        "_is_superuser",
+        "_is_public",
+    }
+)
+_SENSITIVE_FIELDS = re.compile(
+    r"^(?:password|new_password|login|api_key\w*|totp_\w*|signup_token|\w*_secret|"
+    r"\w*token\w*|oauth_\w*)$"
+)
+_PUBLIC_WRITES = frozenset({"write", "unlink", "create", "update", "sudo_write", "copy"})
+_PUBLIC_READS = frozenset({"read", "search_read", "read_group", "export_data", "mapped"})
+
+
+def _route_auth(f: ast.AST) -> str:
+    """auth= of an @http.route / @route decorator; '' when not a route."""
+    for d in getattr(f, "decorator_list", []):
+        if isinstance(d, ast.Call) and _dotted(d.func).split(".")[-1] == "route":
+            for k in d.keywords:
+                if k.arg == "auth":
+                    v = _const(k.value)
+                    return v if isinstance(v, str) else "dynamic"
+            return "user"
+    return ""
+
+
+def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
+    """Overriding or monkeypatching the access/authentication core, and public routes that
+    write, delete or read sensitive data with elevated rights."""
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        for f in cls.body:
+            if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if f.name not in _AUTH_METHODS or _route_auth(f):
+                continue
+            sup = any(isinstance(x, ast.Call) and _dotted(x.func) == "super" for x in ast.walk(f))
+            c.add(
+                MEDIUM if sup else HIGH,
+                "auth-override",
+                path,
+                f.lineno,
+                f"{cls.name}.{f.name}() overrides an access/authentication check"
+                + (" (calls super(); review every early return)." if sup else " without super()."),
+                "Never replace access or credential checks; extend them by calling super()"
+                " first and only ever adding restrictions.",
+            )
+    for n in ast.walk(tree):
+        name = ""
+        if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+            for t in n.targets if isinstance(n, ast.Assign) else [n.target]:
+                if isinstance(t, ast.Attribute) and t.attr in _AUTH_METHODS:
+                    name = t.attr
+        elif (
+            isinstance(n, ast.Call)
+            and _dotted(n.func) in ("setattr", "builtins.setattr", "object.__setattr__")
+            and len(n.args) >= 2
+        ):
+            v = _const(n.args[1])
+            if v in _AUTH_METHODS:
+                name = v
+        if name:
+            c.add(
+                HIGH,
+                "auth-override",
+                path,
+                n.lineno,
+                f"Monkeypatches {name} at runtime: replaces an access/authentication check.",
+                "Never patch security methods; inherit and call super() instead.",
+            )
+    for f in ast.walk(tree):
+        if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        auth = _route_auth(f)
+        if auth not in ("public", "none", "dynamic"):
+            continue
+        tainted = {a.arg for a in [*f.args.args, *f.args.kwonlyargs] if a.arg != "self"}
+        tainted |= {a.arg for a in (f.args.kwarg, f.args.vararg) if a is not None}
+        for x in ast.walk(f):
+            if isinstance(x, ast.Assign) and any(
+                isinstance(y, ast.Name)
+                and y.id in tainted
+                or ("params" in _chain(y) if isinstance(y, ast.Attribute) else False)
+                for y in ast.walk(x.value)
+            ):
+                tainted |= {t.id for t in x.targets if isinstance(t, ast.Name)}
+        for x in ast.walk(f):
+            if not (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)):
+                continue
+            attr = x.func.attr
+            if attr not in _PUBLIC_WRITES | _PUBLIC_READS:
+                continue
+            why = next((w for y in ast.walk(x.func.value) if (w := _elevating(y, malias))), "")
+            if not why:
+                continue
+            used = {y.id for y in ast.walk(x) if isinstance(y, ast.Name)} & tainted
+            consts = {v for y in ast.walk(x) if isinstance(v := _const(y), str)}
+            sens = any(_SENSITIVE_FIELDS.match(v) for v in consts)
+            model = next(
+                (
+                    _const(y.slice)
+                    for y in ast.walk(x.func.value)
+                    if isinstance(y, ast.Subscript) and isinstance(_const(y.slice), str)
+                ),
+                "",
+            )
+            if attr in _PUBLIC_WRITES and (used or model in SENSITIVE_MODELS):
+                what = "with request data" if used else f"on {model}"
+            elif attr in _PUBLIC_READS and (sens or model in SENSITIVE_MODELS):
+                what = "of credentials/security records"
+            else:
+                continue
+            c.add(
+                HIGH,
+                "public-sudo-access",
+                path,
+                x.lineno,
+                f"auth='{auth}' route {f.name}() runs {attr}() {what} with {why}:"
+                " any visitor can change or read data past access rights.",
+                "Use auth='user', drop sudo(), or check the record belongs to the caller"
+                " (access token) and whitelist the fields written.",
+            )
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
@@ -1527,8 +1701,9 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
     }
     _danger_refs(c, path, tree, res)
     _sensitive_writes(c, path, tree, malias, server_code)
+    _auth_bypass(c, path, tree, malias)
+    _server_code_grades(c, path, tree, server_code)
     if server_code:
-        _server_code_grades(c, path, tree)
         for n in ast.walk(tree):
             if isinstance(n, (ast.Import, ast.ImportFrom)):
                 c.add(
@@ -2336,6 +2511,17 @@ def _audit_template_tree(c: _Ctx, path: str, line: int, els: Any, where: str) ->
                     f"{where}: {a} runs script in a rendered template.",
                     "Remove event handlers and javascript: URLs.",
                 )
+            if al == "t-raw" or (
+                al in ("t-out", "t-esc") and re.search(r"\bMarkup\s*\(|\bmarkup\s*\(", v or "")
+            ):
+                c.add(
+                    HIGH,
+                    "template-script",
+                    path,
+                    ln,
+                    f"{where}: {a} renders unescaped HTML in stored content.",
+                    "Use t-out with escaped values only.",
+                )
             if al in _TPL_EXPR_ATTRS or al.startswith(("t-att-", "t-attf-")):
                 if al.startswith("t-attf-"):
                     for m in _INLINE_EXPR.finditer(v or ""):
@@ -2419,7 +2605,7 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     if len(el):
         return  # type="html"/"xml" children: audited element by element by the caller
     if len(el) == 0 and text.strip():
-        if "<" in text and name in ("body_html", "body", "description", "arch_db", "note"):
+        if "<" in text and name in _STORED_MARKUP:
             _audit_template_html(c, path, xl.body(el, lead), text, f"{model}.{name}")
         elif _INLINE_EXPR.search(text):
             for m in _INLINE_EXPR.finditer(text):
@@ -2466,6 +2652,173 @@ def _function_on_own_records(c: _Ctx, model: str, fn: str, el: Any) -> bool:
     return False
 
 
+_STORED_MARKUP = frozenset(
+    {"body_html", "body", "description", "arch_db", "arch", "arch_base", "note", "raw"}
+)
+_ADMIN_GROUPS = re.compile(r"\bbase\.group_(?:system|erp_manager|no_one)\b|\bgroup_system\b")
+_GROUP_FIELDS = re.compile(r"^(?:implied_ids|groups_id|group_ids|all_implied_ids|users|user_ids)\b")
+_OPEN_DOMAIN = re.compile(r"^\s*\[\s*(?:\(\s*1\s*,\s*['\"]=['\"]\s*,\s*1\s*\)\s*,?\s*)?\]\s*$")
+_TRUE = ("1", "True", "true")
+
+
+def _record_checks(
+    c: _Ctx, path: str, line: int, model: str, vals: dict[str, str], csv_row: bool = False
+) -> None:
+    """Data-record rules shared by XML <record> and CSV rows (column names: groups_id/id,
+    model_id:id, ...). vals maps field name -> text / eval / ref."""
+    v = {k.split("/")[0].split(":")[0]: (x or "").strip() for k, x in vals.items()}
+    if model == "ir.model.access" and not v.get("group_id"):
+        if any(v.get(p) in _TRUE for p in ("perm_write", "perm_create", "perm_unlink")):
+            c.add(
+                HIGH,
+                "access-global-write",
+                path,
+                line,
+                f"{v.get('id') or 'access record'} gives every user (no group)"
+                " write/create/delete.",
+                "Restrict the rule to a group.",
+            )
+    for k, x in vals.items():
+        if (
+            _GROUP_FIELDS.match(k)
+            and model in ("res.groups", "res.users")
+            and _ADMIN_GROUPS.search(x)
+        ):
+            c.add(
+                HIGH,
+                "privilege-grant",
+                path,
+                line,
+                f"{model} data puts users in an administrator group ({k}: settings/technical"
+                " rights) at install.",
+                "Never grant administrator rights from module data; let an admin assign groups.",
+            )
+    if model == "res.users" and (v.get("password") or v.get("new_password")):
+        c.add(
+            HIGH,
+            "user-credential-data",
+            path,
+            line,
+            "Module data creates a user with a known password (a shipped login).",
+            "Do not ship users with passwords; create them inactive or without password.",
+        )
+    if (
+        model == "ir.rule"
+        and _OPEN_DOMAIN.match(v.get("domain_force", "") or "[]")
+        and (v.get("global") in _TRUE or not v.get("groups"))
+    ):
+        target = v.get("model_id", "")
+        sens = any(target.endswith("model_" + m.replace(".", "_")) for m in SENSITIVE_MODELS)
+        c.add(
+            HIGH if sens else MEDIUM,
+            "rule-open-domain",
+            path,
+            line,
+            f"Global record rule with an always-true domain on {target or 'a model'}"
+            " (lifts restrictions for every user).",
+            "Give the rule a real domain and groups.",
+        )
+    if model in _SERVER_CODE_MODELS | {"ir.server.object.lines"}:
+        if csv_row and v.get("code"):
+            _audit_py(c, path, v["code"].encode(), server_code=True)
+        if v.get("evaluation_type") == "equation" and v.get("value"):
+            _audit_py(c, path, ("\n" * max(0, line - 1) + v["value"]).encode(), server_code=True)
+        if v.get("state") == "webhook" or v.get("webhook_url"):
+            sens = re.search(r"password|token|secret|api_?key|totp", v.get("webhook_field_ids", ""))
+            c.add(
+                HIGH,
+                "server-webhook",
+                path,
+                line,
+                f"Server action posts records to {v.get('webhook_url') or 'an external URL'}"
+                + (" including credential fields." if sens else " (data leaves the database)."),
+                "Do not ship webhooks in module data; let an admin configure them.",
+            )
+    if model == "ir.model.fields":
+        if v.get("compute"):
+            _audit_py(c, path, ("\n" * max(0, line - 1) + v["compute"]).encode(), server_code=True)
+        for k in ("related", "depends"):
+            if any(
+                _SENSITIVE_FIELDS.match(p.strip().split(".")[-1])
+                for p in v.get(k, "").split(",")
+                if p.strip()
+            ):
+                c.add(
+                    HIGH,
+                    "sensitive-field-exposure",
+                    path,
+                    line,
+                    f"Manual field {k} {v[k]!r} copies a credential field into a readable field.",
+                    "Never relate or compute from password/token fields.",
+                )
+    if model == "ir.actions.report":
+        for k in ("print_report_name", "attachment"):
+            if v.get(k):
+                _audit_expr(c, path, line, v[k], f"ir.actions.report.{k}")
+    if model == "ir.asset" and _EXT_URL.match(v.get("path", "")):
+        c.add(
+            HIGH,
+            "asset-external",
+            path,
+            line,
+            f"ir.asset loads {v['path']} from an external host into a bundle (code that"
+            " can change after review).",
+            "Ship the file in static/ and list it in the manifest assets.",
+        )
+    if model == "ir.attachment":
+        mime = v.get("mimetype", "")
+        blob = v.get("raw", "")
+        if v.get("datas"):
+            import base64
+            import binascii
+
+            try:
+                blob = base64.b64decode(v["datas"], validate=False).decode("utf-8", "replace")
+            except (binascii.Error, ValueError):
+                blob = ""
+        name = v.get("name", "")
+        scripty = re.search(r"javascript|ecmascript|html|svg|xml", mime, re.I) or name.endswith(
+            (".js", ".mjs", ".html", ".htm", ".svg", ".xhtml")
+        )
+        if scripty or re.search(r"<\s*script|\beval\s*\(", blob, re.I):
+            c.add(
+                HIGH,
+                "attachment-active-content",
+                path,
+                line,
+                f"Data attachment {name or ''} stores active content ({mime or 'script'})"
+                + (" served publicly." if v.get("public") in _TRUE else "."),
+                "Ship web code in static/ (audited); attachments must hold inert data only.",
+            )
+
+
+def _fields_lines(c: _Ctx, path: str, line: int, ev: str) -> None:
+    """fields_lines eval=[(0,0,{'evaluation_type':'equation','value':'<code>'})]: code."""
+    if "equation" not in ev:
+        return
+    try:
+        tree = ast.parse(ev, mode="eval")
+    except (SyntaxError, ValueError):
+        c.add(HIGH, "parse-error", path, line, "fields_lines eval does not parse.", "Fix it.")
+        return
+    for d in ast.walk(tree):
+        if isinstance(d, ast.Dict):
+            kv = {_const(k): x for k, x in zip(d.keys, d.values, strict=False) if k is not None}
+            if _const(kv.get("evaluation_type")) == "equation":
+                code = _const(kv.get("value"))
+                if isinstance(code, str):
+                    _audit_py(c, path, ("\n" * max(0, line - 1) + code).encode(), server_code=True)
+                else:
+                    c.add(
+                        HIGH,
+                        "expression-unaudited",
+                        path,
+                        line,
+                        "fields_lines equation value is computed: the code cannot be audited.",
+                        "Use a literal value.",
+                    )
+
+
 def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     """Server action / cron / automation code (audited with the Python rules), <function>
     calls and <delete> at install or update."""
@@ -2500,7 +2853,12 @@ def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         if m in SENSITIVE_MODELS:
             sev, why = HIGH, f"deletes {m} records (security core)"
         elif el.get("search"):
-            sev, why = MEDIUM, f"deletes every {m} record matching a domain"
+            own = m in c.new_models or m.startswith(f"x_{c.module}") or m.startswith(c.module + ".")
+            empty = bool(_OPEN_DOMAIN.match(el.get("search")))
+            sev = MEDIUM if own and not empty else HIGH
+            why = f"deletes every {m} record matching a domain" + (
+                " (all of them)" if empty else ""
+            )
         elif "." in rid and rid.split(".", 1)[0] != c.module:
             sev, why = MEDIUM, f"deletes {rid}, which belongs to another module"
         else:
@@ -2648,6 +3006,49 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     f"Expression in {a} reaches Python internals or sudo.",
                     "Use only field names and literals in domains, contexts and evals.",
                 )
+        if el.tag == "record" and el.get("model"):
+            vals = {}
+            for f in el.findall("field"):
+                if f.get("name"):
+                    vals[f.get("name")] = (
+                        f.get("eval") or f.get("ref") or f.get("search") or (f.text or "")
+                    )
+            _record_checks(c, path, xl.el(el), el.get("model"), vals)
+            _fields_lines(
+                c, path, xl.el(el), vals.get("fields_lines", "") or vals.get("update_field_ids", "")
+            )
+        if (
+            el.tag == "button"
+            and el.get("type") == "object"
+            and (el.get("name") or "") in _EXPR_WRITE | {"unlink", "write", "action_archive"}
+            and re.search(r"group_(?:public|portal)\b", el.get("groups") or "")
+        ):
+            c.add(
+                HIGH,
+                "public-button",
+                path,
+                xl.el(el, "name"),
+                f"Button calls {el.get('name')}() and is shown to public/portal users.",
+                "Restrict the button to internal groups; check rights in the method.",
+            )
+        if el.tag == "field" and el.get("search") and _DANGER_PY.search(el.get("search")):
+            c.add(
+                HIGH,
+                "unsafe-expression",
+                path,
+                xl.el(el, "search"),
+                "Expression in search= reaches Python internals (evaluated at load).",
+                "Use only field names and literals in domains.",
+            )
+        if isinstance(el.tag, str) and el.tag.endswith("}include") and "XInclude" in el.tag:
+            c.add(
+                HIGH,
+                "xml-xinclude",
+                path,
+                xl.el(el),
+                "XInclude element: pulls an external file into the data.",
+                "Remove XInclude; Odoo data files are self-contained.",
+            )
         _qweb_resources(c, path, xl, el)
         _xml_operations(c, path, xl, el)
         _xml_expressions(c, path, xl, el)
@@ -3246,8 +3647,6 @@ def _audit_csv(c: _Ctx, path: str, body: bytes) -> None:
                     f"Row {rid} ({model}) belongs to another module and is rewritten here.",
                     "Create your own record instead of editing another module's.",
                 )
-    if not path.endswith("ir.model.access.csv"):
-        return
     try:
         rows = list(csv.DictReader(io.StringIO(body.decode("utf-8-sig"))))
     except (UnicodeDecodeError, csv.Error) as e:
@@ -3256,24 +3655,27 @@ def _audit_csv(c: _Ctx, path: str, body: bytes) -> None:
             "parse-error",
             path,
             0,
-            f"Access file does not parse ({type(e).__name__}).",
+            f"Data CSV does not parse ({type(e).__name__}).",
             "Fix the CSV.",
         )
         return
-    for r in rows:
-        ref = (r.get("model_id:id") or "").split(".")[-1]
-        if ref:
-            c.access.setdefault(path, set()).add(ref)
-        if not (r.get("group_id:id") or "").strip() and any(
-            r.get(p) == "1" for p in ("perm_write", "perm_create", "perm_unlink")
-        ):
+    for i, r in enumerate(rows):
+        r = {k: v for k, v in r.items() if isinstance(k, str) and isinstance(v, str)}
+        if model == "ir.model.access":
+            ref = (r.get("model_id:id") or r.get("model_id/id") or "").split(".")[-1]
+            if ref:
+                c.access.setdefault(path, set()).add(ref)
+        _record_checks(c, path, i + 2, model, r, csv_row=True)
+        if model == "ir.config_parameter" and (key := (r.get("key") or "").strip()):
+            hi = bool(_CFG_SECURITY.search(key))
             c.add(
-                HIGH,
-                "access-global-write",
+                HIGH if hi else MEDIUM,
+                "config-parameter-record",
                 path,
-                0,
-                f"{r.get('id')} gives every user (no group) write/create/delete.",
-                "Restrict the rule to a group.",
+                i + 2,
+                f"Data row sets system parameter {key!r}"
+                + (" (security / auth / routing setting)." if hi else "."),
+                "Do not ship system parameters in module data; document the setting instead.",
             )
 
 
