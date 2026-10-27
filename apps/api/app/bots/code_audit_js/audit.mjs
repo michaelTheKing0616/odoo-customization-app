@@ -33,6 +33,7 @@ const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|
 let CONSTS = new Map();
 let COOKIE_VARS = new Set();
 let URL_VARS = new Set(); // locals holding a URL-controlled value
+let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
 let DEPTH = 0;
 function lit(n) {
   if (!n) return null;
@@ -124,6 +125,24 @@ function urlKind(n) {
   return "dynamic";
 }
 
+// constant head of a URL expression: a literal, a template's first quasi, or the left end of a + chain
+function urlHead(n) {
+  if (!n) return null;
+  const s = lit(n);
+  if (s !== null) return s;
+  if (n.type === "TemplateLiteral") return n.quasis[0].value.cooked;
+  if (n.type === "BinaryExpression" && n.operator === "+") {
+    let l = n;
+    while (l.type === "BinaryExpression" && l.operator === "+") l = l.left;
+    return lit(l);
+  }
+  return null;
+}
+// a URL scheme that executes code when navigated / loaded
+function scriptScheme(s) {
+  return typeof s === "string" && /^[\s\x00-\x20]*(javascript|vbscript|livescript)\s*:|^\s*data:\s*(text\/html|image\/svg|application\/(x-)?javascript|text\/javascript)/i.test(s);
+}
+
 function auditJs(text) {
   let ast;
   const opts = { ecmaVersion: "latest", locations: true, allowHashBang: true,
@@ -151,6 +170,7 @@ function auditJs(text) {
   CONSTS = new Map();
   COOKIE_VARS = new Set();
   URL_VARS = new Set();
+  EMPTY_VARS = new Set();
   const assigned = new Map();
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier") {
@@ -173,6 +193,7 @@ function auditJs(text) {
       }
       if (!COOKIE_VARS.has(id) && readsCookie(v)) { COOKIE_VARS.add(id); changed = true; }
       if (!URL_VARS.has(id) && readsUrl(v)) { URL_VARS.add(id); changed = true; }
+      if (!EMPTY_VARS.has(id) && emptySearch(v)) { EMPTY_VARS.add(id); changed = true; }
     });
   }
   // aliases: const e = eval; const { write } = document; const w = window; let f = fetch
@@ -249,6 +270,7 @@ function auditJs(text) {
     if (readsCookie(val)) { add("high", "js-cookie-leak", n, `${tag || "element"}.${prop} URL carries document.cookie.`); return; }
     if (prop === "srcdoc" && readsUrl(val)) { add("high", "js-dom-xss", n, "srcdoc from a URL-controlled value: DOM XSS."); return; }
     if (prop === "srcdoc") { if (lit(val) === null) add("medium", "js-html-sink", n, "srcdoc set from non-constant HTML."); return; }
+    if (scriptScheme(urlHead(val))) { add("high", "js-eval", n, `${tag || "element"}.${prop} set to a javascript:/vbscript:/data:text/html URL runs code.`); return; }
     if (!tag) return;
     const k = urlKind(val);
     const code = ["script", "iframe", "frame", "object", "embed", "?"].includes(tag);
@@ -428,6 +450,12 @@ function auditJs(text) {
               if (k === "method") method = lit(prop.value);
             }
           }
+          if (/^(unlink|write)$/.test(method || "") && p && p.type === "ObjectExpression") {
+            const ap = p.properties.find((q) => q.key && (q.key.name || q.key.value) === "args");
+            const first = ap && ap.value.type === "ArrayExpression" ? ap.value.elements[0] : null;
+            if (first && emptySearch(first)) add("high", "js-mass-change", n,
+              `rpc() ${method} over every record (ids from an empty-domain search) from the browser.`);
+          }
           if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method))) {
             add(method === null ? "medium" : "high", "js-sensitive-model", n,
                 `rpc() ${method || "<runtime method>"} on ${model} from the browser.`);
@@ -591,6 +619,13 @@ function auditJs(text) {
         if (mk && !/^\s*(['"`][^'"`$]*['"`])\s*$/.test(mk[1])) add("high", "owl-t-out", n, "t-out of markup(...) of runtime data renders it as raw HTML.");
         else if (!mk && /\b(props|record|env|state)\b|\.data\b/.test(v)) add("medium", "owl-t-out", n, "t-out of props/record data: unescaped when the value is a Markup.");
       }
+      // static URL attributes in the inline template
+      for (const m of text.matchAll(/\s(href|src|action|formaction|xlink:href|data)\s*=\s*(["'])(.*?)\2/gs)) {
+        if (scriptScheme(m[3])) add("high", "owl-js-url", n, `${m[1]} is a javascript:/data:text/html URL: runs code on click/load.`);
+      }
+      for (const m of text.matchAll(/\ssrcdoc\s*=\s*(["'])(.*?)\1/gs)) {
+        if (/<\s*script|\son\w+\s*=|javascript:/i.test(m[2])) add("high", "owl-srcdoc", n, "static srcdoc carries script.");
+      }
       // H12: event handlers and dynamic attributes are JS expressions: audit them as code
       for (const m of text.matchAll(/\b(t-on-[\w.-]+|t-att-[\w-]+|t-attf-[\w-]+|t-att|t-props|t-call-context)\s*=\s*(["'])(.*?)\2/gs)) {
         // OWL/QWeb expression syntax: word operators compile to JavaScript ones
@@ -603,11 +638,19 @@ function auditJs(text) {
         const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + owlOps(a1 || a2) + "}") + "`" : owlOps(m[3]);
         if (DEPTH < 2) {
           DEPTH++;
-          const saved = [CONSTS, COOKIE_VARS, URL_VARS];
+          const saved = [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS];
           let r2;
-          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS] = saved; DEPTH--; }
+          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS] = saved; DEPTH--; }
           if (!r2.ok) add("medium", "owl-expr-unaudited", n, `${m[1]} expression does not parse: unaudited.`);
           else for (const f of r2.findings) if (f.sev === "high" || f.sev === "medium") add(f.sev, f.code, n, `${m[1]}: ${f.msg}`);
+        }
+        if (/^t-att(f)?-(href|src|action|formaction|xlink:href|data)$/.test(m[1])) {
+          const head = m[1].startsWith("t-attf-") ? m[3] : (m[3].match(/^\s*(['"`])((?:(?!\1).)*)\1/s) || [])[2];
+          if (scriptScheme(head)) { add("high", "owl-js-url", n, `${m[1]} is a javascript:/data:text/html URL: runs code on click/load.`); continue; }
+        }
+        if (m[1] === "t-att-srcdoc" && !/^\s*(['"`])[^'"`]*\1\s*$/.test(m[3])) {
+          add("high", "owl-srcdoc", n, "t-att-srcdoc from runtime data: the iframe renders it as a live document (DOM XSS).");
+          continue;
         }
         if (/^t-att(f)?-(href|src|action|formaction|xlink:href|data)$/.test(m[1]) && !/^\s*(['"`])[^'"`]*\1\s*$/.test(m[3]) &&
             !(m[1].startsWith("t-attf-") && /^\s*(\/[^/{#]|mailto:|tel:|sms:|https?:\/\/)/.test(m[3])) &&
@@ -895,6 +938,28 @@ function emptySearch(node) {
   let found = false;
   (function walk(x, d) {
     if (!x || typeof x !== "object" || found || d > 12) return;
+    if (x.type === "Identifier" && EMPTY_VARS.has(x.name)) { found = true; return; }
+    const isEmpty = (a) => a && a.type === "ArrayExpression" && a.elements.length === 0;
+    const SEARCHES = /^(search|searchRead|search_read|webSearchRead|web_search_read)$/;
+    if (x.type === "CallExpression" && x.callee) {
+      const c0 = x.callee;
+      const nm = c0.type === "MemberExpression" && c0.property ? (c0.property.name || c0.property.value) : (c0.name || "");
+      // orm.call(model, 'search', [[]]) / orm.call(model, 'search_read', [], {domain: []})
+      if (nm === "call" && SEARCHES.test(lit(x.arguments[1]) || "")) {
+        const a = x.arguments[2];
+        if (!a || isEmpty(a) || (a.type === "ArrayExpression" && isEmpty(a.elements[0]))) { found = true; return; }
+      }
+    }
+    // rpc payload {model, method: 'search', args: [[]]} / kwargs {domain: []}
+    if (x.type === "ObjectExpression") {
+      const get = (k) => { const q = x.properties.find((y) => y.key && (y.key.name || y.key.value) === k); return q ? q.value : null; };
+      const m = get("method");
+      if (m && SEARCHES.test(lit(m) || "")) {
+        const a = get("args"), kw = get("kwargs");
+        const dom = kw && kw.type === "ObjectExpression" ? kw.properties.find((y) => y.key && (y.key.name || y.key.value) === "domain") : null;
+        if (dom ? isEmpty(dom.value) : (!a || isEmpty(a) || (a.type === "ArrayExpression" && isEmpty(a.elements[0])))) { found = true; return; }
+      }
+    }
     if (x.type === "CallExpression" && x.callee) {
       const c = x.callee;
       const name = c.type === "MemberExpression" && c.property ? (c.property.name || c.property.value) : "";
