@@ -736,6 +736,24 @@ def taint_hits(
     return out
 
 
+_SANITIZED_SINKS = frozenset(
+    {
+        "message_post",
+        "_message_update_content",
+        "message_update_content",
+        "_prepare_message_data",
+        "_message_log",
+        "message_notify",
+        "_replace_local_links",
+        "_render_template",
+    }
+)
+
+
+def _const_str(n: ast.AST) -> str:
+    return n.value if isinstance(n, ast.Constant) and isinstance(n.value, str) else ""
+
+
 def _scope_hits(
     scope: ast.AST,
     t: Taint,
@@ -751,6 +769,15 @@ def _scope_hits(
         and isinstance(c.func, ast.Attribute)
         and c.func.attr in ("sudo", "with_user")
     }
+    mail_body: set[int] = set()
+    for a in _own_nodes(scope):
+        if isinstance(a, ast.Assign) and any(
+            (isinstance(tg, ast.Name) and tg.id == "body")
+            or (isinstance(tg, ast.Subscript) and _const_str(tg.slice) == "body")
+            for tg in a.targets
+        ):
+            v = a.value
+            mail_body |= {id(v), id(getattr(v, "body", v)), id(getattr(v, "orelse", v))}
     for n in _own_nodes(scope):
         if isinstance(n, ast.Subscript) and chain(n.value).endswith("env"):
             s = t.source(n.slice)
@@ -790,6 +817,10 @@ def _scope_hits(
             got = _sink_arg(n, sinks[name], t)
             if got:
                 s, (sev, code, _g) = got
+                if code == "tainted-markup" and (
+                    name in _SANITIZED_SINKS or s[0].startswith("record field")
+                ):
+                    sev = MEDIUM  # mail bodies are sanitized Html fields; stored data: review
                 out.append(
                     Hit(
                         sev,
@@ -821,9 +852,13 @@ def _scope_hits(
         if _markup_call(res, n) and a0 is not None and not isinstance(a0, ast.Constant):
             s = t.source(a0)
             if s:
+                body = id(n) in mail_body and any(
+                    isinstance(y, ast.Call) and call_name(y, malias) in _SANITIZED_SINKS
+                    for y in _own_nodes(scope)
+                )  # Markup(body) handed to message_post/_message_update_content: sanitized
                 out.append(
                     Hit(
-                        HIGH,
+                        MEDIUM if body else HIGH,
                         "tainted-markup",
                         n.lineno,
                         f"Markup() wraps {s[0]} (line {s[1]}): stored/reflected XSS.",

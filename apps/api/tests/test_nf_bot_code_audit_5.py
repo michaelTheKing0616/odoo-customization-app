@@ -438,3 +438,106 @@ XML_CASES = [
 @pytest.mark.parametrize("name,pos,exp,neg,code", XML_CASES, ids=[c[0] for c in XML_CASES])
 def test_xml_probe_positive_and_negative(name, pos, exp, neg, code):
     test_probe_positive_and_negative(name, pos, exp, neg, code)
+
+
+# ---- batch 2: stock false positives graded, H15, L4, test-mode bundles, M7 ----
+
+
+def _sev(files, code, man=MAN):
+    return {f.severity for f in run(files, man).findings if f.code == code and f.file in files}
+
+
+def test_h15_ref_not_found_is_not_a_dependency():
+    assert not any(
+        c == "xmlid-undefined"
+        for c, _ in codes(py("self.env.ref('x.nope', raise_if_not_found=False)"))
+    )
+    assert ("xmlid-undefined", "high") in codes(py("self.env.ref('x.nope')"))
+
+
+def test_l4_dangling_symlink_reported(tmp_path):
+    m = tmp_path / "x"
+    (m / "models").mkdir(parents=True)
+    (m / "__manifest__.py").write_text(MAN)
+    (m / "__init__.py").write_text("from . import models\n")
+    (m / "models/__init__.py").write_text("")
+    (m / "gone.py").symlink_to(tmp_path / "missing.py")
+    r = ca.audit(m, version=17)
+    assert (
+        not r.ok or any("symlink" in f.message for f in r.findings) or "symlink" in (r.error or "")
+    )
+
+
+def test_public_sudo_graded():
+    route = (
+        "class C(http.Controller):\n    @http.route('/p', auth='public')\n    def p(self, **kw):\n"
+    )
+    hi = pyt(
+        route + "        request.env['res.partner'].sudo().browse(int(kw['id'])).write({'x': 1})\n"
+    )
+    lo = pyt(route + "        request.env['x.y'].sudo().search([]).write({'seen': True})\n")
+    assert "high" in _sev(hi, "public-sudo-access")
+    assert _sev(lo, "public-sudo-access") <= {"medium"}
+
+
+def test_own_table_truncate_not_high():
+    own = py("self.env.cr.execute('TRUNCATE a_a')")
+    core = py("self.env.cr.execute('TRUNCATE res_users')")
+    assert "high" not in _sev(own, "mass-raw-dml")
+    assert "high" in _sev(core, "mass-raw-dml")
+
+
+def test_threading_read_is_not_tamper():
+    read = {
+        "tests/__init__.py": "from . import test_a\n",
+        "tests/test_a.py": "import threading\nfrom odoo.tests import common\nx = threading.current_thread().name\n",
+    }
+    write = {
+        "tests/__init__.py": "from . import test_a\n",
+        "tests/test_a.py": "import threading\nfrom odoo.tests import common\nthreading.current_thread().testing = False\n",
+    }
+    assert not _sev(read, "test-tamper")
+    assert "high" in _sev(write, "test-tamper")
+
+
+def test_markup_body_into_message_post_medium():
+    f = py("body = Markup(self.name)\nself.message_post(body=body)")
+    assert "high" not in _sev(f, "tainted-markup")
+
+
+def test_sqli_internal_names_medium_rpc_param_high():
+    internal = pyt(
+        "class A(models.Model):\n    _name='a.a'\n    def f(self):\n        w = self._where()\n        self.env.cr.execute(f'SELECT id FROM {self._table} WHERE {w}', [1])\n"
+    )
+    rpc = py("self.env.cr.execute('SELECT ' + n)")
+    priv = pyt(
+        "class A(models.Model):\n    _name='a.a'\n    def _f(self, n):\n        self.env.cr.execute('SELECT ' + n)\n"
+    )
+    raw = py("self.env.cr.execute(SQL(n))")
+    assert _sev(internal, "sql-injection") == {"medium"}
+    assert "high" in _sev(rpc, "sql-injection")
+    assert _sev(priv, "sql-injection") == {"medium"}
+    assert "high" in _sev(raw, "sql-injection")
+
+
+def test_test_bundle_js_is_test_code_prod_bundle_is_not():
+    tb = MAN.replace(
+        "'web.assets_backend':['x/static/src/**/*']", "'web.assets_tests':['x/static/tests/**/*']"
+    )
+    pb = MAN.replace("'x/static/src/**/*'", "'x/static/tests/**/*'")
+    f = J("eval(location.hash)", "static/tests/a.test.js")
+    assert "high" not in _sev(f, "js-eval", tb)
+    assert "high" in _sev(f, "js-eval", pb)
+
+
+def test_testcase_import_ok_run_override_not():
+    ok = {
+        "tests/__init__.py": "from . import test_a\n",
+        "tests/test_a.py": "from unittest import SkipTest, TestCase\n",
+    }
+    bad = {
+        "tests/__init__.py": "from . import test_a\n",
+        "tests/test_a.py": "from unittest import TestCase\nclass T(TestCase):\n    def run(self, result=None):\n        return None\n",
+    }
+    assert not _sev(ok, "test-tamper")
+    assert "high" in _sev(bad, "test-tamper")

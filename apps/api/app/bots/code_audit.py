@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import csv
+import fnmatch
 import io
 import re
 import stat
@@ -288,7 +289,8 @@ def _from_dir(
         for p in sorted(d.iterdir()):
             st = p.lstat()
             if stat.S_ISLNK(st.st_mode):
-                raise SourceError(f"symlink in source: {p.relative_to(root)}")
+                kind = "dangling symlink" if not p.exists() else "symlink"
+                raise SourceError(f"{kind} in source: {p.relative_to(root)}")
             if stat.S_ISDIR(st.st_mode):
                 stack.append((p, depth + 1))
                 continue
@@ -790,6 +792,25 @@ _INTROSPECT = frozenset(
 _TEST_FILE = re.compile(r"^tests/(?:__init__|test_[a-z0-9_]{1,60})\.py$")
 _LIST_CALLS = frozenset({"listdir", "scandir", "walk", "iterdir", "glob", "rglob", "iglob"})
 _THREAD_ROOTS = ("threading", "_thread", "multiprocessing", "concurrent", "signal", "sched")
+# read-only threading helpers: no worker, no runner race (attribute writes are checked apart)
+_THREAD_READ = frozenset(
+    {
+        "current_thread",
+        "currentThread",
+        "local",
+        "Lock",
+        "RLock",
+        "Event",
+        "Condition",
+        "Semaphore",
+        "BoundedSemaphore",
+        "get_ident",
+        "get_native_id",
+        "main_thread",
+        "active_count",
+        "enumerate",
+    }
+)
 _PRIV_PATH = re.compile(r"^/(?:var/tmp|proc|tmp|dev/shm|run)(?:/|$)")
 
 
@@ -811,7 +832,7 @@ _RUNNER_CLS = re.compile(
     r"|unittest|odoo\.tests|sys\.modules|builtins"
 )
 _TEST_SAFE_IMPORTS = re.compile(
-    r"^unittest(?:\.mock(?:\.\w+)?|\.(?:skip|skipIf|skipUnless|SkipTest|expectedFailure|mock))?$"
+    r"^unittest(?:\.mock(?:\.\w+)?|\.(?:skip|skipIf|skipUnless|SkipTest|expectedFailure|mock|TestCase))?$"
 )
 
 
@@ -919,6 +940,11 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
                         hit(e, f"Overrides {d or e.attr}: can turn failing tests into passes.")
                 if isinstance(e, ast.Subscript) and _chain(e.value).endswith("modules"):
                     hit(e, "Writes sys.modules: can swap the test framework under the runner.")
+        if isinstance(n, (ast.Assign, ast.AugAssign)) and any(
+            isinstance(t, ast.Attribute) and "current_thread" in ast.unparse(t.value)
+            for t in (n.targets if isinstance(n, ast.Assign) else [n.target])
+        ):
+            hit(n, "Writes an attribute of the current thread (test-mode flags).")
         if isinstance(n, ast.Constant) and isinstance(n.value, str) and _PRIV_PATH.match(n.value):
             hit(n, f"Reaches {n.value[:40]!r}: the gate's result and process area.")
         if isinstance(n, ast.JoinedStr):
@@ -927,7 +953,9 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
                 hit(n, "Builds a path under the gate's result and process area.")
         if isinstance(n, (ast.Import, ast.ImportFrom)):
             names = [a.name for a in n.names] if isinstance(n, ast.Import) else [n.module or ""]
-            if any(m.split(".")[0] in _THREAD_ROOTS for m in names):
+            if any(
+                m.split(".")[0] in _THREAD_ROOTS and m.split(".")[0] != "threading" for m in names
+            ):
                 hit(n, "Imports a thread/process/signal module: can race the test runner.")
             if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in (
                 "glob",
@@ -982,7 +1010,9 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
             root in ("os", "glob", "Path", "pathlib") or "path" in d.lower()
         ):
             hit(n, f"{d}(): lists files (result path discovery).")
-        if root in _THREAD_ROOTS or name in ("Thread", "Timer", "start_new_thread", "Process"):
+        if (root in _THREAD_ROOTS and not (root == "threading" and name in _THREAD_READ)) or (
+            name in ("Thread", "Timer", "start_new_thread", "Process")
+        ):
             hit(n, f"{d}(): starts a background worker.")
         if name == "open" and root in ("", "open", "io", "builtins", "codecs"):
             mode = (
@@ -1438,7 +1468,17 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) 
             )
         if attr in ("execute", "execute_values", "execute_batch") and n.args:
             q = _sql_text(n.args[0]) or ast.unparse(n.args[0])
-            if (server and _SERVER_DML.search(q)) or _UNBOUNDED_DML.search(q):
+            m = _UNBOUNDED_DML.search(q)
+            own = (
+                not h
+                and m is not None
+                and not _CORE_TABLES.search(q)
+                and bool(
+                    re.search(rf"\b{re.escape(c.module or '#')}_\w+", q)
+                    or any(mm.replace(".", "_") in q for mm in c.new_models)
+                )
+            )  # ordinary code clearing the module's own table (a cache/statistics table)
+            if (server and _SERVER_DML.search(q)) or (m and not own):
                 c.add(
                     HIGH,
                     "server-raw-dml" if server else "mass-raw-dml",
@@ -1553,6 +1593,11 @@ def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> N
                 for y in ast.walk(x.value)
             ):
                 tainted |= {t.id for t in x.targets if isinstance(t, ast.Name)}
+        checked = any(
+            isinstance(y, ast.Call)
+            and re.search(r"access|consteq|_check_|_get_with_|_document_check", _dotted(y.func))
+            for y in ast.walk(f)
+        )  # an explicit ownership/token check before the elevated call
         for x in ast.walk(f):
             if not (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)):
                 continue
@@ -1573,14 +1618,27 @@ def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> N
                 ),
                 "",
             )
+            direct = any(
+                isinstance(y, ast.Call)
+                and _dotted(y.func).split(".")[-1] == "browse"
+                and {z.id for z in ast.walk(y) if isinstance(z, ast.Name)} & tainted
+                for y in ast.walk(x.func.value)
+            ) or (
+                attr == "write"
+                and {z.id for a in x.args for z in ast.walk(a) if isinstance(z, ast.Name)} & tainted
+            )
             if attr in _PUBLIC_WRITES and (used or model in SENSITIVE_MODELS):
                 what = "with request data" if used else f"on {model}"
+                sev = HIGH if (direct or model in SENSITIVE_MODELS) else MEDIUM
             elif attr in _PUBLIC_READS and (sens or model in SENSITIVE_MODELS):
                 what = "of credentials/security records"
+                sev = HIGH
             else:
                 continue
+            if sev == HIGH and model not in SENSITIVE_MODELS and checked:
+                sev = MEDIUM
             c.add(
-                HIGH,
+                sev,
                 "public-sudo-access",
                 path,
                 x.lineno,
@@ -1699,6 +1757,61 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
         for a in [*f.args.args, *f.args.kwonlyargs, f.args.kwarg, f.args.vararg]
         if a is not None and a.arg not in ("self", "cls")
     }
+    # parameters an outside caller controls: public model methods (RPC-callable) and routes
+    rpc_params: set[str] = set()
+    for cls in (x for x in ast.walk(tree) if isinstance(x, ast.ClassDef)):
+        for f in cls.body:
+            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                not f.name.startswith("_") or _route_auth(f)
+            ):
+                rpc_params |= {
+                    a.arg
+                    for a in [*f.args.args, *f.args.kwonlyargs, f.args.vararg, f.args.kwarg]
+                    if a is not None and a.arg not in ("self", "cls")
+                }
+    for f in ast.walk(tree):
+        if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and not any(
+            isinstance(x, ast.ClassDef) and f in x.body for x in ast.walk(tree)
+        ):
+            rpc_params |= {a.arg for a in [*f.args.args, *f.args.kwonlyargs]}  # loose functions
+    for a in ast.walk(tree):  # names holding record field values (user-editable data)
+        if (
+            isinstance(a, ast.Assign)
+            and isinstance(a.value, ast.Attribute)
+            and _chain(a.value.value) == "self"
+            and not a.value.attr.startswith("_")
+            and a.value.attr != "id"
+        ):
+            rpc_params |= {t.id for t in a.targets if isinstance(t, ast.Name)}
+
+    rhs: dict[str, set[str]] = {}
+    for a in ast.walk(tree):
+        if isinstance(a, (ast.Assign, ast.AugAssign, ast.AnnAssign)) and a.value is not None:
+            tg = a.targets if isinstance(a, ast.Assign) else [a.target]
+            used = {x.id for x in ast.walk(a.value) if isinstance(x, ast.Name)}
+            for t in tg:
+                if isinstance(t, ast.Name):
+                    rhs.setdefault(t.id, set()).update(used)
+
+    def _sqli_sev(q: ast.AST) -> str:
+        """HIGH when a caller-controlled parameter is interpolated; MEDIUM when only
+        internally computed names are (still blocks owned code; review per site)."""
+        names = {x.id for x in ast.walk(q) if isinstance(x, ast.Name)}
+        todo = list(names)
+        while todo:  # follow local assignments: q = q + n reaches n
+            for v in rhs.get(todo.pop(), ()):
+                if v not in names:
+                    names.add(v)
+                    todo.append(v)
+        field = any(
+            isinstance(x, ast.Attribute)
+            and _chain(x.value) == "self"
+            and not x.attr.startswith("_")
+            and x.attr != "id"
+            for x in ast.walk(q)
+        )
+        return HIGH if field or names & rpc_params or not names else MEDIUM
+
     _danger_refs(c, path, tree, res)
     _sensitive_writes(c, path, tree, malias, server_code)
     _auth_bypass(c, path, tree, malias)
@@ -1816,12 +1929,26 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
             and _sql_has_variable(n.args[0], sql_safe.get(id(n), frozenset()))
         ):
             c.add(
-                HIGH,
+                _sqli_sev(n.args[0]),
                 "sql-injection",
                 path,
                 ln,
                 "SQL() built from a formatted string (the template must be a literal).",
                 "Use SQL('... %s', value) or SQL.identifier() for names.",
+            )
+        elif (
+            name == "SQL"
+            and n.args
+            and isinstance(n.args[0], ast.Name)
+            and n.args[0].id in rpc_params
+        ):
+            c.add(
+                HIGH,
+                "sql-injection",
+                path,
+                ln,
+                f"SQL({n.args[0].id}): the whole query comes from a caller-controlled parameter.",
+                "SQL templates must be literals; pass values as SQL('... %s', value).",
             )
         elif (
             name in _SQL_CALLS
@@ -1835,7 +1962,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
             q = local_sql.get(id(n), n.args[_SQL_CALLS[name]])
             if _is_dynamic_str(q) and _sql_has_variable(q, sql_safe.get(id(n), frozenset())):
                 c.add(
-                    HIGH,
+                    _sqli_sev(q),
                     "sql-injection",
                     path,
                     ln,
@@ -1891,7 +2018,15 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
             for e in n.args[0].elts:
                 if isinstance(e, ast.Tuple) and e.elts and isinstance(_const(e.elts[0]), str):
                     searched.append((_const(e.elts[0]).split(".")[0], ln))
-        if name == "ref" and n.args and isinstance(_const(n.args[0]), str):
+        if (
+            name == "ref"
+            and n.args
+            and isinstance(_const(n.args[0]), str)
+            and not any(
+                k.arg == "raise_if_not_found" and _const(k.value) is False for k in n.keywords
+            )
+            and not (len(n.args) > 1 and _const(n.args[1]) is False)
+        ):  # ref(..., raise_if_not_found=False) tolerates a missing record by design
             c.refs.append((_const(n.args[0]), path, ln))
     for n in ast.walk(tree):
         mods = []
@@ -3211,7 +3346,7 @@ def _audit_web(c: _Ctx) -> None:
             why = res if isinstance(res, str) else (r or {}).get("error", "no result")
             typed = key in tried and isinstance(res, dict)  # TypeScript/JSX syntax: not loaded
             c.add(
-                LOW if typed else HIGH,
+                MEDIUM if typed else HIGH,
                 "web-unaudited",
                 file,
                 line0 + max(int((r or {}).get("line") or 1), 1) - 1,
@@ -3983,11 +4118,22 @@ def _prod_tests(files: dict[str, bytes], module: str, manifest: dict[str, Any] |
                 listed |= {x for x in v if isinstance(x, str)}
         assets = manifest.get("assets")
         if isinstance(assets, dict):
-            for v in assets.values():
+            for b, v in assets.items():
+                if "test" in str(b):
+                    continue  # web.assets_tests / assets_unit_tests: loaded only in test mode
                 for x in v if isinstance(v, list) else []:
                     vals = x if isinstance(x, (list, tuple)) else [x]
                     listed |= {y.removeprefix(f"{module}/") for y in vals if isinstance(y, str)}
-    out = {f for f in listed if _is_test(f) and f in files}
+    out = {
+        f
+        for f in files
+        if _is_test(f)
+        and any(
+            g == f
+            or ("*" in g and (fnmatch.fnmatch(f, g) or fnmatch.fnmatch(f, g.replace("**/", ""))))
+            for g in listed
+        )
+    }
     stack = [f for f in files if f.endswith(".py") and not _is_test(f)] + sorted(out)
     seen: set[str] = set()
     while stack:
