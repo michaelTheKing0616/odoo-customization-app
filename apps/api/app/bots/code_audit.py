@@ -3852,6 +3852,25 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     f"Expression in {a} reaches Python internals or sudo.",
                     "Use only field names and literals in domains, contexts and evals.",
                 )
+            # M6 (review 6): view modifiers are expressions too; fail closed when they do not
+            # parse, and grade env/sudo/ORM writes in them like any other expression
+            if a in ("invisible", "readonly", "required", "column_invisible") and not path.startswith("static/") \
+                    and val.strip() not in ("", "1", "0", "True", "False", "true", "false"):
+                try:
+                    mt = ast.parse(val.strip(), mode="eval")
+                except (SyntaxError, ValueError, RecursionError, MemoryError):
+                    mt = None
+                    c.add(MEDIUM, "expression-unparsed", path, xl.el(el, a),
+                          f"{a} modifier does not parse as an expression: unaudited (and the view fails to load).",
+                          "Write the modifier as a plain expression over field names.")  # fmt: skip
+                if mt is not None and any(
+                    (isinstance(y, ast.Name) and y.id in ("env", "request", "cr", "pool", "registry"))
+                    or (isinstance(y, ast.Attribute) and y.attr in ("sudo", "write", "unlink", "create", "env", "cr"))
+                    for y in ast.walk(mt)
+                ):
+                    c.add(HIGH, "unsafe-expression", path, xl.el(el, a),
+                          f"{a} modifier reaches env/sudo/ORM writes: not a field expression.",
+                          "Use only field names and literals in modifiers.")  # fmt: skip
             if a == "context" and el.tag != "record":
                 pk = re.search(
                     r"""['"]default_(groups_id|group_ids|implied_ids|share|password|company_ids|"""

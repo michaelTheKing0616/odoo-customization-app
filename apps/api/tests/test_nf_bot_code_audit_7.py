@@ -197,3 +197,92 @@ def test_l2_po_plural_odd_arithmetic_low():
 @pytest.mark.parametrize("e", ["(n != 1)", "(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2)", "0"])
 def test_l2_stock_plural_forms_quiet(e):
     assert not {x for x in codes(_po(e)) if x[0] == "po-plural-forms"}
+
+
+# ---------------------------------------------------------------- M4: multi server action, own child in another data file
+_M4_MAN = "{'name':'x','version':'17.0.1.0.0','depends':['base'],'license':'LGPL-3','data':['data/d.xml','views/v.xml']}"
+_M4_MULTI = "<odoo><record id='m' model='ir.actions.server'><field name='name'>m</field><field name='model_id' ref='model_a_a'/><field name='state'>multi</field><field name='child_ids' eval=\"[(4, ref('%s'))]\"/></record></odoo>"
+_M4_CHILD = "<odoo><record id='s2' model='ir.actions.server'><field name='name'>s2</field><field name='model_id' ref='model_a_a'/><field name='state'>code</field><field name='code'>%s</field></record></odoo>"
+
+
+def _m4(child_code, ref="s2", with_child=True):
+    import tests.test_nf_bot_code_audit_5 as t5
+    files = {"data/d.xml": _M4_MULTI % ref}
+    if with_child:
+        files["views/v.xml"] = _M4_CHILD % child_code
+    r = t5.run(files, _M4_MAN)
+    return {(f.file, f.code, f.severity) for f in r.findings}
+
+
+@pytest.mark.parametrize("code", [
+    "env['res.users'].sudo().search([]).write({'active': False})",
+    "records.env['ir.config_parameter'].sudo().set_param('auth_signup.invitation_scope', 'b2c')",
+    "env.cr.execute('DELETE FROM res_users')",
+])
+def test_m4_own_child_code_audited_end_to_end(code):
+    f = _m4(code)
+    assert any(fl == "views/v.xml" and sev == "high" and c != "sensitive-data-unapproved" for fl, c, sev in f), f
+
+
+def test_m4_missing_own_child_not_silent():
+    f = _m4("", with_child=False)
+    assert ("data/d.xml", "xmlid-undefined", "medium") in f, f
+
+
+def test_m4_benign_child_only_policy_grade():
+    f = _m4("records.action_done()")
+    assert not {c for fl, c, sev in f if fl == "views/v.xml" and sev == "high" and c != "sensitive-data-unapproved"}, f
+
+
+# ---------------------------------------------------------------- M6: view modifiers are audited expressions
+_M6 = "<record id='v' model='ir.ui.view'><field name='name'>v</field><field name='model'>a.a</field><field name='arch' type='xml'><form><field name='name' %s=\"%s\"/></form></field></record>"
+
+
+@pytest.mark.parametrize("attr,e", [("invisible", "name =="), ("readonly", "(state"), ("column_invisible", "a b")])
+def test_m6_unparsed_modifier_fails_closed(attr, e):
+    assert ("expression-unparsed", "medium") in codes({"views/v.xml": "<odoo>" + _M6 % (attr, e) + "</odoo>"})
+
+
+@pytest.mark.parametrize("attr,e", [("invisible", "env['res.users'].sudo()"), ("readonly", "parent.env.cr"), ("required", "self.write({'a': 1})")])
+def test_m6_modifier_reaching_env_high(attr, e):
+    assert ("unsafe-expression", "high") in codes({"views/v.xml": "<odoo>" + _M6 % (attr, e) + "</odoo>"})
+
+
+@pytest.mark.parametrize("e", ["state == 'done'", "not context.get('show_x')", "parent.state in ('a', 'b') or not id", "1"])
+def test_m6_stock_modifiers_quiet(e):
+    c = codes({"views/v.xml": "<odoo>" + _M6 % ("invisible", e) + "</odoo>"})
+    assert not {x for x in c if x[0] in ("expression-unparsed", "unsafe-expression")}, c
+
+
+# ---------------------------------------------------------------- L3: hostile shapes stay bounded and fail closed
+def test_l3_deep_xml_bounded():
+    import time
+    t = time.time()
+    codes({"views/v.xml": "<odoo>" + "<a>" * 200 + "</a>" * 200 + "</odoo>"})
+    assert time.time() - t < 30
+
+
+@pytest.mark.parametrize("files,code", [
+    ({"models/a.py": "x = 1\x00\n"}, "parse-error"),
+    ({"views/v.xml": '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><odoo>&x;</odoo>'}, "parse-error"),
+    ({"views/v.xml": '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY a "aaaa"><!ENTITY b "&a;&a;&a;">]><odoo>&b;</odoo>'}, "parse-error"),
+    ({"static/src/a.coffee": "alert 1\n"}, "web-unaudited"),
+])
+def test_l3_hostile_inputs_fail_closed(files, code):
+    assert (code, "high") in codes(files)
+
+
+def test_l3_overlong_path_rejected_not_audited_as_clean():
+    import tests.test_nf_bot_code_audit_5 as t5
+    with pytest.raises(AssertionError, match="unsafe path"):
+        t5.run({"static/src/" + "d/" * 100 + "a.js": "var a = 1;\n"})
+
+
+# ---------------------------------------------------------------- async variants (H9/H12/H13)
+@pytest.mark.parametrize("body,code", [
+    ("from odoo.service import dispatch_rpc\nclass C(http.Controller):\n    @http.route('/j', type='json', auth='none')\n    async def j(self, *a):\n        return dispatch_rpc(*a)\n", "rpc-proxy"),
+    ("class C(http.Controller):\n    @http.route('/p', auth='public')\n    async def p(self):\n        return request.env['res.users'].sudo().browse(2).password\n", "route-secret-read"),
+    ("class C(http.Controller):\n    @http.route('/p', auth='user')\n    async def p(self):\n        request.session['uid'] = 1\n", "session-auth-write"),
+])
+def test_async_route_variants(body, code):
+    assert (code, "high") in codes({"models/a.py": PH + body})
