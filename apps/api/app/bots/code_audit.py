@@ -2240,6 +2240,127 @@ def _class_inherits(cls: ast.ClassDef) -> set[str]:
     return out
 
 
+
+_SECRET_PASS = frozenset({
+    "dict", "str", "list", "tuple", "format", "join", "dumps", "url_encode", "urlencode",
+    "encode", "decode", "b64encode", "copy", "update", "jsonify",
+    "make_response", "make_json_response", "render", "Response",
+})  # fmt: skip
+_SECRET_READERS = ("mapped", "read", "search_read", "read_group", "export_data", "get_param", "webRead", "web_read")
+
+
+def _callee_name(x: ast.Call) -> str:
+    if isinstance(x.func, ast.Attribute) and _chain(x.func.value).split(".")[-1] in ("self", "cls", "super()") or (
+        isinstance(x.func, ast.Attribute) and isinstance(x.func.value, ast.Call) and getattr(x.func.value.func, "id", "") == "super"
+    ):
+        return x.func.attr
+    return x.func.id if isinstance(x.func, ast.Name) else ""
+
+
+def _secret_flow(f: ast.AST, summ: dict[str, tuple[str, frozenset[int]]]):
+    """Secret taint inside one function. Returns (returned secret reads, returned param
+    indexes, secret_read). A helper whose summary returns a secret taints its result; a
+    helper that returns one of its params carries the argument's taint; any other call
+    consumes its arguments."""
+    args = getattr(f, "args", None)
+    params = [a.arg for a in (args.posonlyargs + args.args)] if args else []
+    if params and params[0] in ("self", "cls"):
+        params = params[1:]
+    ptaint: dict[str, set[int]] = {p: {i} for i, p in enumerate(params)}
+    tainted: dict[str, str] = {}
+    called = {id(y.func) for y in ast.walk(f) if isinstance(y, ast.Call)}
+    carry: set[int] = set()  # Name ids passed into a helper that returns that argument
+    for y in ast.walk(f):
+        if isinstance(y, ast.Call) and (nm := _callee_name(y)) in summ:
+            for i, a0 in enumerate(y.args):
+                if i in summ[nm][1]:
+                    carry |= {id(z) for z in ast.walk(a0) if isinstance(z, ast.Name)}
+    sunk = {
+        id(z)
+        for y in ast.walk(f)
+        if isinstance(y, ast.Call) and (y.func.attr if isinstance(y.func, ast.Attribute) else getattr(y.func, "id", "")) not in _SECRET_PASS
+        for a0 in [*y.args, *[k.value for k in y.keywords]]
+        for z in ast.walk(a0)
+        if isinstance(z, ast.Name) and id(z) not in carry
+    }
+
+    def secret_read(e: ast.AST) -> str:
+        for y in ast.walk(e):
+            if isinstance(y, ast.Attribute) and _SECRET_ATTR.match(y.attr) and id(y) not in called:
+                return y.attr
+            if isinstance(y, ast.Call):
+                nm = _callee_name(y)
+                if nm in summ and summ[nm][0]:
+                    return f"{nm}() -> {summ[nm][0]}"
+                if isinstance(y.func, ast.Attribute):
+                    a = y.func.attr
+                    if a in _SECRET_READERS:
+                        for z in ast.walk(y):
+                            v = _fold_str(z) if isinstance(z, (ast.Constant, ast.JoinedStr, ast.BinOp)) else None
+                            if v and (_SECRET_ATTR.match(v.split(".")[-1]) or (a == "get_param" and re.search(r"secret|password|token|api_?key", v, re.I))):
+                                return v
+                    if (k := next((kk for z in ast.walk(y.func.value) if isinstance(z, ast.Subscript) and (kk := _fold_str(z.slice)) in _SECRET_READ_MODELS), None)):
+                        return k
+            if isinstance(y, ast.Name) and y.id in tainted and id(y) not in sunk:
+                return tainted[y.id]
+        return ""
+
+    def param_flow(e: ast.AST) -> set[int]:
+        return {i for y in ast.walk(e) if isinstance(y, ast.Name) and id(y) not in sunk for i in ptaint.get(y.id, ())}
+
+    for _ in range(4):
+        for st in ast.walk(f):
+            if isinstance(st, ast.Assign):
+                w = secret_read(st.value)
+                pf = param_flow(st.value)
+                for t in st.targets:
+                    if isinstance(t, ast.Name):
+                        if w:
+                            tainted[t.id] = w
+                        if pf:
+                            ptaint[t.id] = ptaint.get(t.id, set()) | pf
+    reads: list[tuple[int, str]] = []
+    rparams: set[int] = set()
+    for st in ast.walk(f):
+        if isinstance(st, (ast.Return, ast.Yield)) and st.value is not None:
+            if w := secret_read(st.value):
+                reads.append((st.lineno, w))
+            rparams |= param_flow(st.value)
+        elif isinstance(st, ast.Call) and re.search(r"make_(json_)?response|render|dumps", _dotted(st.func)) and any(secret_read(a) for a in [*st.args, *[k.value for k in st.keywords]]):
+            reads.append((st.lineno, secret_read(st)))
+    return reads, frozenset(rparams), secret_read
+
+
+def _secret_summaries(c: _Ctx) -> dict[str, tuple[str, frozenset[int]]]:
+    """Module-wide fixpoint: function name -> (secret it returns, params it returns).
+    Names are merged across the module (methods are reached through self/super)."""
+    got = getattr(c, "_secret_summ", None)
+    if got is not None:
+        return got
+    funcs: list[ast.AST] = []
+    for rel, body in c.files.items():
+        if rel.endswith(".py") and not rel.startswith("tests/") and "/tests/" not in rel:
+            try:
+                t = ast.parse(body)
+            except (SyntaxError, ValueError, RecursionError, MemoryError):
+                continue
+            funcs += [n for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    summ: dict[str, tuple[str, frozenset[int]]] = {}
+    for _ in range(MAX_FLOW_ROUNDS):
+        changed = False
+        for fn in funcs:
+            reads, rp, _ = _secret_flow(fn, summ)
+            old = summ.get(fn.name, ("", frozenset()))
+            new = (old[0] or (reads[0][1] if reads else ""), old[1] | rp)
+            if new != old:
+                summ[fn.name] = new
+                changed = True
+        if not changed:
+            break
+    c._secret_summ = summ
+    return summ
+
+
 def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
     """REVIEW-CODE-AUDIT-6 root causes: rule/access core overrides (H10), security-core
     create/write overrides that inject privilege vals (H11), secret reads in controllers
@@ -2357,51 +2478,9 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                       " an open proxy to every model and service.",
                       "Never expose the RPC dispatcher (dispatch_rpc, model.execute*) from a route; call the ORM on fixed models.")  # fmt: skip
                 break
-        # secret reads inside the route
-        tainted: set[str] = set()
-        reads: list[tuple[int, str]] = []
-        called = {id(y.func) for y in ast.walk(f) if isinstance(y, ast.Call)}  # x.secret() is a call, not a column
-
-        def secret_read(e: ast.AST) -> str:
-            for y in ast.walk(e):
-                if isinstance(y, ast.Attribute) and _SECRET_ATTR.match(y.attr) and id(y) not in called:
-                    return y.attr
-                if isinstance(y, ast.Call) and isinstance(y.func, ast.Attribute):
-                    a = y.func.attr
-                    if a in ("mapped", "read", "search_read", "read_group", "export_data", "get_param", "webRead", "web_read"):
-                        for z in ast.walk(y):
-                            v = _fold_str(z) if isinstance(z, (ast.Constant, ast.JoinedStr, ast.BinOp)) else None
-                            if v and (_SECRET_ATTR.match(v.split(".")[-1]) or (a == "get_param" and re.search(r"secret|password|token|api_?key", v, re.I))):
-                                return v
-                    if (k := next((kk for z in ast.walk(y.func.value) if isinstance(z, ast.Subscript) and (kk := _fold_str(z.slice)) in _SECRET_READ_MODELS), None)):
-                        return k
-                if isinstance(y, ast.Name) and y.id in tainted and id(y) not in sunk:
-                    return y.id
-            return ""
-
-        # a tainted value handed as an argument to some other call (an outbound request, a helper)
-        # is consumed there; only data-shaping calls carry the secret into their result
-        _PASS = {"dict", "str", "list", "tuple", "format", "join", "dumps", "url_encode", "urlencode",
-                 "encode", "decode", "b64encode", "copy", "update", "jsonify",
-                 "make_response", "make_json_response", "render", "Response"}  # fmt: skip
-        sunk = {
-            id(z)
-            for y in ast.walk(f)
-            if isinstance(y, ast.Call) and (y.func.attr if isinstance(y.func, ast.Attribute) else getattr(y.func, "id", "")) not in _PASS
-            for a0 in [*y.args, *[k.value for k in y.keywords]]
-            for z in ast.walk(a0)
-            if isinstance(z, ast.Name)
-        }
-
-        for _ in range(3):
-            for st in ast.walk(f):
-                if isinstance(st, ast.Assign) and secret_read(st.value):
-                    tainted |= {t.id for t in st.targets if isinstance(t, ast.Name)}
-        for st in ast.walk(f):
-            if isinstance(st, (ast.Return, ast.Yield)) and st.value is not None and (w := secret_read(st.value)):
-                reads.append((st.lineno, w))
-            elif isinstance(st, ast.Call) and re.search(r"make_(json_)?response|render|dumps", _dotted(st.func)) and any(secret_read(a) for a in [*st.args, *[k.value for k in st.keywords]]):
-                reads.append((st.lineno, secret_read(st)))
+        # secret reads inside the route (helper returns followed through module summaries)
+        summ = _secret_summaries(c)
+        reads, _, secret_read = _secret_flow(f, summ)
         # returned to the caller: HIGH under any auth (the response carries the secret)
         for line, w in reads[:1]:
             c.add(HIGH, "route-secret-read", path, line,

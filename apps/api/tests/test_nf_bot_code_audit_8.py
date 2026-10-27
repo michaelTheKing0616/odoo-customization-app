@@ -98,3 +98,38 @@ def test_missing_addon_constant_medium(tmp_path):
     (root / "x" / "models" / "a.py").write_text(PH + "from odoo.addons.absent.k import KEY\n" + RT + "        request.session[KEY] = 1\n")
     r = ca.audit(root / "x", version=17)
     assert ("session-auth-write", "medium") in {(f.code, f.severity) for f in r.findings}
+
+
+# ---------------------------------------------------------------- (2) secret taint through helper returns
+def _rsr(files):
+    return {s for c, s in codes(files) if c == "route-secret-read"}
+
+
+CTRL = "class C(http.Controller):\n    @http.route('/k', type='json', auth='public')\n    def k(self, uid):\n"
+
+
+@pytest.mark.parametrize("files", [
+    # probe: helper returns a secret attribute; the route returns the helper's result
+    {"models/a.py": PH + CTRL + "        return self._key(uid)\n    def _key(self, uid):\n        return request.env['res.users'].sudo().browse(uid).api_key\n"},
+    # variant: two-level indirection through a local and a second helper
+    {"models/a.py": PH + CTRL + "        v = self._outer(uid)\n        return {'k': v}\n    def _outer(self, uid):\n        return self._inner(uid)\n"
+                    "    def _inner(self, uid):\n        rec = request.env['res.users'].sudo().browse(uid)\n        return rec.password\n"},
+    # variant: helper in another file of the module (cross-file summary), passed through make_response
+    {"models/h.py": PH + "class H(models.AbstractModel):\n    _name = 'x.h'\n    def _totp(self):\n        return self.env['ir.config_parameter'].sudo().get_param('auth.totp_secret')\n",
+     "models/a.py": PH + CTRL + "        return request.make_json_response(request.env['x.h']._totp() if False else self._totp())\n"},
+    # variant: identity helper carries an already-tainted value
+    {"models/a.py": PH + CTRL + "        s = request.env['res.users'].sudo().browse(uid).password\n        return self._wrap(s)\n    def _wrap(self, v):\n        return {'v': v}\n"},
+])
+def test_helper_returned_secret_high(files):
+    assert "high" in _rsr(files)
+
+
+@pytest.mark.parametrize("files", [
+    # helper consumes the secret (outbound call) and returns only the public result
+    {"models/a.py": PH + "import requests\n" + CTRL + "        return self._fetch(uid)\n    def _fetch(self, uid):\n"
+                    "        key = request.env['ir.config_parameter'].sudo().get_param('x.api_key')\n        return requests.get('https://e.example', params={'k': key}).json()\n"},
+    # helper returns a non-secret field of the same record
+    {"models/a.py": PH + CTRL + "        return self._name_of(uid)\n    def _name_of(self, uid):\n        return request.env['res.users'].sudo().browse(uid).name\n"},
+])
+def test_helper_without_secret_return_silent(files):
+    assert "high" not in _rsr(files)
