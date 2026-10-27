@@ -474,3 +474,18 @@ def test_l1_document_domain(src):
 
 def test_l1_read_document_domain_ok():
     assert not has({"static/src/a.js": "const d = document.domain;\n"}, "js-document-domain", "low")
+
+
+# ---------------------------------------------------------------- L2 .po Plural-Forms code
+def _po(expr):
+    return {"i18n/fr.po": 'msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n"Plural-Forms: nplurals=2; plural=' + expr + ';\\n"\n'}
+
+
+@pytest.mark.parametrize("e", ["(alert(1))", "constructor.constructor('x')()", "n.toString()"])
+def test_l2_po_plural_code(e):
+    assert ("po-plural-forms", "low") in codes(_po(e))
+
+
+@pytest.mark.parametrize("e", ["(n > 1)", "(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2)"])
+def test_l2_po_plural_standard_ok(e):
+    assert ("po-plural-forms", "low") not in codes(_po(e))

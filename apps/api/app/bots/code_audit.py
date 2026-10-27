@@ -3740,6 +3740,17 @@ def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
         text = body.decode("utf-8", "strict")
     except UnicodeDecodeError:
         text = None
+    pf = re.search(r"Plural-Forms:[^\n\"]*?plural\s*=\s*([^;\\\"]*)", text or "")
+    if pf and not re.fullmatch(r"[\sn0-9%<>=!&|?:()+\-*/]*", pf.group(1)):
+        # L2: not evaluated server-side; the web client uses its own parser - LOW
+        c.add(
+            LOW,
+            "po-plural-forms",
+            path,
+            (text or "")[: pf.start()].count("\n") + 1,
+            "Plural-Forms expression holds more than n, numbers and operators.",
+            "Use the standard gettext Plural-Forms expression for the language.",
+        )
     if text is None or charset.replace("_", "-") not in ("utf-8", "utf8", "charset"):
         c.add(
             HIGH,
