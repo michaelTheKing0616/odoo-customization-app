@@ -551,7 +551,12 @@ class _Ctx:
         tdir = file.startswith("tests/") or "/tests/" in file
         # test-tamper keeps its rank: test code runs inside the gate and can forge its result
         if tdir and file not in self.prod_tests and code != "test-tamper":
-            sev = LOW if _SEV_RANK[sev] < _SEV_RANK[LOW] else sev  # test code never loads in prod
+            if file.startswith("static/"):
+                # j-tests-dir: JS test bundles load in browser test runs, also with
+                # --test-enable on the client's DB: capped at MEDIUM, never silent
+                sev = MEDIUM if _SEV_RANK[sev] < _SEV_RANK[MEDIUM] else sev
+            else:
+                sev = LOW if _SEV_RANK[sev] < _SEV_RANK[LOW] else sev  # test code never loads in prod
         if not self.owned:
             fix = f"{FOREIGN_HINT} Suggested fix: {fix}"
         if code == "test-tamper" and any(  # M5: one test-tamper per line (two scanners hit os.*)
