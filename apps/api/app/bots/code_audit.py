@@ -2335,10 +2335,49 @@ def _audit_template_tree(c: _Ctx, path: str, line: int, els: Any, where: str) ->
                 _audit_expr(c, path, ln, m.group(1) or m.group(2), f"{where} {{{{ }}}}", True)
 
 
+_OWL_LITERAL = re.compile(r"""\s*(?:'[^'\\]*'|"[^"\\]*"|`[^`$\\]*`|-?\d+(?:\.\d+)?)\s*""")
+_OWL_MARKUP = re.compile(r"\b(?:markup|Markup)\s*\(\s*(.*)\)\s*$", re.S)
+_OWL_DATA = re.compile(r"\b(?:props|record|env|state)\b|\.data\b")
+
+
+def owl_out_grade(v: str) -> tuple[str, str] | None:
+    """Severity/why for an OWL t-out (Odoo 17+: Markup values render unescaped)."""
+    if not v or _OWL_LITERAL.fullmatch(v):
+        return None
+    m = _OWL_MARKUP.search(v)
+    if m:
+        if _OWL_LITERAL.fullmatch(m.group(1)):
+            return None  # markup of a constant string: fixed, reviewed HTML
+        return HIGH, "t-out of markup(...) of runtime data renders it as raw HTML"
+    if _OWL_DATA.search(v):
+        return MEDIUM, "t-out of props/record data: unescaped when the value is a Markup"
+    return None
+
+
+def _owl_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
+    """H8: OWL templates under static/ (t-out of Markup props renders raw HTML)."""
+    if c.v < 17:
+        return
+    for a in ("t-out", "t-esc"):
+        g = owl_out_grade(el.get(a) or "")
+        if g:
+            c.add(
+                g[0],
+                "owl-t-out",
+                path,
+                xl.el(el, a),
+                f"OWL {a}: {g[1]}.",
+                "Pass plain strings (escaped) or build Markup only from escaped, fixed parts.",
+            )
+
+
 def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     """domain/context/domain_force/filter_domain (safe_eval), eval= (load time),
     {{ }} inline templates, body_html QWeb, config parameter records."""
     tag = el.tag if isinstance(el.tag, str) else ""
+    if path.startswith("static/"):
+        _owl_expressions(c, path, xl, el)  # OWL: JavaScript expressions, not safe_eval
+        return
     if tag != "field":
         for a, v in el.attrib.items():
             if a in _TPL_EXPR_ATTRS[:-1] or a.startswith("t-att-"):
@@ -2688,6 +2727,9 @@ _WEB_FIX = {
     "css-dynamic-url": "Use fixed, bundled asset paths.",
     "css-exfiltration": "Remove attribute-selector or variable-driven remote loads.",
     "css-expression": "Remove script execution from stylesheets.",
+    "owl-t-out": "Pass plain strings to t-out; build Markup only from escaped, fixed parts.",
+    "js-flow-sink": "Do not route runtime values into a helper that evaluates or renders HTML.",
+    "js-flow-incomplete": "Simplify the call graph; this file could not be fully analysed.",
 }
 
 

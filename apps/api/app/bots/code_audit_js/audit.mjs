@@ -7,6 +7,7 @@ import * as walk from "acorn-walk";
 import postcss from "postcss";
 import scss from "postcss-scss";
 import less from "postcss-less";
+import { transform as sucrase } from "sucrase";
 
 // security core: browser code writing these changes who may do what, or runs code
 const SENSITIVE = new Set([
@@ -28,9 +29,13 @@ const SECRET = /token|secret|passw|api[_-]?key|session|csrf|auth(?!or)|bearer|jw
 const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|textContent)$/;
 
 // constant string value, folding "a" + "b" and `a${"b"}` (so window["ev" + "al"] is eval)
+// per-file: identifiers bound once to a constant string, and those holding document.cookie
+let CONSTS = new Map();
+let COOKIE_VARS = new Set();
 function lit(n) {
   if (!n) return null;
   if (n.type === "Literal" && typeof n.value === "string") return n.value;
+  if (n.type === "Identifier" && CONSTS.has(n.name)) return CONSTS.get(n.name);
   if (n.type === "TemplateLiteral") {
     let s = n.quasis[0].value.cooked;
     for (let i = 0; i < n.expressions.length; i++) {
@@ -54,6 +59,7 @@ function readsCookie(n) {
   walk.full(n, (x) => {
     if (x.type === "MemberExpression" && ((!x.computed && x.property.name === "cookie") ||
         lit(x.property) === "cookie")) hit = true;
+    if (x.type === "Identifier" && COOKIE_VARS.has(x.name)) hit = true;
   });
   return hit;
 }
@@ -96,6 +102,33 @@ function auditJs(text) {
   }
   const out = [];
   const add = (sev, code, node, msg) => out.push({ sev, code, line: node.loc.start.line, msg });
+  // H10: fold identifiers bound to constant strings (once, never reassigned) and track
+  // variables that hold document.cookie, to a fixpoint
+  CONSTS = new Map();
+  COOKIE_VARS = new Set();
+  const assigned = new Map();
+  walk.full(ast, (n) => {
+    if (n.type === "VariableDeclarator" && n.id.type === "Identifier") {
+      assigned.set(n.id.name, (assigned.get(n.id.name) || 0) + 1);
+    }
+    if (n.type === "AssignmentExpression" && n.left.type === "Identifier") {
+      assigned.set(n.left.name, (assigned.get(n.left.name) || 0) + 2);
+    }
+  });
+  for (let round = 0, changed = true; changed && round < 64; round++) {
+    changed = false;
+    walk.full(ast, (n) => {
+      let id = null, v = null;
+      if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init) [id, v] = [n.id.name, n.init];
+      if (n.type === "AssignmentExpression" && n.left.type === "Identifier") [id, v] = [n.left.name, n.right];
+      if (!id) return;
+      if (assigned.get(id) === 1 && !CONSTS.has(id)) {
+        const s = lit(v);
+        if (s !== null) { CONSTS.set(id, s); changed = true; }
+      }
+      if (!COOKIE_VARS.has(id) && readsCookie(v)) { COOKIE_VARS.add(id); changed = true; }
+    });
+  }
   // aliases: const e = eval; const { write } = document; const w = window; let f = fetch
   const alias = new Map();
   const markupNames = new Set(["markup", "Markup"]);
@@ -350,13 +383,221 @@ function auditJs(text) {
       }
     }
   });
+  // H9: eval / Function referenced as a value (Reflect.apply(eval, ..), [eval][0](..),
+  // eval.call(..), passing it to a helper): any non-call reference is HIGH
+  const CODE_GLOBALS = new Set(["eval", "Function"]);
+  walk.ancestor(ast, {
+    Identifier(n, _s, anc) { valueRef(n, anc); },
+    MemberExpression(n, _s, anc) { valueRef(n, anc); },
+  });
+  function valueRef(n, anc) {
+    const p = anc[anc.length - 2];
+    const r = n.type === "Identifier" ? (alias.get(n.name) || n.name) : resolve(n);
+    if (!CODE_GLOBALS.has(r)) return;
+    if (!p) return;
+    if ((p.type === "CallExpression" || p.type === "NewExpression") && p.callee === n) return;
+    if (p.type === "VariableDeclarator" && p.id === n) return;
+    if (p.type === "MemberExpression" && p.object === n && n.type === "Identifier" && n.name === "Function" &&
+        !p.computed && p.property.name === "prototype") return;
+    if (p.type === "BinaryExpression" && p.operator === "instanceof") return;
+    if (p.type === "UnaryExpression" && p.operator === "typeof") return;
+    if (p.type === "MemberExpression" && p.property === n && !p.computed) return;
+    if (p.type === "Property" && p.key === n && !p.computed && p.value !== n) return;
+    if (n.type === "MemberExpression" && anc.length >= 3) {
+      const g = anc[anc.length - 2];
+      if (g.type === "MemberExpression" && g.object === n) { /* eval.call */ }
+    }
+    add("high", "js-eval", n, `${r} used as a value (aliased, passed or applied): runs code from strings.`);
+  }
+  // M3: style URLs carrying cookies / external hosts; Worker from in-memory code
+  walk.full(ast, (n) => {
+    if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression") {
+      const r = resolve(n.left) || "";
+      if (/(^|\.)style(\.|$)/.test(r) || /^(background|backgroundImage|cssText|listStyleImage|borderImage|borderImageSource|cursor|content|maskImage|filter)$/.test(last(r))) {
+        if (readsCookie(n.right)) add("high", "js-cookie-leak", n, "Style URL carries document.cookie.");
+        else {
+          const s = lit(n.right) ?? (n.right.type === "TemplateLiteral" ? n.right.quasis.map((q) => q.value.cooked).join("") : "");
+          const head = n.right.type === "BinaryExpression" ? lit((function l(x) { while (x.type === "BinaryExpression") x = x.left; return x; })(n.right)) || "" : s;
+          if (/url\(\s*["']?\s*(https?:|\/\/)/i.test(s || head || "")) add("medium", "js-external-request", n, "Style loads a URL from an external host.");
+        }
+      }
+    }
+    if (n.type === "CallExpression") {
+      const r = resolve(n.callee) || "";
+      if (/(^|\.)(setProperty|insertRule|setAttribute)$/.test(r) && n.arguments.some(readsCookie)) {
+        add("high", "js-cookie-leak", n, `${last(r)}() carries document.cookie into the page.`);
+      }
+    }
+    if (n.type === "NewExpression" || n.type === "CallExpression") {
+      const r = resolve(n.callee) || "";
+      if (/^(Worker|SharedWorker)$/.test(last(r)) && n.type === "NewExpression") {
+        const a0 = n.arguments[0];
+        let blob = false;
+        if (a0) walk.full(a0, (x) => {
+          if (x.type === "CallExpression" && /createObjectURL$/.test(resolve(x.callee) || "")) blob = true;
+          if (x.type === "NewExpression" && /^Blob$/.test(resolve(x.callee) || "")) blob = true;
+        });
+        const k = urlKind(a0);
+        let head = lit(a0);
+        if (head === null && a0 && a0.type === "TemplateLiteral") head = a0.quasis[0].value.cooked;
+        if (head === null && a0 && a0.type === "BinaryExpression") { let l = a0; while (l.type === "BinaryExpression") l = l.left; head = lit(l); }
+        if (blob || /^\s*(data:|blob:)/i.test(head || "")) add("high", "js-eval", n, `${last(r)} runs code built in memory (Blob/data URL).`);
+        else if (k === "external") add("high", "js-script-load", n, `${last(r)} loads code from an external host.`);
+        else if (k === "dynamic") add("medium", "js-script-load", n, `${last(r)} script URL built at runtime: undecidable, flagged.`);
+      }
+    }
+    // H8: OWL inline templates (xml`...`): t-out of Markup renders raw HTML (Odoo 17+)
+    if (n.type === "TaggedTemplateExpression" && n.tag.type === "Identifier" && n.tag.name === "xml") {
+      const text = n.quasi.quasis.map((q) => q.value.cooked || "").join("${}");
+      for (const m of text.matchAll(/\bt-(out|esc|raw)\s*=\s*(["'])(.*?)\2/gs)) {
+        const v = m[3];
+        if (m[1] === "raw") { add("high", "owl-t-out", n, "t-raw renders unescaped HTML."); continue; }
+        if (/^\s*(['"`][^'"`$]*['"`]|-?\d+)\s*$/.test(v)) continue;
+        const mk = v.match(/\b(?:markup|Markup)\s*\(\s*(.*)\)\s*$/s);
+        if (mk && !/^\s*(['"`][^'"`$]*['"`])\s*$/.test(mk[1])) add("high", "owl-t-out", n, "t-out of markup(...) of runtime data renders it as raw HTML.");
+        else if (!mk && /\b(props|record|env|state)\b|\.data\b/.test(v)) add("medium", "owl-t-out", n, "t-out of props/record data: unescaped when the value is a Markup.");
+      }
+    }
+  });
+  // JS fixpoint summaries: a function whose parameter reaches a code/HTML/navigation sink
+  // is itself a sink; calls to it with a non-constant argument are flagged
+  const fns = [];
+  const fnName = (n, p) => {
+    if (n.id && n.id.name) return n.id.name;
+    if (p && p.type === "VariableDeclarator" && p.id.type === "Identifier") return p.id.name;
+    if (p && (p.type === "Property" || p.type === "MethodDefinition" || p.type === "PropertyDefinition") && p.key)
+      return p.key.name || p.key.value;
+    if (p && p.type === "AssignmentExpression") return last(resolve(p.left) || "");
+    return null;
+  };
+  walk.ancestor(ast, {
+    Function(n, _s, anc) {
+      const name = fnName(n, anc[anc.length - 2]);
+      if (!name) return;
+      const params = n.params.map((q) => (q.type === "Identifier" ? q.name : q.type === "AssignmentPattern" && q.left.type === "Identifier" ? q.left.name : null));
+      fns.push({ name, params, body: n.body });
+    }
+  });
+  const mentions = (e, name) => { let h = false; if (e) walk.full(e, (x) => { if (x.type === "Identifier" && x.name === name) h = true; }); return h; };
+  const SINK_CALL = { "eval": "high", "Function": "high", "setTimeout": null, "setInterval": null, "document.write": "medium",
+    "document.writeln": "medium", "insertAdjacentHTML": "medium", "markup": "medium", "Markup": "medium",
+    "createContextualFragment": "medium", "importScripts": "high", "loadJS": "high", "getScript": "high" };
+  const summ = new Map(); // name -> Map(paramIdx -> sev)
+  const rank = { high: 2, medium: 1 };
+  const addSumm = (name, i, sev) => {
+    const m = summ.get(name) || new Map();
+    if ((rank[m.get(i)] || 0) >= rank[sev]) return false;
+    m.set(i, sev); summ.set(name, m); return true;
+  };
+  for (let round = 0, changed = true; changed; round++) {
+    if (round >= 64) { add("high", "js-flow-incomplete", ast, "Taint summaries did not converge: unaudited."); break; }
+    changed = false;
+    for (const f of fns) {
+      f.params.forEach((pn, i) => {
+        if (!pn) return;
+        walk.full(f.body, (x) => {
+          let sev = null;
+          if (x.type === "CallExpression" || x.type === "NewExpression") {
+            const r = resolve(x.callee) || "";
+            const k = SINK_CALL[r] !== undefined ? r : (SINK_CALL[last(r)] !== undefined && last(r) !== "eval" ? last(r) : null);
+            if (k) {
+              const args = x.arguments;
+              if ((k === "setTimeout" || k === "setInterval") ? args[0] && args[0].type !== "ArrowFunctionExpression" && args[0].type !== "FunctionExpression" && mentions(args[0], pn) : args.some((a) => mentions(a, pn))) {
+                sev = SINK_CALL[k] || "high";
+              }
+            }
+            const callee = last(r);
+            const sm = summ.get(callee);
+            if (sm && callee !== f.name) {
+              for (const [j, sv] of sm) if (x.arguments[j] && mentions(x.arguments[j], pn)) sev = rank[sv] > (rank[sev] || 0) ? sv : sev;
+            }
+          }
+          if (x.type === "AssignmentExpression" && x.left.type === "MemberExpression" && mentions(x.right, pn)) {
+            const p = last(resolve(x.left) || "");
+            if (p === "innerHTML" || p === "outerHTML" || p === "srcdoc") sev = sev || "medium";
+            if (/(^|\.)location(\.href)?$/.test(resolve(x.left) || "")) sev = sev || "medium";
+          }
+          if (sev && addSumm(f.name, i, sev)) changed = true;
+        });
+      });
+    }
+  }
+  if (summ.size) {
+    const defs = new Set(fns.map((f) => f.body));
+    walk.full(ast, (x) => {
+      if (x.type !== "CallExpression") return;
+      const name = last(resolve(x.callee) || "");
+      const sm = summ.get(name);
+      if (!sm) return;
+      for (const [j, sv] of sm) {
+        const a = x.arguments[j];
+        if (a && lit(a) === null && a.type !== "ArrowFunctionExpression" && a.type !== "FunctionExpression") {
+          add(readsCookie(a) ? "high" : sv, "js-flow-sink", x,
+              `${name}() passes argument ${j + 1} to ${sv === "high" ? "code execution" : "an HTML/navigation sink"} (interprocedural).`);
+          break;
+        }
+      }
+    });
+    void defs;
+  }
   return { ok: true, findings: out };
 }
 
 const EXT = /^\s*(?:url\(\s*)?["']?\s*(https?:|\/\/|ftp:)/i;
 const INTERP = /#\{|@\{|\$\{|var\(|attr\(|@[a-zA-Z_-]+/;
 
+// TypeScript / JSX: strip types and compile JSX (sucrase keeps line numbers), then audit
+function auditTyped(text, kind) {
+  let code;
+  try {
+    code = sucrase(text, {
+      transforms: kind === "ts" ? ["typescript"] : kind === "tsx" ? ["typescript", "jsx"] : ["jsx"],
+      jsxRuntime: "classic", production: true, keepUnusedImports: true, disableESTransforms: true,
+    }).code;
+  } catch (e) {
+    return { ok: false, error: String(e.message).slice(0, 200), line: e.loc ? e.loc.line : 0 };
+  }
+  return auditJs(code);
+}
+
+// CSS escapes (\\75rl( is url(, \\6a avascript: ...) decoded before matching
+function cssUnescape(s) {
+  return String(s || "").replace(/\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\([^\n0-9a-fA-F])/g, (_m, hex, ch) => {
+    if (hex) { const cp = parseInt(hex, 16); return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : "\uFFFD"; }
+    return ch;
+  }).replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+// Indented Sass -> flat SCSS, one output line per input line (line numbers kept): every
+// at-rule and declaration is kept with its enclosing selector chain; no parser for the
+// indented syntax is trusted to be lossless, so each line is rewritten literally
+function sassToScss(text) {
+  const stack = []; // [indent, selector]
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  return lines.map((raw) => {
+    const t = cssUnescape(raw).trim();
+    const ind = raw.length - raw.trimStart().length;
+    if (!t || t.startsWith("//")) return "";
+    if (t.startsWith("/*")) return "/* */";
+    while (stack.length && stack[stack.length - 1][0] >= ind) stack.pop();
+    const sel = stack.map((x) => x[1]).join(" ") || "x";
+    if (t.startsWith("@") || t.startsWith("+") || t.startsWith("=")) {
+      const body = t.replace(/^\+/, "@include ").replace(/^=/, "@mixin ").replace(/;\s*$/, "");
+      stack.push([ind, "x"]);
+      return /^@(import|use|forward|require|plugin|charset)\b/i.test(body) ? `${body};` : `${sel}{${body.replace(/[{}]/g, "")};}`;
+    }
+    const decl = t.match(/^(:?[\w$#{}-][\w$#{}.-]*)\s*:\s*(.*)$/) || t.match(/^:([\w-]+)\s+(.*)$/);
+    if (decl && !/^[\w-]+:(hover|focus|active|before|after|not|nth|first|last|root|is|where|has)\b/.test(t)) {
+      stack.push([ind, sel]);
+      return `${sel}{${decl[1].replace(/^:/, "")}:${decl[2].replace(/[{};]/g, " ")};}`;
+    }
+    stack.push([ind, t.replace(/[{};]/g, " ")]);
+    return "";
+  }).join("\n");
+}
+
 function auditCss(text, kind) {
+  if (kind === "sass") { text = sassToScss(text); kind = "scss"; }
   let root;
   try {
     root = (kind === "scss" ? scss : kind === "less" ? less : postcss).parse(text, { from: undefined });
@@ -367,14 +608,14 @@ function auditCss(text, kind) {
   const add = (sev, code, node, msg) =>
     out.push({ sev, code, line: (node.source && node.source.start && node.source.start.line) || 0, msg });
   root.walk((n) => {
-    if (n.type === "atrule" && n.name === "import") {
-      const p = n.params || "";
+    if (n.type === "atrule" && ["import", "use", "forward", "require", "plugin"].includes(cssUnescape(n.name).toLowerCase())) {
+      const p = cssUnescape(n.params || "");
       if (EXT.test(p)) add("high", "css-external-import", n, "@import from an external host.");
       else if (/url\(/.test(p) && INTERP.test(p.replace(/^[^(]*\(/, ""))) add("medium", "css-dynamic-url", n, "@import of a URL built from variables: undecidable, flagged.");
     }
     if (n.type === "decl") {
-      const v = String(n.value || "");
-      const prop = String(n.prop || "").toLowerCase();
+      const v = cssUnescape(n.value || "");
+      const prop = cssUnescape(n.prop || "").toLowerCase();
       if (/expression\s*\(/i.test(v)) add("high", "css-expression", n, "CSS expression() runs script (legacy IE).");
       if (prop === "behavior" || prop === "-moz-binding") add("high", "css-expression", n, `${prop} loads script.`);
       if (/javascript:/i.test(v)) add("high", "css-expression", n, "javascript: URL in CSS.");
@@ -384,7 +625,7 @@ function auditCss(text, kind) {
         for (const q of m[1].matchAll(/(["'])(.*?)\1/g)) urls.push(q[2]);
       }
       for (const u of urls) {
-        const sel = n.parent && n.parent.selector ? n.parent.selector : "";
+        const sel = n.parent && n.parent.selector ? cssUnescape(n.parent.selector) : "";
         const ext = EXT.test(u);
         const runtime = /var\(|attr\(/.test(u); // set at runtime (custom property / attribute)
         if (ext && /\[[^\]]*[\^$*~|]?=/.test(sel)) {
@@ -417,7 +658,9 @@ process.stdin.on("end", () => {
   const req = JSON.parse(raw);
   const results = req.files.map((f) => {
     try {
-      const r = f.kind === "js" ? auditJs(f.text) : auditCss(f.text, f.kind);
+      const r = f.kind === "js" ? auditJs(f.text)
+        : ["ts", "tsx", "jsx"].includes(f.kind) ? auditTyped(f.text, f.kind)
+        : auditCss(f.text, f.kind);
       return { path: f.path, ...r };
     } catch (e) {
       return { path: f.path, ok: false, error: `helper error ${String(e.message).slice(0, 120)}`, line: 0 };

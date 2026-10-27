@@ -28,9 +28,9 @@ HELPER = HELPER_DIR / "audit.mjs"
 HELPER_ID = "ingenium-code-audit-js/1"
 # sha256 pins: the helper source, its lockfile (exact versions + sha512 integrity of each
 # tarball) and the installed dependency tree (npm ci --ignore-scripts from that lockfile)
-HELPER_SHA256 = "f84baf9d6049b40fc835aec873dba07122a7c2b9ae57b9a7400f6954754c8216"
-LOCK_SHA256 = "8ab8dad809a88374e66decbf38124363a682a38ea5ab68c48b3e4d2b4212e839"
-MODULES_SHA256 = "4dc4b9addaa413cf20481526c85a3cf1c503e1bbae2d547ab0ab0fc3e2fe170a"
+HELPER_SHA256 = "bb77b60d3806d98020eeb48a59ff43174f935127fef6159fdaaa716e2f7603ad"
+LOCK_SHA256 = "0979e699da625fe55eed29479d64824c3a02acd99793ca3f7c02ecea8e6549d5"
+MODULES_SHA256 = "c5adf899c2ee30faa46f5269d41d15bf3dd590b0a1665d87b2459caf7c9dcb96"
 # Node 22+: the stable permission model (fs read limited to the private helper copy, no child
 # processes, workers or addons). Older Node has no such sandbox -> fail closed.
 NODE_MIN_MAJOR = 22
@@ -42,9 +42,8 @@ BATCH_BYTES = 1_500_000
 WORKERS = 4
 WEB_KINDS = {".js": "js", ".mjs": "js", ".cjs": "js", ".css": "css", ".scss": "scss"}
 WEB_KINDS[".less"] = "less"
-# no parser here: unaudited. .sass is loaded by Odoo's asset bundles (HIGH); the others are
-# never served by Odoo's bundler (type declarations, sources for a build step) -> INFO
-UNPARSEABLE = (".sass", ".ts", ".tsx", ".jsx", ".coffee", ".styl")
+# no parser here: never loaded by Odoo's asset bundles (sources for a build step) -> LOW
+UNPARSEABLE = (".coffee", ".styl")
 # served from static/ as documents: scripts and handlers inside run in the module's origin
 MARKUP_KINDS = {".svg": "svg", ".html": "html", ".htm": "html", ".xhtml": "html"}
 
@@ -58,11 +57,12 @@ def web_kind(path: str) -> str | None:
         if low.endswith(ext):
             return kind
     if low.endswith(".sass"):
-        return "unparseable"
+        return "sass"  # indented syntax: postcss-sass
     if low.endswith(".d.ts"):
         return "inert"  # type declarations only: no runtime code exists in the file
-    if low.endswith((".ts", ".tsx", ".jsx")):
-        return "tryjs"  # audited when the source is plain JS; otherwise reported unaudited
+    for ext in (".tsx", ".ts", ".jsx"):
+        if low.endswith(ext):
+            return ext[1:]  # types stripped / JSX compiled by sucrase, then audited as JS
     return "foreign" if low.endswith(UNPARSEABLE) else None
 
 

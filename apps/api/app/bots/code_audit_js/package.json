@@ -9,6 +9,7 @@
     "acorn-walk": "8.3.5",
     "postcss": "8.5.32",
     "postcss-less": "6.0.0",
-    "postcss-scss": "4.0.9"
+    "postcss-scss": "4.0.9",
+    "sucrase": "3.35.1"
   }
 }

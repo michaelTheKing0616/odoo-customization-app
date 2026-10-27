@@ -1031,13 +1031,11 @@ def test_web_no_parser_type_unaudited():
         }
     )
     sev = {f.file: f.severity for f in r.findings if f.code == "web-unaudited"}
+    # .ts/.tsx/.jsx (sucrase) and .sass (line-preserving rewrite) are parsed and audited
     assert sev == {
-        "static/src/a.ts": "low",
-        "static/src/b.sass": "high",
         "static/src/c.d.ts": "info",
         "static/src/d.styl": "low",
     }
-    # a .jsx/.ts file that is plain JavaScript is audited with the JS rules
     assert ("js-eval", "high") in {
         (f.code, f.severity) for f in r.findings if f.file.endswith("e.jsx")
     }
