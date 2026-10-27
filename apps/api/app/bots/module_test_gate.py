@@ -211,6 +211,7 @@ def validate_argv(argv: Sequence[str], tmp_root: str) -> None:
             and (
                 (argv[4:8] == ["psql", "-U", READ_ROLE, "-d"] and DB_RE.fullmatch(argv[8]))
                 or argv[4:9] == ["psql", "-U", PG_ADMIN, "-d", "postgres"]
+                or (argv[4:8] == ["psql", "-U", PG_ADMIN, "-d"] and DB_RE.fullmatch(argv[8]))
             )
         ):
             return
@@ -492,6 +493,30 @@ ID_TABLES = COUNT_TABLES + (
     "res_users",
     "res_partner",
 )
+# Superuser-owned event trigger in each sandbox database: any function the module creates with
+# SECURITY DEFINER or its own settings, and any ALTER DEFAULT PRIVILEGES, is logged to a table
+# the app role cannot write or drop, so creating one and dropping it before the uninstall
+# snapshot still shows. The app role cannot disable event triggers (not owner, not superuser).
+DDL_WATCH = """
+CREATE SCHEMA gate_audit AUTHORIZATION postgres;
+REVOKE ALL ON SCHEMA gate_audit FROM PUBLIC;
+CREATE TABLE gate_audit.ddl (tag text NOT NULL, ident text NOT NULL);
+CREATE FUNCTION gate_audit.ddl_log() RETURNS event_trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog AS $w$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT * FROM pg_catalog.pg_event_trigger_ddl_commands() LOOP
+    IF r.command_tag = 'ALTER DEFAULT PRIVILEGES' OR (
+       r.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND EXISTS (
+         SELECT 1 FROM pg_catalog.pg_proc p
+         WHERE p.oid = r.objid AND (p.prosecdef OR p.proconfig IS NOT NULL))) THEN
+      INSERT INTO gate_audit.ddl VALUES (r.command_tag, COALESCE(r.object_identity, '?'));
+    END IF;
+  END LOOP;
+END $w$;
+CREATE EVENT TRIGGER gate_ddl ON ddl_command_end EXECUTE FUNCTION gate_audit.ddl_log();
+"""
+
 # every read the gate trusts: pinned search_path, then a settings probe (must be 0 rows)
 _READ_PREFIX = (
     "SET search_path = pg_catalog, public;\n"
@@ -526,6 +551,8 @@ def sql_schema(tables: Sequence[str]) -> str:
         "UNION ALL SELECT 'f', n.nspname || '.' || p.proname, "
         "pg_catalog.pg_get_function_identity_arguments(p.oid) FROM pg_catalog.pg_proc p "
         f"JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace WHERE {ns}\n"
+        "UNION ALL SELECT 'o', l.oid::text, '' FROM pg_catalog.pg_largeobject_metadata l\n"
+        "UNION ALL SELECT 'd', w.tag, w.ident FROM gate_audit.ddl w\n"
         + "".join(
             f"UNION ALL SELECT 'i', '{t}', COALESCE(pg_catalog.string_agg(id::text, ',' "
             f"ORDER BY id), '') FROM public.{t}\n"
@@ -722,7 +749,15 @@ def access_diff(role_spec: Mapping, rows: Sequence[Sequence[str]]) -> list[str]:
 def _snapshot(rows: Sequence[Sequence[str]] | None):
     if rows is None:
         return None
-    snap: dict[str, Any] = {"s": set(), "k": set(), "c": set(), "f": set(), "i": {}}
+    snap: dict[str, Any] = {
+        "s": set(),
+        "k": set(),
+        "c": set(),
+        "f": set(),
+        "o": set(),
+        "d": set(),
+        "i": {},
+    }
     for r in rows:
         if len(r) != 3 or r[0] not in snap:
             return None
@@ -761,6 +796,12 @@ def snapshot_diff(s0, s1) -> list[str]:
     new_f = sorted(f"{n}({a})" for n, a in s1["f"] - s0["f"])
     if new_f:
         bad.append(f"functions left: {', '.join(new_f[:10])}")
+    new_o = sorted(o for o, _ in s1.get("o", set()) - s0.get("o", set()))
+    if new_o:
+        bad.append(f"large objects left: {', '.join(new_o[:10])}")
+    new_d = sorted(f"{t} {i}" for t, i in s1.get("d", set()) - s0.get("d", set()))
+    if new_d:
+        bad.append(f"privileged database objects created: {'; '.join(new_d[:5])}")
     for t in sorted(set(s0["i"]) | set(s1["i"])):
         left = s1["i"].get(t, set()) - s0["i"].get(t, set())
         if left:
@@ -778,6 +819,7 @@ import threading, unittest, xml.sax.saxutils
 import odoo
 from odoo.tests import loader
 M, P = {module!r}, {path!r}
+CF, CP, CC = {fail!r}, {pas!r}, {cls!r}
 class Res(unittest.TestResult):
     def __init__(self):
         super().__init__()
@@ -794,31 +836,89 @@ class Res(unittest.TestResult):
     def addSubTest(self, t, s, e):
         if e is not None:
             self._row(t, 'failure')
+def c0(self): self.assertEqual(1, 2)
+def c1(self): self.assertTrue(False)
+def c2(self): self.fail('x')
+def c3(self):
+    with self.assertRaises(ValueError):
+        pass
+def c4(self): assert False
+def c5(self): self.assertIn(1, ())
+def c6(self): self.assertEqual(1, 1)
+def canary(base, k):
+    ns = dict(zip(CF, (c0, c1, c2, c3, c4, c5)))
+    ns[CP], ns['__module__'] = c6, base.__module__
+    c = type(CC + str(k), (base,), ns)
+    c.__qualname__ = c.__name__
+    return c
+def flat(s):
+    for t in s:
+        if isinstance(t, unittest.TestSuite):
+            yield from flat(t)
+        else:
+            yield t
 res = Res()
 threading.current_thread().testing = True
 odoo.modules.module.current_test = M
+k = 0
 for pos in ('at_install', 'post_install'):
-    loader.make_suite([M], pos).run(res)
+    suite = loader.make_suite([M], pos)
+    S, groups = type(suite), {{}}
+    for t in flat(suite):
+        groups.setdefault(type(t), []).append(t)
+    for cls, tests in groups.items():
+        S(tests).run(res)
+        k += 1
+        c = canary(cls, k)
+        S([c(n) for n in (*CF, CP)]).run(res)
 odoo.modules.module.current_test = None
 with open(P, 'w') as f:
     f.write('<testsuite>')
-    for i, k in res.rows:
+    for i, r in res.rows:
         f.write('<testcase name=%s result=%s/>' % (
-            xml.sax.saxutils.quoteattr(i), xml.sax.saxutils.quoteattr(k)))
+            xml.sax.saxutils.quoteattr(i), xml.sax.saxutils.quoteattr(r)))
     f.write('</testsuite>')
 """
+_CANARY_FAILS = 6
 
 
-def harness_script(module: str, path: str) -> str:
+@dataclass(frozen=True)
+class Canary:
+    """Known-answer tests the harness adds per module test class, as subclasses of that class:
+    each `fail` test must fail and `pas` must pass. If assertions were neutered in-process the
+    must-fail tests pass and the run is refused. Names are random per run."""
+
+    cls: str
+    fail: tuple[str, ...]
+    pas: str
+
+    @staticmethod
+    def new() -> Canary:
+        import secrets
+
+        r = lambda: secrets.token_hex(6)  # noqa: E731
+        return Canary(
+            f"Test{r().capitalize()}",
+            tuple(f"test_{r()}" for _ in range(_CANARY_FAILS)),
+            f"test_{r()}",
+        )
+
+
+def harness_script(module: str, path: str, canary: Canary | None = None) -> str:
     assert MODULE_RE.fullmatch(module) and re.fullmatch(
         r"/var/tmp/r[0-9a-f]{16}/[0-9a-f]{16}\.xml", path
     )
-    return _HARNESS.format(module=module, path=path)
+    cn = canary or Canary.new()
+    assert re.fullmatch(r"Test[0-9a-zA-Z]{12}", cn.cls) and len(cn.fail) == _CANARY_FAILS
+    assert all(re.fullmatch(r"test_[0-9a-f]{12}", x) for x in (*cn.fail, cn.pas))
+    return _HARNESS.format(module=module, path=path, fail=cn.fail, pas=cn.pas, cls=cn.cls)
 
 
-def read_harness(raw: bytes | None, every: set[str], module: str = "") -> tuple[bool, str]:
+def read_harness(
+    raw: bytes | None, every: set[str], module: str = "", canary: Canary | None = None
+) -> tuple[bool, str]:
     """Count the harness report independently: every test method in the source ran and passed,
-    nothing failed, errored or was skipped."""
+    nothing failed, errored or was skipped; and every known-answer canary gave its known answer."""
     if raw is None:
         return False, "no harness report"
     if len(raw) > 2_000_000:
@@ -830,23 +930,38 @@ def read_harness(raw: bytes | None, every: set[str], module: str = "") -> tuple[
     if root.tag != "testsuite":
         return False, "harness report malformed"
     ok, bad = set(), []
+    seen: dict[str, dict[str, str]] = {}
     n = 0
     for tc in root.iter("testcase"):
-        n += 1
         name, kind = tc.get("name") or "", tc.get("result") or ""
-        meth = name.rsplit(".", 1)[-1]
+        parts = name.rsplit(".", 2)
+        meth, cls = parts[-1], (parts[-2] if len(parts) > 2 else "")
         if module and f".addons.{module}." not in name:
             bad.append(f"{name[:60]}: not this module's test")
+        elif canary is not None and cls.startswith(canary.cls):
+            seen.setdefault(cls, {})[meth] = kind
         elif kind == "ok":
+            n += 1
             ok.add(meth)
         else:
+            n += 1
             bad.append(f"{meth}: {kind or '?'}")
+    if canary is not None:
+        want = {**dict.fromkeys(canary.fail, "failure"), canary.pas: "ok"}
+        if not seen:
+            return False, "harness: known-answer canaries did not run"
+        wrong = [c for c, got in seen.items() if got != want]
+        if wrong:
+            return False, (
+                f"harness: known-answer canary gave the wrong answer in {len(wrong)} test "
+                "class(es): assertions or result reporting were tampered with"
+            )
     if bad:
         return False, f"harness: {len(bad)} not passed ({'; '.join(bad[:5])})"
     missing = sorted(every - ok)
     if missing:
         return False, f"harness: {len(missing)} test(s) did not run ({', '.join(missing[:5])})"
-    return True, f"harness: {n} passed"
+    return True, f"harness: {n} passed" + (f", {len(seen)} canary class(es) ok" if seen else "")
 
 
 # ---------------------------------------------------------------- gate
@@ -955,6 +1070,14 @@ class _Sandbox:
         )
         if r.rc != 0:
             raise GateError("sandbox roles failed")
+        for d in (self.db_main, self.db_upg):
+            w = self.r.run(
+                ["docker", "exec", "-i", self.pg, "psql", "-U", PG_ADMIN, "-d", d, *_PSQL_TAIL],
+                stdin=DDL_WATCH,
+                timeout=120,
+            )
+            if w.rc != 0:
+                raise GateError("sandbox ddl watch failed")
         rows = self.psql(
             self.db_main,
             "SELECT rolsuper::int + rolcreatedb::int + rolcreaterole::int + rolreplication::int"
@@ -1197,6 +1320,7 @@ def _harness(sb: _Sandbox, new_dir: str, db: str, files, every: set[str]) -> tup
     if any(m in b for b in files.values() for m in marks):
         return False, "module references the harness result path", set()
     host_dir, path = sb.result_mount()
+    cn = Canary.new()
     sb.odoo(
         new_dir,
         db,
@@ -1205,19 +1329,19 @@ def _harness(sb: _Sandbox, new_dir: str, db: str, files, every: set[str]) -> tup
         "--test-enable",
         "--test-tags",
         f"/{sb.mod}",  # registry load must not run (and commit) other modules' tests
-        stdin=harness_script(sb.mod, path),
+        stdin=harness_script(sb.mod, path, cn),
         result_dir=host_dir,
     )
     f = Path(host_dir) / sb.res_file
     raw = f.read_bytes() if f.is_file() and not f.is_symlink() else None
     shutil.rmtree(host_dir, ignore_errors=True)
-    ok, why = read_harness(raw, every, sb.mod)
+    ok, why = read_harness(raw, every, sb.mod, cn)
     passed = set()
     if ok and raw is not None:
         passed = {
             (tc.get("name") or "").rsplit(".", 1)[-1]
             for tc in ca._parse_xml(raw).iter("testcase")
-            if tc.get("result") == "ok"
+            if tc.get("result") == "ok" and f".{cn.cls}" not in (tc.get("name") or "")
         }
     return ok, why, passed
 

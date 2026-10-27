@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import copy
 import io
 import json
@@ -103,6 +104,16 @@ class Fake:
         host = next(a.split(":")[0] for a in argv if a.endswith(":rw"))
         path = stdin.split("M, P = ", 1)[1].split("\n", 1)[0].split(", ")[1].strip("'")
         xml = self.over.get("harness_xml", "auto")
+        line = stdin.split("CF, CP, CC = ", 1)[1].split("\n", 1)[0]
+        cf, cp, cc = ast.literal_eval(line)
+        forged = self.over.get("canary") == "forged"
+        can = "".join(
+            f'<testcase name="odoo.addons.{self.mod}.tests.{cc}1.{m}" '
+            f'result="{"ok" if forged or m == cp else "failure"}"/>'
+            for m in (*cf, cp)
+        )
+        if self.over.get("canary") == "missing":
+            can = ""
         if xml == "auto":
             every, _ = g._test_methods(self._files())
             xml = (
@@ -111,6 +122,7 @@ class Fake:
                     f'<testcase name="odoo.addons.{self.mod}.tests.T.{m}" result="ok"/>'
                     for m in sorted(every)
                 )
+                + can
                 + "</testsuite>"
             )
         if xml is not None:
@@ -578,7 +590,9 @@ def _drop(flag):
         [x.replace(DB, "postgres") for x in PSQL],
         ["docker", "exec", PG, "sh"],
         [x.replace("reader", "odoo") for x in PSQL],  # reads never as the app role
-        [x.replace("reader", "postgres") for x in PSQL],  # superuser only on db postgres
+        [
+            {"reader": "postgres", DB: "template1"}.get(x, x) for x in PSQL
+        ],  # superuser: postgres or sandbox db only
         [x.replace("USER=odoo", "USER=postgres") for x in OK_RUN],  # odoo never as superuser
         [x.replace(":rw", ":ro").replace("/var/tmp/r0123456789abcdef", "/x") for x in OK_SHELL],
         [x.replace("/var/tmp/r0123456789abcdef", "/var/tmp/rffffffffffffffff") for x in OK_SHELL],
@@ -763,6 +777,33 @@ def test_read_harness_counts_independently():
     other = ok.replace("x.T.test_a", "odoo.addons.base.tests.T.test_a")
     assert not g.read_harness(other.encode(), every, module="x")[0]  # foreign test in report
     assert not g.read_harness(b"x" * 2_000_001, every)[0]
+
+
+@pytest.mark.parametrize("mode", ["forged", "missing"])
+def test_canary_wrong_answer_refuses(mode, tmp_path):
+    rep, _ = gate(tmp_path, canary=mode)
+    assert rep.checks["tests"].status == g.FAIL
+    assert "canar" in rep.checks["tests"].detail
+
+
+def test_read_harness_canary_answers():
+    cn = g.Canary.new()
+    base = '<testcase name="odoo.addons.x_mod.tests.T.test_a" result="ok"/>'
+
+    def rows(fail_kind):
+        return "".join(
+            f'<testcase name="odoo.addons.x_mod.tests.{cn.cls}1.{m}" '
+            f'result="{fail_kind if m != cn.pas else "ok"}"/>'
+            for m in (*cn.fail, cn.pas)
+        )
+
+    good = f"<testsuite>{base}{rows('failure')}</testsuite>".encode()
+    assert g.read_harness(good, {"test_a"}, "x_mod", cn)[0]
+    bad = f"<testsuite>{base}{rows('ok')}</testsuite>".encode()
+    assert not g.read_harness(bad, {"test_a"}, "x_mod", cn)[0]
+    assert not g.read_harness(f"<testsuite>{base}</testsuite>".encode(), {"test_a"}, "x_mod", cn)[0]
+    sc = g.harness_script("x_mod", "/var/tmp/r0123456789abcdef/0123456789abcdef.xml", cn)
+    assert cn.cls in sc and all(m in sc for m in cn.fail)
 
 
 def test_harness_script_paths_are_strict():
