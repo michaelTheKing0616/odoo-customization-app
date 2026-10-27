@@ -147,7 +147,16 @@ def test_filter_generic_vertical_boilerplate() -> None:
     assert any(c.chunk_id == "general" for c in cleaned)
 
 
-def test_postprocess_oil_gas_retrieval_excludes_real_estate_rollout(db_session) -> None:
+def test_postprocess_oil_gas_retrieval_excludes_real_estate_rollout(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Offline: ingest the repo's vertical playbooks (all verticals, Real Estate included)
+    # into the throwaway DB without embeddings instead of relying on a pre-built dev KB.
+    upsert_chunks(
+        db_session, source="vertical", version="all", chunks=all_vertical_playbook_chunks(), embed=False
+    )
+    monkeypatch.setattr(ai_rag, "embed_texts", lambda texts: None)
+    monkeypatch.setattr(settings, "ai_rag", "off")
     q = "What do I need to setup an oil and gas company's internal management Odoo DB?"
     hits = retrieve_expert_chunks(db_session, q, version="19.0", top_k=8, min_score=0.01)
     assert hits
