@@ -955,3 +955,15 @@ def test_h1_private_root_must_be_owner_only(tmp_path, monkeypatch):
     root.chmod(0o755)
     monkeypatch.setattr(web, "NODE_CACHE_ROOT", root)
     assert web._private_node(pin) == (None, "private Node.js directory is not owner-only")
+
+
+# --- H9: request data into a <script> string literal is HIGH ------------------------
+
+
+def test_h9_request_data_in_script_string_high():
+    v = (
+        "<odoo><template id='x' inherit_id='website.layout'><xpath expr='.' "
+        "position='inside'><script>var a='<t t-out=\"request.params.get('q')\"/>';"
+        "</script></xpath></template></odoo>"
+    )
+    assert ("qweb-script-injection", "high") in codes({"views/x.xml": v})

@@ -2432,7 +2432,9 @@ def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
             }.get(ctx, "a string literal (a trailing backslash or U+2028 can break out)")
             req = bool(_REQ_DATA.search(ch.get(out_attr) or ""))
             c.add(
-                (MEDIUM if req else LOW) if ctx in ("'", '"') else (HIGH if req else MEDIUM),
+                # request data is attacker-chosen: a trailing backslash or U+2028 breaks
+                # even a string literal, so it is HIGH in every JavaScript context
+                HIGH if req else (LOW if ctx in ("'", '"') else MEDIUM),
                 "qweb-script-injection",
                 path,
                 xl.el(ch, out_attr),
