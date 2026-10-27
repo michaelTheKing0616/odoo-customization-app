@@ -1210,3 +1210,134 @@ def test_flow_loop_shapes(src, code, line):
 def test_flow_loop_negative(src):
     got = _py(src)
     assert not [g for g in got if "loop" in g[0] or g[0] == "n-plus-one"], got
+
+
+# ---------------------------------------------------------------- BOT-CODE-AUDIT-2 xml lines/OWL
+
+
+def _xml(src, path="views/v.xml"):
+    r = ca.audit(zbytes(_tree(**{path: src})), version=17)
+    assert r.ok, r.error
+    return [(f.code, f.line, f.severity) for f in r.findings if f.file == path]
+
+
+def test_xml_exact_lines_multiline_attr_and_siblings():
+    src = (
+        "<odoo>\n"
+        "  <template id='a'>\n"
+        "    <div\n"
+        "       class='x'\n"
+        "       t-raw='v'/>\n"
+        "    <span t-raw='a'/><span t-raw='b'/>\n"
+        "    <p class='t-raw=' t-esc='1'/><p t-raw='c'/>\n"
+        "  </template>\n"
+        "</odoo>\n"
+    )
+    lines = sorted(g[1] for g in _xml(src) if g[0] == "qweb-t-raw")
+    assert lines == [5, 6, 6, 7]
+
+
+def test_xml_exact_line_code_field_body():
+    src = (
+        "<odoo>\n<record id='c' model='ir.actions.server'>\n"
+        "  <field name='code'><![CDATA[\n\n    x = 1\n\n    __import__('os')\n]]></field>\n"
+        "</record>\n</odoo>\n"
+    )
+    assert ("unsafe-expression", 7, "high") in _xml(src)
+
+
+def test_xml_same_needle_twice_gets_second_line():
+    src = (
+        "<odoo>\n<template id='a'>\n<t t-esc='1'/>\n</template>\n"
+        "<template id='b'>\n<div t-raw='x'/>\n</template>\n</odoo>\n"
+    )
+    assert [g[1] for g in _xml(src) if g[0] == "qweb-t-raw"] == [6]
+
+
+@pytest.mark.parametrize(
+    "el,code,line",
+    [
+        ("<a href='javascript:alert(1)'/>", "qweb-js-url", 3),
+        ("<a href='  JaVa&#x09;Script:x'/>", "qweb-js-url", 3),
+        ("<a t-att-href=\"'javascript:' + x\"/>", "qweb-js-url", 3),
+        ("<script src='https://evil.example/x.js'/>", "qweb-external-resource", 3),
+        ("<iframe src='//evil.example/'/>", "qweb-external-resource", 3),
+        ("<link rel='stylesheet' href='https://cdn.example/x.css'/>", "qweb-external-resource", 3),
+        ("<script t-att-src='url'/>", "qweb-dynamic-resource", 3),
+        ("<div t-out='Markup(x)'/>", "unsafe-markup", 3),
+        ("<script>\nvar a = 1;\neval(a);\n</script>", "js-eval", 5),
+    ],
+)
+def test_xml_owl_shapes(el, code, line):
+    src = f"<odoo>\n<template id='a'>\n{el}\n</template>\n</odoo>\n"
+    got = _xml(src)
+    assert (code, line) in [(g[0], g[1]) for g in got], got
+
+
+@pytest.mark.parametrize(
+    "el",
+    [
+        "<a href='/web#action=1'/>",
+        "<a t-att-href='record.url'/>",
+        "<script src='/web/static/x.js'/>",
+        "<link rel='icon' href='https://x.example/i.png'/>",
+        "<script type='application/json'>{\"a\": 1}</script>",
+        "<script>\nvar a = 1;\n</script>",
+        "<div t-out='x'/>",
+    ],
+)
+def test_xml_owl_negative(el):
+    src = f"<odoo>\n<template id='a'>\n{el}\n</template>\n</odoo>\n"
+    bad = {"qweb-js-url", "qweb-external-resource", "qweb-dynamic-resource", "unsafe-markup"}
+    got = _xml(src)
+    assert not [g for g in got if g[0] in bad or g[0].startswith(("js-", "web-"))], got
+
+
+def test_xml_static_owl_template_lines():
+    src = "<templates>\n<t t-name='x'>\n  <div t-out='markup(v)'/>\n</t>\n</templates>\n"
+    assert ("unsafe-markup", 3) in [(g[0], g[1]) for g in _xml(src, "static/src/x.xml")]
+
+
+def test_xml_lxml_missing_fails_closed(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "lxml", None)
+    got = _xml("<odoo/>\n")
+    assert ("xml-unaudited", 0, "high") in got
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "<!DOCTYPE x [<!ENTITY a 'b'>]><odoo>&a;</odoo>",
+        "<odoo>" + " " * 5000 + "<!ENTITY a 'b'></odoo>",
+    ],
+)
+def test_xml_dtd_still_refused(src):
+    assert "parse-error" in [g[0] for g in _xml(src)]
+
+
+def test_xml_inline_script_with_qweb_output_parses_and_keeps_lines():
+    src = (
+        "<odoo>\n<template id='a'>\n<script>\n"
+        "  var s = {csrf: \"<t t-esc='request.csrf_token(None)'/>\"};\n"
+        "  var d = <t t-out='json.dumps(x)'/>;\n"
+        "  eval(d);\n</script>\n</template>\n</odoo>\n"
+    )
+    got = _xml(src)
+    assert ("js-eval", 6) in [(g[0], g[1]) for g in got], got
+    assert not [g for g in got if g[0] == "web-unaudited"]
+
+
+@pytest.mark.parametrize(
+    "src,hit",
+    [
+        ("localStorage.setItem('menus_version', session.registry_hash);\n", False),
+        ("localStorage.setItem('author', name);\n", False),
+        ("localStorage.setItem('k', session.access_token);\n", True),
+        ("sessionStorage.setItem('auth_token', t);\n", True),
+    ],
+)
+def test_web_token_storage_precision(src, hit):
+    r = _web({"static/src/a.js": src})
+    assert ("js-token-storage" in _codes(r, "static/src/a.js")) is hit

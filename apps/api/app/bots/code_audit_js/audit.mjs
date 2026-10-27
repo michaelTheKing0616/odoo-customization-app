@@ -24,7 +24,7 @@ const WRITE_METHODS = new Set(["write", "create", "unlink", "copy", "set_param",
 const ORM_READS = new Set(["read", "search", "searchRead", "searchCount", "webSearchRead",
   "webRead", "readGroup", "webReadGroup", "nameSearch"]);
 const GLOBALS = new Set(["window", "globalThis", "self", "top", "parent", "frames"]);
-const SECRET = /token|secret|passw|api[_-]?key|session|csrf|auth|bearer|jwt/i;
+const SECRET = /token|secret|passw|api[_-]?key|session|csrf|auth(?!or)|bearer|jwt/i;
 const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|textContent)$/;
 
 function lit(n) {
@@ -160,7 +160,7 @@ function auditJs(text) {
       if (/(localStorage|sessionStorage)\.setItem$/.test(r) && n.arguments.length >= 1) {
         const key = lit(a0) || (a0 && a0.type === "Identifier" ? a0.name : "");
         const val = n.arguments[1];
-        const vname = val ? (lit(val) || resolve(val) || "") : "";
+        const vname = val ? (lit(val) || last(resolve(val) || "") || "") : "";  // a.b.token -> token
         if (SECRET.test(key) || SECRET.test(vname)) {
           add("high", "js-token-storage", n, "Stores a token or secret in browser storage.");
         }

@@ -251,6 +251,113 @@ def _parse_xml(body: bytes) -> ET.Element:
     return ET.fromstring(body)  # noqa: S314 - DTD rejected above; expat never fetches
 
 
+class _XmlUnavailable(ValueError):
+    pass
+
+
+def _parse_xml_lines(body: bytes) -> Any:
+    """lxml tree whose elements carry exact source lines. Same refusal as _parse_xml (no
+    DTD, no entities); lxml additionally never loads a DTD, resolves an entity or touches the
+    network. Comments and processing instructions are dropped so iter() yields elements."""
+    head = body[:4096].upper()
+    if b"<!DOCTYPE" in head or b"<!ENTITY" in body.upper():
+        raise ValueError("DTD/entities are not allowed")
+    try:
+        from lxml import etree
+    except ImportError as e:  # fail closed: reported as unaudited, never skipped
+        raise _XmlUnavailable("lxml is not installed; XML not audited") from e
+    parser = etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        dtd_validation=False,
+        huge_tree=False,
+        remove_comments=True,
+        remove_pis=True,
+    )
+    try:
+        root = etree.fromstring(body, parser)
+    except etree.XMLSyntaxError as e:
+        raise ValueError(str(e)[:200]) from e
+    if root.getroottree().docinfo.doctype:
+        raise ValueError("DTD/entities are not allowed")
+    return root
+
+
+class _XLines:
+    """Exact lines for an lxml element, one of its attributes, or its text."""
+
+    def __init__(self, text: str):
+        self.text = text
+        self.starts = [0]
+        for m in re.finditer("\n", text):
+            self.starts.append(m.end())
+        self.nth: dict[int, int] | None = None  # element -> rank among same-line same-tag
+
+    @staticmethod
+    def _local(el: Any) -> str:
+        return el.tag.rsplit("}", 1)[-1] if isinstance(el.tag, str) else ""
+
+    def _rank(self, el: Any) -> int:
+        if self.nth is None:
+            self.nth, seen = {}, {}
+            for e in el.getroottree().getroot().iter():
+                key = (e.sourceline, self._local(e))
+                self.nth[id(e)] = seen.get(key, 0)
+                seen[key] = seen.get(key, 0) + 1
+        return self.nth.get(id(el), 0)
+
+    def _tag_span(self, el: Any) -> tuple[int, int]:
+        ln = getattr(el, "sourceline", None) or 1
+        i = self.starts[min(ln, len(self.starts)) - 1]
+        pat = re.compile("<(?:[\\w.-]+:)?" + re.escape(self._local(el)) + "(?=[\\s/>])")
+        j = i
+        for r in range(self._rank(el) + 1):  # siblings on one line: the n-th start tag
+            m = pat.search(self.text, j + (1 if r else 0))
+            if not m:
+                break
+            j = m.start()
+        k, q = j, ""
+        while k < len(self.text):
+            ch = self.text[k]
+            if q:
+                q = "" if ch == q else q
+            elif ch in "\"'":
+                q = ch
+            elif ch == ">":
+                break
+            k += 1
+        return j, k
+
+    def line(self, off: int) -> int:
+        lo, hi = 0, len(self.starts)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if self.starts[mid] <= off:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
+
+    def el(self, el: Any, attr: str | None = None) -> int:
+        j, k = self._tag_span(el)
+        if attr:
+            m = re.compile("\\s" + re.escape(attr) + "\\s*=").search(self.text, j, k)
+            if m:
+                return self.line(m.start() + 1)
+        return self.line(j)
+
+    def body(self, el: Any, at: int = 0) -> int:
+        """Line of offset `at` inside the element's text (default: its first character)."""
+        t = el.text or ""
+        lead = len(t) - len(t.lstrip())
+        if at > lead:
+            return self.body(el) + t.count("\n", lead, at)
+        _, k = self._tag_span(el)
+        m = re.compile("\\s*(?:<!\\[CDATA\\[\\s*)?").match(self.text, k + 1)
+        return self.line(m.end() if m else k + 1)
+
+
 def _line_of(text: str, needle: str) -> int:
     i = text.find(needle)
     return text.count("\n", 0, i) + 1 if i >= 0 else 0
@@ -1192,7 +1299,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
 # ---------------------------------------------------------------- xml / csv
 
 
-def _top_fields(arch: ET.Element):
+def _top_fields(arch: Any):
     """Arch elements, not descending into a <field>'s sub-views (they belong to the comodel)
     or into <xpath> (it targets another view's context)."""
     stack = list(arch)[::-1]
@@ -1209,11 +1316,76 @@ FOREIGN_GUARDED = frozenset(
 )
 
 
+_URL_ATTRS = frozenset({"href", "src", "action", "formaction", "data", "xlink:href", "srcdoc"})
+_JS_URL = re.compile(r"^\W*j\W*a\W*v\W*a\W*s\W*c\W*r\W*i\W*p\W*t\s*:|['\"]\s*javascript:", re.I)
+_EXT_URL = re.compile(r"^\s*(?:https?:)?//", re.I)
+_RESOURCE_TAGS = {
+    "script": "src",
+    "link": "href",
+    "iframe": "src",
+    "object": "data",
+    "embed": "src",
+}
+
+
+def _qweb_resources(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
+    """External or computed script/style/frame sources in templates, and inline <script>
+    bodies (handed to the JS parser like any static file)."""
+    tag = xl._local(el)
+    attr = _RESOURCE_TAGS.get(tag)
+    if not attr:
+        return
+    lit = el.get(attr)
+    dyn = next((k for k in (f"t-att-{attr}", f"t-attf-{attr}") if el.get(k) is not None), None)
+    if tag == "link" and "stylesheet" not in (el.get("rel") or "stylesheet"):
+        return
+    if lit and _EXT_URL.search(lit):
+        c.add(
+            HIGH if tag in ("script", "iframe", "object", "embed") else MEDIUM,
+            "qweb-external-resource",
+            path,
+            xl.el(el, attr),
+            f"<{tag}> loads from an external host ({lit[:80]}).",
+            "Bundle the asset with the module (manifest assets).",
+        )
+    elif dyn:
+        c.add(
+            MEDIUM if tag == "script" else LOW,
+            "qweb-dynamic-resource",
+            path,
+            xl.el(el, dyn),
+            f"<{tag}> source is computed ({dyn}): the host cannot be decided statically.",
+            "Use a fixed, bundled asset path.",
+        )
+    if tag == "script" and not lit and not dyn:
+        typ = (el.get("type") or "text/javascript").lower()
+        if "json" in typ or "template" in typ:
+            return
+        # QWeb output inside the script (<t t-esc/>) becomes a neutral identifier that is
+        # valid both inside a string literal and as an expression; line breaks are kept
+        from lxml import etree
+
+        parts = [el.text or ""]
+        for ch in el:
+            raw = etree.tostring(ch, with_tail=False, encoding="unicode")
+            parts.append("__qweb__" + "\n" * raw.count("\n"))
+            parts.append(ch.tail or "")
+        js = "".join(parts)
+        if not js.strip():
+            return
+        line0 = xl.line(xl._tag_span(el)[1] + 1)
+        c.web.append((f"{path}#script@{line0}", path, line0, "js", js))
+
+
 def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
     try:
-        root = _parse_xml(body)
+        root = _parse_xml_lines(body)
         text = body.decode("utf-8", "replace")
-    except (ET.ParseError, ValueError) as e:
+        xl = _XLines(text)
+    except _XmlUnavailable as e:
+        c.add(HIGH, "xml-unaudited", path, 0, f"Cannot parse, unaudited ({e}).", "Install lxml.")
+        return
+    except ValueError as e:
         c.add(
             HIGH,
             "parse-error",
@@ -1238,7 +1410,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                 HIGH,
                 "foreign-record-edit",
                 path,
-                _line_of(text, f'"{rid}"'),
+                xl.el(el, "id"),
                 f"Record {rid} ({el.get('model')}) belongs to another module and is rewritten "
                 "here (access, rules, groups, users, parameters or crons).",
                 "Create your own record instead of editing another module's.",
@@ -1246,32 +1418,43 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
         for attr in ("ref", "parent", "action", "inherit_id", "groups"):
             val = el.get(attr)
             if val and attr != "groups":
-                c.refs.append((val, path, _line_of(text, f'"{val}"')))
+                c.refs.append((val, path, xl.el(el, attr)))
         for a, val in el.attrib.items():
             if a.startswith("t-") and a != "t-name" and _QWEB_ORM.search(val):
                 c.add(
                     MEDIUM,
                     "qweb-orm-call",
                     path,
-                    _line_of(text, val[:40]),
+                    xl.el(el, a),
                     f"Template expression in {a} calls sudo()/ORM methods or reads credentials.",
                     "Compute values in Python with access checks; templates must only display.",
                 )
-            if path.startswith("static/") and re.search(r"\bmarkup\s*\(", val):
+            if a.startswith("t-") and re.search(r"\b[Mm]arkup\s*\(", val):
                 c.add(
                     MEDIUM,
                     "unsafe-markup",
                     path,
-                    _line_of(text, val[:40]),
-                    f"OWL template wraps a value in markup() in {a} (no HTML escaping).",
+                    xl.el(el, a),
+                    f"Template wraps a value in markup()/Markup() in {a} (no HTML escaping).",
                     "Only mark trusted, already-escaped HTML; prefer plain t-out.",
+                )
+            if (a in _URL_ATTRS or (a.startswith("t-att") and a.split("-")[-1] in _URL_ATTRS)) and (
+                _JS_URL.search(val)
+            ):
+                c.add(
+                    HIGH,
+                    "qweb-js-url",
+                    path,
+                    xl.el(el, a),
+                    f"{a} holds a javascript: URL (script execution on click/load).",
+                    "Use an OWL event handler (t-on-click) instead.",
                 )
             if a == "t-raw":
                 c.add(
                     HIGH,
                     "qweb-t-raw",
                     path,
-                    _line_of(text, "t-raw"),
+                    xl.el(el, a),
                     "t-raw renders unescaped HTML (and was removed from Odoo 15+).",
                     "Use t-out with a Markup value built from escaped parts.",
                 )
@@ -1285,7 +1468,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     HIGH,
                     "version-attrs",
                     path,
-                    _line_of(text, f"{a}="),
+                    xl.el(el, a),
                     f"'{a}' in views was removed in Odoo 17.",
                     "Use invisible/readonly/required expressions directly.",
                 )
@@ -1302,10 +1485,11 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                     HIGH,
                     "unsafe-expression",
                     path,
-                    _line_of(text, val[:40]),
+                    xl.el(el, a),
                     f"Expression in {a} reaches Python internals or sudo.",
                     "Use only field names and literals in domains, contexts and evals.",
                 )
+        _qweb_resources(c, path, xl, el)
         if (
             el.tag == "field"
             and el.get("name") in ("domain", "context", "code")
@@ -1316,7 +1500,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                 HIGH,
                 "unsafe-expression",
                 path,
-                _line_of(text, el.text.strip()[:40]),
+                xl.body(el, _DANGER_PY.search(el.text).start()),
                 "Stored domain/context/code reaches Python internals or sudo.",
                 "Use only field names and literals.",
             )
@@ -1352,7 +1536,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                                     model or f"?{parent}",
                                     x.get("name"),
                                     path,
-                                    _line_of(text, f'name="{x.get("name")}"'),
+                                    xl.el(x, "name"),
                                 )
                             )
             if model and arch is not None:
@@ -1362,7 +1546,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                             MEDIUM,
                             "version-tree",
                             path,
-                            _line_of(text, "<tree"),
+                            xl.el(sub),
                             "<tree> views are renamed <list> from Odoo 18.",
                             "Rename the root tag to <list>.",
                         )
@@ -1371,7 +1555,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                             HIGH,
                             "version-list",
                             path,
-                            _line_of(text, "<list"),
+                            xl.el(sub),
                             "<list> views do not exist before Odoo 18.",
                             "Use <tree> on Odoo 17.",
                         )
@@ -1381,7 +1565,7 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                                 model,
                                 sub.get("name"),
                                 path,
-                                _line_of(text, f'name="{sub.get("name")}"'),
+                                xl.el(sub, "name"),
                             )
                         )
     if root.tag not in ("odoo", "openerp", "templates", "data") and not path.startswith("static/"):
