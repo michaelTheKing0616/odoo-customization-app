@@ -84,6 +84,8 @@ class Fake:
 
     def _psql(self, db, sql):
         o = self.over
+        if o.get("on_sql"):
+            o["on_sql"](sql)
         if "gate:state" in sql:
             return self._out([[self.state.get(db, "uninstalled")]])
         if "pg_roles" in sql:
@@ -97,6 +99,8 @@ class Fake:
             if o.get("smokedb") is None and "smokedb" in o:
                 return g.RunResult(1, "ERROR")
             return self._out([o.get("smokedb", ["m", "r", "1", "1", "0", "true"])])
+        if "gate:smokescope" in sql:
+            return self._out([["s", m] for m in o.get("scope", ["x.asset"])])
         if "gate:smokerole" in sql:
             return self._out([o.get("smokerole", ["u", "1", "1", "true", "true", "true", "true"])])
         if "gate:tables" in sql:
@@ -1130,3 +1134,48 @@ def test_smoke_sql_is_pinned_and_quoted():
     assert "res_groups_implied_rel" in r and "perm_unlink" in r
     with pytest.raises(AssertionError):
         g.sql_smoke_role(7, "admin' or '1", 9, "x.asset")
+
+
+# ---- round 8 GATE 2: stock models the module inherits get the CRUD regression + DB read-back
+
+
+def _inh(**kw):
+    t = trail(("res.partner", "x.asset"))
+    t["res.partner"] = {"kept": 7, "field": "x_note", "gone": 8}
+    return _sm(models={"x.asset": "ok", "res.partner": "ok"}, trail=t, **kw)
+
+
+def test_inherited_stock_model_smoked_and_read_back(tmp_path):
+    seen = []
+    rep, mh = gate(tmp_path, smoke=_inh(), scope=["res.partner", "x.asset"], on_sql=seen.append)
+    assert rep.checks["smoke"].status == g.PASS and passed(rep, mh), rep.checks["smoke"]
+    assert any('public."res_partner" WHERE id = 7' in q and '"x_note"' in q for q in seen)
+
+
+@pytest.mark.parametrize(
+    "inh, smokedb, why",
+    [
+        (False, None, "res.partner: not smoked"),  # harness skipped the inherited model
+        (True, ["m", "r", "1", "0", "0", "true"], "written value not"),
+        (True, ["m", "r", "1", "1", "1", "true"], "unlinked record still"),
+    ],
+)
+def test_inherited_stock_model_regression_fails_closed(tmp_path, inh, smokedb, why):
+    over = {"smoke": _inh() if inh else _sm(), "scope": ["res.partner", "x.asset"]}
+    if smokedb:
+        over["smokedb"] = smokedb
+    rep, mh = gate(tmp_path, **over)
+    assert rep.checks["smoke"].status == g.FAIL and why in rep.checks["smoke"].detail
+    assert not passed(rep, mh)
+
+
+def test_smoke_scope_sql_reads_defined_and_inherited():
+    q = g.sql_smoke_scope("x_mod")
+    assert "ir_model_fields" in q and "f.store" in q and "relkind = 'r'" in q
+    with pytest.raises(AssertionError):
+        g.sql_smoke_scope("x'; drop")
+
+
+def test_smoke_harness_smokes_inherited_models():
+    src = (g.Path(g.__file__).parent.parent / "sandbox_harness" / "smoke.py").read_text()
+    assert "own | set(added)" in src and "prefer" in src

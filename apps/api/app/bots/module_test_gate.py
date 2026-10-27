@@ -1214,11 +1214,29 @@ def sql_smoke_role(uid: int, login: str, gid: int, model: str) -> str:
     )
 
 
+def sql_smoke_scope(module: str) -> str:
+    """-- gate:smokescope: every model with a table that the module defines or adds stored
+    fields to (inherited stock models included), from the database, not the module's server."""
+    assert re.fullmatch(r"[a-z][a-z0-9_]{0,63}", module)
+    return (
+        "-- gate:smokescope\n"
+        "SELECT DISTINCT 's', x.model FROM (SELECT m.model FROM public.ir_model m "
+        "JOIN public.ir_model_data d ON d.model = 'ir.model' AND d.res_id = m.id "
+        f"WHERE d.module = '{module}' UNION SELECT f.model FROM public.ir_model_fields f "
+        "JOIN public.ir_model_data d ON d.model = 'ir.model.fields' AND d.res_id = f.id "
+        f"WHERE d.module = '{module}' AND f.store) x "
+        "JOIN pg_catalog.pg_class c ON c.relname = replace(x.model, '.', '_') "
+        "AND c.relkind = 'r' JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+        "AND n.nspname = 'public' ORDER BY 2;\n"
+    )
+
+
 def verify_smoke_db(
     psql: Callable[[str, int], list[list[str]] | None],
     raw: bytes | None,
     smoked: Iterable[str],
     roles: list,
+    module: str | None = None,
 ) -> tuple[str, str, dict[str, str]]:
     """Re-read every smoke fact from the smoke database (trusted read-only role). Returns
     (status, detail, per-role 'ok' or reason). Fail closed: missing trail or unreadable -> not
@@ -1229,6 +1247,13 @@ def verify_smoke_db(
     trail, users = facts
     bad: list[str] = []
     unread: list[str] = []
+    smoked = set(smoked)
+    if module is not None:  # scope from the database: defined AND inherited models
+        rows = psql(sql_smoke_scope(module), 2)
+        if rows is None:
+            unread.append("scope")
+        else:
+            bad += [f"{r[1]}: not smoked" for r in rows if r[1] not in smoked]
     for m in sorted(smoked):
         t = trail.get(m)
         if t is None:
@@ -1802,6 +1827,7 @@ def _sandbox_checks(
                     raw_s,
                     [m for m, v in smoked.items() if v == "ok"],
                     roles,
+                    mod,
                 )
                 st_s, det_s = (st_s, f"{det_s}; {det_v}") if st_v == PASS else (st_v, det_v)
                 role_res = {

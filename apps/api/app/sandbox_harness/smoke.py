@@ -58,7 +58,7 @@ def values(uid, model):
         else:
             return None, fg, 'skip: cannot fill required %s field %s' % (t, f)
     return v, fg, ''
-def crud(uid, model):
+def crud(uid, model, prefer=()):
     # record K: create, write, kept (the gate reads it back); record G: create, unlink (gone)
     v, fg, why = values(uid, model)
     if v is None:
@@ -69,8 +69,9 @@ def crud(uid, model):
     rid = mk(v)
     if not isinstance(rid, int) or not ex(uid, ADMIN[1], model, 'read', [[rid], ['id']]):
         return 'create/read failed'
-    wf = next((f for f, a in sorted(fg.items()) if a.get('type') == 'char'
-               and not a.get('readonly') and a.get('store', True)
+    # write a field this module owns first (an inherited stock model is smoked through it)
+    wf = next((f for f, a in sorted(fg.items(), key=lambda x: (x[0] not in prefer, x[0]))
+               if a.get('type') == 'char' and not a.get('readonly') and a.get('store', True)
                and f not in ('display_name',)), None)
     if wf:
         ex(uid, ADMIN[1], model, 'write', [[rid], {wf: 'smoke2'}])
@@ -113,8 +114,14 @@ def main():
     if gids:
         ex(uid, A, 'res.users', 'write', [[uid], {gf: [(4, x) for x in gids]}])
     mids = list(owned(uid, 'ir.model').values())
-    for m in ex(uid, A, 'ir.model', 'read', [mids, ['model']]) if mids else []:
-        guard('models', m['model'], lambda m=m: crud(uid, m['model']))
+    own = {m['model'] for m in (ex(uid, A, 'ir.model', 'read', [mids, ['model']]) if mids else [])}
+    fids = list(owned(uid, 'ir.model.fields').values())
+    added = {}  # stored fields this module adds, by model (owned and inherited stock models)
+    for f in ex(uid, A, 'ir.model.fields', 'read', [fids, ['model', 'name', 'store']]) if fids else []:
+        if f['store']:
+            added.setdefault(f['model'], set()).add(f['name'])
+    for m in sorted(own | set(added)):  # inherited stock models get the same CRUD regression
+        guard('models', m, lambda m=m: crud(uid, m, added.get(m, ())))
     vids = list(owned(uid, 'ir.ui.view').values())
     by = {}
     for v in ex(uid, A, 'ir.ui.view', 'read', [vids, ['model', 'type']]) if vids else []:
