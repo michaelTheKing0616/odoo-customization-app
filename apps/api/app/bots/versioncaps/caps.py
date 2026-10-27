@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from functools import cached_property, lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 DATA = Path(__file__).with_name("data")
@@ -16,6 +17,28 @@ MAJORS = (17, 18, 19, 20)
 FITGAP_TABLE = Path(__file__).resolve().parents[1] / "fitgap" / "fitgap_table.json"
 # Pulled in by Odoo itself on every database; a missing one is never "needs install".
 ALWAYS = frozenset({"base", "web"})
+# Reviewed: public model names of Enterprise apps (not in any Community catalogue), so a model
+# alone grades enterprise-only without a module hint. Each module is in fitgap_table.json.
+ENTERPRISE_MODELS: Mapping[str, str] = MappingProxyType(
+    {
+        "helpdesk.ticket": "helpdesk",
+        "helpdesk.team": "helpdesk",
+        "planning.slot": "planning",
+        "documents.document": "documents",
+        "sign.request": "sign",
+        "sign.template": "sign",
+        "quality.check": "quality_control",
+        "quality.point": "quality_control",
+        "quality.alert": "quality_control",
+        "mrp.eco": "mrp_plm",
+        "approval.request": "approvals",
+        "approval.category": "approvals",
+        "social.post": "social",
+        "knowledge.article": "knowledge",
+        "appointment.type": "appointment",
+        "account.asset": "account_asset",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -289,6 +312,7 @@ def _availability(version, edition, installed_modules, model, fields, module_hin
     fields = sorted(set(fields))
     m = c.models.get(model)
     if m is None:
+        module_hint = module_hint or ENTERPRISE_MODELS.get(model)
         hint = module_hint if module_hint and _ent(c, module_hint) else None
         if hint:
             return _ent_verdict(c, hint, ent_db, inst, model)

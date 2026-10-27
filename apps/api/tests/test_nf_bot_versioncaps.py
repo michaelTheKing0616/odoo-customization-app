@@ -514,3 +514,27 @@ def test_load_refuses_non_int_major(bad):
 
 def test_load_accepts_plain_int_major():
     assert C.load(17) is not None and C.load(16) is None
+
+
+# ---- round 8 VERSION-CAPS 8: Enterprise model -> module map
+
+
+@pytest.mark.parametrize("v", [17, 18, 19, 20])
+def test_enterprise_model_without_hint_grades_enterprise_only(v):
+    for ed in ("enterprise", "community"):
+        r = C.availability(v, ed, ["base"], "helpdesk.ticket")
+        assert (r.status, r.module) == ("enterprise-only", "helpdesk"), (v, ed, r)
+    r = C.availability(v, "enterprise", ["base", "helpdesk"], "helpdesk.ticket")
+    assert r.status == "unknown" and "read the live database" in r.reason
+
+
+def test_enterprise_model_map_modules_are_reviewed_enterprise_modules():
+    c = C.load(17)
+    for model, mod in C.ENTERPRISE_MODELS.items():
+        assert mod in c.enterprise and model not in c.models, (model, mod)
+
+
+def test_enterprise_map_does_not_touch_unknown_or_community_models():
+    r = C.availability(17, "enterprise", ["base"], "x.nowhere.model")
+    assert r.status == "unknown" and r.module is None
+    assert C.availability(17, "community", ["base"], "res.partner").status == "installed-ok"
