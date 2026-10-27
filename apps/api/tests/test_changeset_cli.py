@@ -6,6 +6,7 @@ import ast
 import json
 import socket
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.no_app_db
 
 _REPO = Path(__file__).resolve().parents[3]
 _API = _REPO / "apps" / "api"
-_PYTHON = _REPO / ".venv" / "bin" / "python"
+_PYTHON = Path(sys.executable)  # the interpreter running the suite, not a per-tree venv
 _CLI = _API / "app" / "changeset" / "cli.py"
 _FORBIDDEN = ("llm_gateway", "llm_provider", "openai", "anthropic")
 
