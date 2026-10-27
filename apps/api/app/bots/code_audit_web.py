@@ -93,40 +93,116 @@ def _find_node() -> str | None:
     return cand
 
 
-def _node_libs(node: Path) -> list[Path]:
-    """Shared libnode next to the binary (Homebrew/distro builds load it via rpath)."""
-    lib = node.parent.parent / "lib"
-    return sorted(p for p in lib.glob("libnode*") if p.is_file()) if lib.is_dir() else []
+# OS-sealed locations: the signed system volume / dyld shared cache (macOS). Every other
+# dynamic library the binary loads, directly or transitively, is hashed into the pin.
+_SEALED = ("/usr/lib/", "/System/")
 
 
-def _node_fingerprint(node: Path) -> str:
-    h = hashlib.sha256(_sha(node).encode())
-    for lib in _node_libs(node):
-        h.update(lib.name.encode() + b"\0" + _sha(lib).encode())
+def _deps(obj: Path, loader: Path) -> list[str]:
+    """Direct dynamic-library dependencies of one object (otool -L / ldd)."""
+    if sys.platform == "darwin":
+        r = subprocess.run(
+            ["/usr/bin/otool", "-L", str(obj)], capture_output=True, text=True, timeout=30
+        )
+        if r.returncode != 0:
+            raise RuntimeError(f"otool failed on {obj.name}")
+        out = []
+        for line in r.stdout.splitlines()[1:]:
+            p = line.strip().split(" (compatibility", 1)[0].strip()
+            if not p:
+                continue
+            for pre, base in (
+                ("@rpath/", loader.parent.parent / "lib"),
+                ("@loader_path/", obj.parent),
+                ("@executable_path/", loader.parent),
+            ):
+                if p.startswith(pre):
+                    cand = base / p[len(pre) :]
+                    if pre == "@rpath/" and not cand.exists():
+                        cand = obj.parent / p[len(pre) :]
+                    p = str(cand)
+            out.append(p)
+        return out
+    ldd = shutil.which("ldd")
+    if not ldd:
+        raise RuntimeError("ldd not found")
+    r = subprocess.run([ldd, str(obj)], capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise RuntimeError(f"ldd failed on {obj.name}")
+    out = []
+    for line in r.stdout.splitlines():
+        if "=>" in line:
+            p = line.split("=>", 1)[1].strip().split(" (", 1)[0].strip()
+            if p == "not found":
+                raise RuntimeError(f"unresolved library: {line.strip()[:80]}")
+            if p:
+                out.append(p)
+        elif line.strip().startswith("/"):
+            out.append(line.strip().split(" (", 1)[0])
+    return out
+
+
+def _node_closure(node: Path) -> list[Path]:
+    """Every non-sealed dynamic library Node loads, transitively (pin-time; fail closed)."""
+    seen: dict[str, Path] = {}
+    todo = [node]
+    while todo:
+        obj = todo.pop()
+        for d in _deps(obj, node):
+            if sys.platform == "darwin" and d.startswith(_SEALED):
+                continue
+            p = Path(d).resolve(strict=True)  # a listed library that is missing: refuse
+            if str(p) not in seen and p != node:
+                seen[str(p)] = p
+                todo.append(p)
+    return sorted(seen.values())
+
+
+def _libs_digest(libs: list[Path]) -> str:
+    h = hashlib.sha256()
+    for lib in libs:
+        h.update(str(lib).encode() + b"\0" + _sha(lib).encode() + b"\n")
     return h.hexdigest()
 
 
-def pin_node(cand: str | None = None) -> dict[str, str]:
-    """Operator step (like npm ci): pin this host's Node binary by real path and hash."""
+def pin_node(cand: str | None = None) -> dict[str, Any]:
+    """Operator step (like npm ci): pin this host's Node binary by real path and hash, with
+    the full dynamic-library closure it loads (otool -L / ldd, transitively)."""
     c = cand or _find_node()
     if not c:
         raise RuntimeError("Node.js not found")
     real = Path(c).resolve(strict=True)
-    doc = {"path": str(real), "sha256": _node_fingerprint(real)}
-    NODE_PIN.write_text(json.dumps(doc) + "\n")
+    libs = _node_closure(real)
+    doc = {
+        "path": str(real),
+        "sha256": _sha(real),
+        "libs": [str(p) for p in libs],
+        "libs_sha256": _libs_digest(libs),
+    }
+    NODE_PIN.write_text(json.dumps(doc, indent=1) + "\n")
     return doc
+
+
+def _pin() -> dict[str, Any] | None:
+    """The pin, re-verified now (binary and every pinned library); None when unpinned,
+    old-format (no library closure) or changed."""
+    try:
+        pin = json.loads(NODE_PIN.read_text())
+        real = Path(pin["path"])
+        libs = [Path(p) for p in pin["libs"]]
+        if real.is_symlink() or not real.is_file() or any(p.is_symlink() for p in libs):
+            return None
+        if _sha(real) != pin["sha256"] or _libs_digest(libs) != pin["libs_sha256"]:
+            return None
+        return pin
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 def _node() -> str | None:
     """The pinned Node binary, re-hashed now; None when unpinned or changed."""
-    try:
-        pin = json.loads(NODE_PIN.read_text())
-        real = Path(pin["path"])
-        if real.is_symlink() or not real.is_file():
-            return None
-        return str(real) if _node_fingerprint(real) == pin["sha256"] else None
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+    pin = _pin()
+    return pin["path"] if pin else None
 
 
 def _node_major(node: str) -> int:
@@ -222,6 +298,22 @@ def _private_copy() -> tuple[Path, str | None]:
     shutil.copy2(HELPER_DIR / "package.json", d / "package.json")
     shutil.copy2(HELPER_DIR / "package-lock.json", d / "package-lock.json")
     shutil.copytree(HELPER_DIR / "node_modules", d / "node_modules", symlinks=False)
+    pin = _pin()
+    if pin is None:
+        return d, "Node.js binary changed since pinning"
+    # the binary Node runs from is a private copy hashed after copying (no swap window on
+    # the original); @rpath libraries sit beside it in the private lib/ for the loader
+    (d / "bin").mkdir()
+    (d / "lib").mkdir()
+    shutil.copy2(pin["path"], d / "bin" / "node")
+    rpath_dir = Path(pin["path"]).parent.parent / "lib"
+    for lib in (Path(p) for p in pin["libs"]):
+        if lib.parent == rpath_dir:
+            shutil.copy2(lib, d / "lib" / lib.name)
+            if _sha(d / "lib" / lib.name) != _sha(lib):
+                return d, "Node.js library copy does not match its pin"
+    if _sha(d / "bin" / "node") != pin["sha256"]:
+        return d, "Node.js binary copy does not match its pin"
     if _sha(d / "audit.mjs") != HELPER_SHA256:
         return d, "parser helper does not match its pin"
     if _sha(d / "package-lock.json") != LOCK_SHA256 or modules_tree_sha(d) != MODULES_SHA256:
@@ -324,6 +416,7 @@ def run(files: list[tuple[str, str, str]]) -> dict[str, dict[str, Any]] | str:
     try:
         if why:
             return why
+        node = str(helper_dir / "bin" / "node")  # the verified private copy
         out: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(WORKERS) as ex:
             batches = _batches(files)

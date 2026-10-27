@@ -120,3 +120,63 @@ def test_l2_zip_name_mismatch_fails_closed(central, local):
         pytest.skip("length")
     r = ca.audit(_mismatched(central, local), version=17, module_name=MOD)
     assert not r.ok and r.error and not r.findings
+
+
+# --- M4: Node binary + full dynamic-library closure pinned; executed from a private copy --
+
+
+def _pin_doc():
+    import json
+
+    from app.bots import code_audit_web as web
+
+    return web, json.loads(web.NODE_PIN.read_text())
+
+
+def test_m4_pin_covers_library_closure():
+    web, pin = _pin_doc()
+    if web._pin() is None:
+        pytest.skip("node not pinned on this host")
+    assert pin["libs"] and pin["libs_sha256"]
+    assert all(not p.startswith(("/usr/lib/", "/System/")) for p in pin["libs"])
+
+
+@pytest.mark.parametrize("mutate", ["drop_libs", "lib_hash", "bin_hash", "extra_lib"])
+def test_m4_changed_pin_fails_closed(tmp_path, monkeypatch, mutate):
+    import json
+
+    web, pin = _pin_doc()
+    if web._pin() is None:
+        pytest.skip("node not pinned on this host")
+    if mutate == "drop_libs":
+        pin.pop("libs")
+    elif mutate == "lib_hash":
+        pin["libs_sha256"] = "0" * 64
+    elif mutate == "bin_hash":
+        pin["sha256"] = "0" * 64
+    else:
+        fake = tmp_path / "libevil.dylib"
+        fake.write_bytes(b"x")
+        pin["libs"].append(str(fake))
+    p = tmp_path / "node.pin.json"
+    p.write_text(json.dumps(pin))
+    monkeypatch.setattr(web, "NODE_PIN", p)
+    assert web._node() is None
+    assert web.run([("a.js", "js", "x = 1")]) == "Node.js binary changed since pinning" or (
+        isinstance(web.run([("a.js", "js", "x = 1")]), str)
+    )
+
+
+def test_m4_runs_private_copy(monkeypatch):
+    web, _ = _pin_doc()
+    if web.helper_problem():
+        pytest.skip("helper unavailable")
+    seen = []
+    real = web._run_batch
+    monkeypatch.setattr(
+        web, "_run_batch", lambda node, d, b: seen.append((node, d)) or real(node, d, b)
+    )
+    res = web.run([("a.js", "js", "x = 1")])
+    assert isinstance(res, dict) and res["a.js"]["ok"]
+    node, d = seen[0]
+    assert node == str(d / "bin" / "node")
