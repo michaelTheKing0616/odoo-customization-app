@@ -300,6 +300,8 @@ def test_normalize_client_id_to_partner_and_rebuild_view() -> None:
     from app.ai_model_quality import repair_draft_integrity
 
     draft = {
+        # Closed-class gate (6648b166): quality O2M/link scaffolds need operator craft approval.
+        "_approved_craft": {"allow": ["Event", "x_event_ids"]},
         "technical_name": "law_firm_management",
         "display_name": "Law Firm Management",
         "models": [
@@ -689,6 +691,8 @@ def test_ghost_hearing_auto_remap_and_parent_o2ms() -> None:
     from app.ai_model_quality import repair_draft_integrity
 
     draft = {
+        # Closed-class gate (6648b166): quality O2M/link scaffolds need operator craft approval.
+        "_approved_craft": {"allow": ["x_bill_id", "x_bill_ids", "x_matter_line_ids", "x_task_ids"]},
         "_ambition": "comprehensive",
         "models": [
             {
