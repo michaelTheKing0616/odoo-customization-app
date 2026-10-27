@@ -60,3 +60,13 @@ finding, each a documented limit below). Tests: test_nf_bot_code_audit_5.py.
   mass write (true positive of the hook rule); account sql-injection 2 (account_move 1642,
   aml 741, conservative); mail tainted-model on thread_model route params; mail js-markup
   MEDIUM x2.
+
+## CODE-AUDIT-6 status (deny-by-default; H1-H16, M1-M6, L1-L3, six silent probes)
+All items fixed with a dedicated test each in `tests/test_nf_bot_code_audit_6.py` (236 tests). mrp `js-flow-incomplete` root-caused (prototype-inherited sink keys) and fixed; mrp unsafe-expression and js-flow-incomplete now 0 on stock v17/v19.
+
+## Remaining limits (CODE-AUDIT-6, honest)
+- Node helper TOCTOU: the owner uid is the trust boundary (no fexecve on macOS; a same-uid process can rewrite anything). Fail-closed: helper and deps copied to a fresh 0700 mkdtemp and re-verified each run, Node closure re-hashed before every use, any mismatch => `web-unaudited` HIGH.
+- Deny-by-default means stock modules still report HIGH `sensitive-data-unapproved` for ACL/rule/group/server-action records outside approved shapes (e.g. sale 45-56, website_sale 66-68). Intended: every such record needs a reviewed shape or human approval.
+- Undecidable inputs are flagged, never passed: non-JSON ir.default (`default-value-unaudited`), unresolved LESS interpolation (`css-dynamic-url`), unparsed expressions and non-UTF-8 web files (unbaselinable), flow non-convergence (`FlowIncomplete`, audit fails).
+- `odoo.http.request` attribute writes are treated as per-request state except identity/session-auth keys (`session-auth-write` HIGH); web's own login controller therefore reports 6 HIGH by design.
+- Tooling: no ruff/rg/timeout on the dev Mac; lint not run.
