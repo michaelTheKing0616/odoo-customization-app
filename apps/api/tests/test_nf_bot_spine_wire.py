@@ -597,3 +597,40 @@ def test_spine_has_no_raw_write_path() -> None:
     assert rpc_write_calls(src) == [] and "execute_kw" not in src
     assert ".rpc(" not in src and "gate.run" not in src and "gate.call" not in src
     assert "tier_ready(" in src and "_CAPABILITIES[" not in src and "REQUIRED[" not in src
+
+
+# ------------------------------------------------------------------ review: undo approval
+def test_undo_plans_never_auto(S) -> None:
+    flow, _ = S(17, design(17, item(*LEAD)))
+    (c,) = flow.cards()
+    flow.dec.approve("p1", c, owner(S))
+    flow.run()
+    req = flow.request_undo(S.auth.issue_human(login=OTHER, session_id=SID))
+    assert req["plans"] and all(p.min_tier >= sp.UNDO_MIN_TIER for p in req["plans"])
+    assert all(r["status"] != "auto" for r in req["rows"])
+
+
+def test_undo_self_approval_refused_whatever_status(S) -> None:
+    flow, o = S(17, design(17, item(*LEAD)))
+    (c,) = flow.cards()
+    flow.dec.approve("p1", c, owner(S))
+    flow.run()
+    req = flow.request_undo(owner(S))
+    forged = {**req, "rows": [{**r, "status": "auto"} for r in req["rows"]]}
+    for r in (req, forged):
+        with pytest.raises(sp.SpineError) as e:
+            flow.approve_undo(r, owner(S))
+        assert e.value.code == "forbidden"
+    assert leads(o) == 1
+
+
+def test_undo_auto_row_refused(S) -> None:
+    flow, o = S(17, design(17, item(*LEAD)))
+    (c,) = flow.cards()
+    flow.dec.approve("p1", c, owner(S))
+    flow.run()
+    req = flow.request_undo(S.auth.issue_human(login=OTHER, session_id=SID))
+    forged = {**req, "rows": [{**r, "status": "auto"} for r in req["rows"]]}
+    with pytest.raises(sp.SpineError):
+        flow.approve_undo(forged, owner(S))
+    assert leads(o) == 1

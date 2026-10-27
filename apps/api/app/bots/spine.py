@@ -443,16 +443,20 @@ class SpineFlow(fl.OperatorFlow):
         walk = self.w.plan(steps, f"{self.plan_id}:undo")
         if isinstance(walk, Refusal):
             return {"status": "refused", "reason": walk.reason}
+        # undo never auto-runs: level 2 floor, so a second person always approves it
         plans = [
-            step_plan(
-                p,
-                connection_id=self.conn,
-                db=self.db,
-                requested_by=s.login,
-                summary="Undo " + self.plan_id,
-                proofs=self.wiring.proofs,
+            dataclasses.replace(sp_, min_tier=max(UNDO_MIN_TIER, sp_.min_tier))
+            for sp_ in (
+                step_plan(
+                    p,
+                    connection_id=self.conn,
+                    db=self.db,
+                    requested_by=s.login,
+                    summary="Undo " + self.plan_id,
+                    proofs=self.wiring.proofs,
+                )
+                for p in walk.steps
             )
-            for p in walk.steps
         ]
         rows = [self.store.submit(p) for p in plans]
         return {"status": "requested", "walk": walk, "plans": plans, "rows": rows}
@@ -461,13 +465,16 @@ class SpineFlow(fl.OperatorFlow):
         s = self.wiring.authority.verify(session, HUMAN)
         if req.get("status") != "requested":
             raise SpineError("refused", "no undo was requested")
+        asked = {gd.norm(p.requested_by) for p in req.get("plans") or ()}
+        if not asked or gd.norm(s.login) in asked:  # whatever the step status
+            raise SpineError("forbidden", "the person who asked for the undo can't approve it")
         for r in req["rows"]:
             if r["status"] == "pending":
                 try:
                     self.store.approve(self.conn, r["id"], s.login)
                 except ap.ApprovalError as exc:
                     raise SpineError(exc.code, exc.message) from exc
-            elif r["status"] != "auto":
+            else:  # undo is never auto: an "auto" row means the floor was bypassed
                 raise SpineError("refused", f"undo step is {r['status']}")
         got = [self.store.approval_for(self.db, p.hash()) for p in req["plans"]]
         if not got or any(g.level < 1 for g in got):
@@ -490,6 +497,9 @@ def _check_bot_user(read: Any, bot: Session) -> None:
         raise SpineError("bot-identity", "the bot's Odoo user could not be read") from exc
     if len(rows) != 1 or gd.norm(rows[0].get("login")) != gd.norm(bot.login):
         raise SpineError("bot-identity", "the bot session is not this database's bot user")
+
+
+UNDO_MIN_TIER = 2
 
 
 # ------------------------------------------------------------------ T3 (module code)
