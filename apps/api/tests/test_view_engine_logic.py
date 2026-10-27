@@ -314,10 +314,10 @@ def test_prompts_are_spec_verbatim():
 
 
 def test_propose_edit_with_stub_provider(monkeypatch):
-    monkeypatch.setattr(vai, "_call", lambda *a, **k: {"ops": [{"op": "insert_field", "field": "x_fax", "target": "field:phone"}], "unclear": None})
+    monkeypatch.setattr(vai, "designer_json", lambda *a, **k: {"ops": [{"op": "insert_field", "field": "x_fax", "target": "field:phone"}], "unclear": None})
     with pytest.raises(ve.EngineError, match="doesn't exist here"):
         vai.propose_edit("add fax", TREE, FIELDS)
-    monkeypatch.setattr(vai, "_call", lambda *a, **k: {"ops": [{"op": "hide", "node": "field:phone"}], "unclear": None})
+    monkeypatch.setattr(vai, "designer_json", lambda *a, **k: {"ops": [{"op": "hide", "node": "field:phone"}], "unclear": None})
     assert vai.propose_edit("hide phone", TREE, FIELDS) == ([{"op": "hide", "node": "field:phone"}], None)
 
 

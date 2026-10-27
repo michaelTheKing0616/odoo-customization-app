@@ -39,10 +39,22 @@ def money_writes(code: str) -> list[str]:
     return sorted(set(out))
 
 
-def authorize(code: str, original: str, lint_fn: Any) -> dict[str, Any]:
-    """Code-side check of an AI proposal. Never runs it."""
+_UNKNOWN_STRUCTURE = re.compile(r"^(There is no model '|\S+ has no field ')")
+
+
+def authorize(code: str, original: str, lint_fn: Any, *, schema_known: bool = True) -> dict[str, Any]:
+    """Code-side check of an AI proposal. Never runs it.
+
+    A proposal that names a model or field the live schema does not have (and the
+    owner's code did not already name) is refused, so the model cannot introduce
+    Odoo structure. When the live schema could not be read, a changed script is
+    refused because that check cannot run.
+    """
     if not code.strip():
         return {"ok": True, "issues": [], "money": []}
+    if not schema_known and code != original:
+        return {"ok": False, "reason": "The database's models couldn't be read, so the suggestion can't be checked; nothing was changed.",
+                "issues": [], "money": []}
     try:
         ast.parse(code)
     except SyntaxError as exc:
@@ -52,7 +64,14 @@ def authorize(code: str, original: str, lint_fn: Any) -> dict[str, Any]:
         return {"ok": False, "reason": "The suggestion tried to use imports or files, which scripts can't do; nothing was changed.",
                 "issues": [], "money": []}
     new_money = sorted(set(money_writes(code)) - set(money_writes(original)))
-    return {"ok": True, "issues": lint_fn(code), "money": new_money}
+    issues = lint_fn(code)
+    before = {i.get("message") for i in lint_fn(original)} if original.strip() else set()
+    invented = [i for i in issues if i.get("severity") == "error" and _UNKNOWN_STRUCTURE.match(str(i.get("message") or ""))
+                and i.get("message") not in before]
+    if invented:
+        return {"ok": False, "reason": "The suggestion used a model or field this database doesn't have ("
+                + str(invented[0]["message"]) + "); nothing was changed.", "issues": issues, "money": []}
+    return {"ok": True, "issues": issues, "money": new_money}
 
 
 class ConsentRequired(Exception):
@@ -83,14 +102,14 @@ def _local_call(payload: dict[str, Any], step: str) -> dict[str, Any]:
 def propose(action: str, code: str, *, request: str, error: str, major: int, models_hint: list[str],
             mode: str = "local", consent: dict[str, Any] | None = None) -> dict[str, Any]:
     """Item 29: local model by default; the cloud model only with a recorded consent."""
-    from app.view_engine_ai import _call
+    from app.view_engine_ai import designer_json
 
     payload = {"action": action, "odoo_major": major, "script": code[:20000], "request": request[:2000],
                "error": error[:4000], "models_on_database": models_hint[:200]}
     if mode == "cloud":
         if not (consent or {}).get("by_at"):
             raise ConsentRequired("Sending code to the cloud assistant needs consent first.")
-        out = _call(SYSTEM, payload, SCHEMA, f"code_runner_{action}")
+        out = designer_json(SYSTEM, payload, SCHEMA, f"code_runner_{action}")
     else:
         out = _local_call(payload, f"code_runner_{action}_local")
     return {"code": str(out.get("code") or ""), "explanation": str(out.get("explanation") or "")[:1200]}

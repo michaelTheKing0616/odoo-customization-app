@@ -159,7 +159,7 @@ def propose(text: str, placements: list[dict[str, Any]], slots: list[dict[str, A
                "slots": [{"id": s["id"], "label": s.get("label") or s["id"]} for s in slots][:80],
                "placed": placements or [], "fields": vai.field_list(fields), "block_types": sorted(types),
                "block_shapes": {t: BLOCK_SHAPES[t] for t in sorted(types) if t in BLOCK_SHAPES}}
-    raw = vai._call(SYSTEM_PROMPT, payload, SCHEMA, "email_edit" if email else "report_edit")
+    raw = vai.designer_json(SYSTEM_PROMPT, payload, SCHEMA, "email_edit" if email else "report_edit")
     ops, unclear, choices = shape_ops(raw, slots, types)
     return {"ops": ops, "unclear": unclear, "choices": choices if not ops else [],
             "descriptions": [describe(o, slots, fields) for o in ops]}
