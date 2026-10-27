@@ -36,8 +36,17 @@ def _gen():
     return g
 
 
-def compare(caps: C.Caps, live_mods: set[str], live_fields: dict, skip: tuple[str, ...]) -> dict:
-    """Pure: diff a live read against one catalogue. Empty lists mean a match."""
+def compare(
+    caps: C.Caps,
+    live_mods: set[str],
+    live_fields: dict,
+    skip: tuple[str, ...],
+    installed: set[str] | None = None,
+) -> dict:
+    """Pure: diff a live read against one catalogue. Empty lists mean a match. The catalogue is
+    read with every module installed, so a type that a not-installed module overrides (e.g.
+    hr_presence turns res.users.log.create_uid into an integer) is reported separately as
+    install-dependent, not as a mismatch."""
     keep = {m for m in live_mods if not m.startswith(skip)}
     listed = {m for m in caps.listed if not m.startswith(skip)}
     out: dict = {
@@ -47,6 +56,7 @@ def compare(caps: C.Caps, live_mods: set[str], live_fields: dict, skip: tuple[st
         "fields_live_not_in_catalogue": [],
         "fields_type_mismatch": [],
     }
+    dep: list[str] = []
     for model, fields in sorted(live_fields.items()):
         cm = caps.models.get(model)
         if cm is None:
@@ -57,7 +67,11 @@ def compare(caps: C.Caps, live_mods: set[str], live_fields: dict, skip: tuple[st
             if row is None:
                 out["fields_live_not_in_catalogue"].append(f"{model}.{name}")
             elif (row[0], row[1]) != (ttype, rel):
-                out["fields_type_mismatch"].append(f"{model}.{name}")
+                if installed is not None and not set(row[3]) <= installed:
+                    dep.append(f"{model}.{name}")
+                else:
+                    out["fields_type_mismatch"].append(f"{model}.{name}")
+    out["_install_dependent"] = dep
     return out
 
 
@@ -81,7 +95,14 @@ def run(v: int, port_base: int) -> dict:
             "ir.model.fields", "search_read", [], fields=["model", "name", "ttype", "relation"]
         ):
             live.setdefault(f["model"], {})[f["name"]] = (f["ttype"], f["relation"] or "")
-        diff = compare(caps, live_mods, live, tuple(caps.data.get("skipped_prefixes", ())))
+        diff = compare(
+            caps,
+            live_mods,
+            live,
+            tuple(caps.data.get("skipped_prefixes", ())),
+            set(installed),
+        )
+        dep = diff.pop("_install_dependent")
         prov = vc.provenance(v) or {}
         verdicts = {
             "sample_installed_ok": vc.availability(v, "community", installed, "mrp.bom").status,
@@ -97,6 +118,7 @@ def run(v: int, port_base: int) -> dict:
             "live_fields": sum(len(x) for x in live.values()),
             "verdicts": verdicts,
             **{k: (len(x), x[:20]) for k, x in diff.items()},
+            "fields_type_install_dependent": (len(dep), dep[:20]),
         }
         res["ok"] = (
             res["image_matches_provenance"]
