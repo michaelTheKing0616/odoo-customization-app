@@ -350,6 +350,16 @@ def rereads(monkeypatch: pytest.MonkeyPatch, fake_odoo: BaseOnlyOdoo) -> list[di
     return seen
 
 
+
+def _stock_app(api: TestClient, session_id: str, body: dict):
+    """The dry-run ledger needs the same body with dry_run true before a live install."""
+    url = f"/api/ai/sessions/{session_id}/stock-app"
+    if body.get("decision") == "install":
+        rehearsal = api.post(url, json={**body, "dry_run": True})
+        assert rehearsal.status_code == 200, rehearsal.text
+        return api.post(url, json={**body, "dry_run": False})
+    return api.post(url, json=body)
+
 def _create(api: TestClient, connection_id: str) -> dict:
     res = api.post("/api/ai/sessions", json={"prompt": PROMPT, "connection_id": connection_id})
     assert res.status_code == 200, res.text
@@ -378,10 +388,7 @@ def test_user_is_never_asked_to_name_the_app(
     assert "host_choices" not in clar
     assert {o["id"] for o in clar["options"]} <= {"install", "decline"}
     assert "which app" not in clar["question"].lower()
-    res = api.post(
-        f"/api/ai/sessions/{out['id']}/stock-app",
-        json={"decision": "install", "module": "crm"},
-    )
+    res = _stock_app(api, out['id'], {"decision": "install", "module": "crm"})
     assert res.status_code == 200, res.text
     assert fake_odoo.state["sale"] == "installed"
     assert fake_odoo.state["crm"] == "uninstalled"
@@ -391,7 +398,7 @@ def test_approve_installs_sale_rereads_schema_and_continues_same_session(
     api: TestClient, connection_id: str, fake_odoo: BaseOnlyOdoo, rereads: list
 ) -> None:
     created = _create(api, connection_id)
-    res = api.post(f"/api/ai/sessions/{created['id']}/stock-app", json={"decision": "install"})
+    res = _stock_app(api, created['id'], {"decision": "install"})
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["id"] == created["id"]
@@ -413,7 +420,7 @@ def test_decline_stops_request_without_traceback(
     api: TestClient, connection_id: str, fake_odoo: BaseOnlyOdoo, rereads: list
 ) -> None:
     created = _create(api, connection_id)
-    res = api.post(f"/api/ai/sessions/{created['id']}/stock-app", json={"decision": "decline"})
+    res = _stock_app(api, created['id'], {"decision": "decline"})
     assert res.status_code == 200, res.text
     out = res.json()
     assert out["stopped"] is True
@@ -422,7 +429,7 @@ def test_decline_stops_request_without_traceback(
     assert out["message"] == "Stopped. Sales was not installed, so this request was not built."
     assert "Traceback" not in res.text
     assert "button_immediate_install" not in fake_odoo.methods_called()
-    again = api.post(f"/api/ai/sessions/{created['id']}/stock-app", json={"decision": "install"})
+    again = _stock_app(api, created['id'], {"decision": "install"})
     assert again.status_code == 409
     assert again.json()["detail"]["message"] == "No app install is waiting on this request."
 
@@ -432,7 +439,7 @@ def test_failed_install_is_one_sentence_and_keeps_the_offer(
 ) -> None:
     created = _create(api, connection_id)
     fake_odoo.fail_install = "Traceback (most recent call last):\n psycopg2.errors.LockNotAvailable"
-    res = api.post(f"/api/ai/sessions/{created['id']}/stock-app", json={"decision": "install"})
+    res = _stock_app(api, created['id'], {"decision": "install"})
     assert res.status_code == 502
     message = res.json()["detail"]["message"]
     assert message == "Sales could not be installed. Odoo did not finish the install."
