@@ -24,7 +24,7 @@ File allow-list:
 - apps/web/src/lib/nav.ts
 - apps/web/eslint.config.mjs
 - apps/web/src/lib/f1_responsive.test.ts (new)
-Goal: Make every AC below true for `F1-RESPONSIVE` and prove it with the Test plan; change nothing outside the allow-list.
+Goal: Make every AC below true for `F1-RESPONSIVE` and prove it with the Test plan; change nothing outside the allow-list. UIX-00 route scores are not this card. They stay on UI-AUDIT-ALL. This card is the 390 scroll pin and the mobile rebuild.
 Steps:
 1. Read the context pack only. List the behaviours under test, one per AC, with concrete input → expected output.
 2. Write the tests in the allow-list files. Each test must fail if the behaviour were removed: name in the Worker packet the product line whose deletion would make it fail.

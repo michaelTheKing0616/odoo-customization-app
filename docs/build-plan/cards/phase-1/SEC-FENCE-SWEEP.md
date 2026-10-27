@@ -3,12 +3,12 @@
 
 ID: SEC-FENCE-SWEEP
 Title: every new AI call site uses fence_fields(source=...) (BRD uploads; Bridge payloads; websit
-Status: todo
+Status: done
 Phase: 1
 Priority: P1
 Type: test
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: L (caps in budget.json). Stop at 80%.
-Ledger IDs: H-3.19-FENCE
+Ledger IDs: H-3.19-FENCE;H-3.19-FENCE-CALL;H-3.19-FENCE-JOB
 Depends on: none (phase order applies)
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L3 separate session · Score: 6 (C0 U1 F2 K1 V2 I0)
 Context pack:
@@ -41,3 +41,4 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+2026-10-25 closed. 4 passed, 2 xfailed in 35.70s. -p randomly 4 passed, 2 xfailed in 30.43s. H-3.19-FENCE stays Open. H-3.19-FENCE-CALL and H-3.19-FENCE-JOB stay Open. No website call site. Reviewer APPROVE. The existing API pytest job already runs this file.

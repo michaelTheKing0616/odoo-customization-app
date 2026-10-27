@@ -83,7 +83,7 @@ CLASS_PROFILE: Mapping[str, tuple[str, str, str]] = {
 }
 # Every class above R2 must carry an explicit human approval (or a forbid/refuse rule).
 _APPROVAL = re.compile(r"human-approve-L[123]|FORBIDDEN|REFUSE")
-_ID = re.compile(r"^([a-z]+):([A-Za-z0-9_. &(),/:-]+)$")
+_ID = re.compile(r"^([a-z]+):([A-Za-z0-9_. &(),/:{}-]+)$")  # {name}: runtime-templated record names
 _SAFE = re.compile(r"^[\x20-\x7e]*$")  # printable ASCII only: no NUL/CR/LF/tab/unicode tricks
 _FORMULA = ("=", "+", "-", "@")
 MAX_ROWS = 50_000

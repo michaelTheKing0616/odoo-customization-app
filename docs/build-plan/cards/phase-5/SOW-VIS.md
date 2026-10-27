@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/routers/job_autopilot.py
 - CP-BUILDER card
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/sow-plan.md
 File allow-list:

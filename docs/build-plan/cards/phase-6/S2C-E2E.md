@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/export_service.py
 - apps/api/app/module_inspect.py
 - apps/api/app/promote.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/06_TEST_STRATEGY.md (E2E layer)
 - docs/design/specs/studio-to-code.md
 File allow-list:

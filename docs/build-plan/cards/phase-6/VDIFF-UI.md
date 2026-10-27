@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/compat/odoo_versions.py
 - apps/api/app/migration_assist.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/version-diff.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:

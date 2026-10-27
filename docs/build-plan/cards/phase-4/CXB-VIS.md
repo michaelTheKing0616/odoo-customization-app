@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/bridge/connector.py
 - apps/api/app/bridge/spec_import.py
 - apps/api/app/bridge/delivery.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/connector-builder.md
 File allow-list:

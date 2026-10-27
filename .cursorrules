@@ -12,5 +12,6 @@ Read and follow these project files at the start of every session:
 Skills: `skills/model-routing.md`, `skills/team-brief-and-cards.md`,
 `skills/verifier-subagent.md`, `skills/vision-verify-ui.md`, `skills/failure-modes.md`,
 `skills/odoo-rpc-gate.md`, `skills/studio-parity.md`, `skills/advanced-actions.md`.
+UI cards (builder sessions only): `.cursor/skills/ingenium-ui-excellence/SKILL.md`, loaded before any UI work.
 
 Modern Cursor also loads `.cursor/rules/session-defaults.mdc` (alwaysApply).

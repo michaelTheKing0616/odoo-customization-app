@@ -48,6 +48,21 @@ describe("Expert copy (UI-S-25)", () => {
     expect(expertEmptyBody()).toMatch(/not Job Autopilot/);
     expect(expertOverviewBody()).toMatch(/never applies an app plan/);
     expect(EXPERT_HONESTY_LINE).toBe("A complete draft is not the same as certified, and neither means Autopilot-ready. Expert never publishes on its own.");
+    expect(expertHonestyLegend()).toContain(
+      "Completeness is hygiene on drafts, not a shippable score.",
+    );
+    const ownerCopy = [
+      EXPERT_HONESTY_LINE,
+      expertHeaderDescription("Lab 19"),
+      expertEmptyTitle(),
+      expertEmptyBody(),
+      expertOverviewBody(),
+      expertComposerPlaceholder(),
+      ...expertHonestyLegend(),
+      ...EXPERT_STARTER_PROMPTS.flatMap((prompt) => [prompt.label, prompt.question]),
+      ...FLAGS.flatMap((flag) => [formatExpertCautionFlag(flag) ?? "", expertCautionDescription(flag) ?? ""]),
+    ].join("\n");
+    expect(ownerCopy).not.toMatch(/ModuleSpec|Option A module|vertical pack|which domain/);
   });
 });
 

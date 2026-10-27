@@ -3,12 +3,12 @@
 
 ID: SEC-AUTH-ENUM
 Title: login/reset/MFA rate-limited; same response for unknown/known email
-Status: todo
+Status: done
 Phase: 1
 Priority: P1
 Type: test
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: L (caps in budget.json). Stop at 80%.
-Ledger IDs: SEC-6.1-AC3
+Ledger IDs: SEC-6.1-AC3;SEC-6.1-ENUM;SEC-6.1-RATELIMIT
 Depends on: none (phase order applies)
 Routing: Worker: L3 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L3 separate session · Score: 6 (C2 U1 F1 K1 V1 I0)
 Context pack:
@@ -42,3 +42,4 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+2026-10-25 closed. 2 passed, 15 xfailed in 14.67s. -p randomly 2 passed, 15 xfailed in 14.72s. SEC-6.1-AC3 stays Open. SEC-6.1-ENUM and SEC-6.1-RATELIMIT stay Open. Reviewer APPROVE. The existing API pytest job already runs this file.

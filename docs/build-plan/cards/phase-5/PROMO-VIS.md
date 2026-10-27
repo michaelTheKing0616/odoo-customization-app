@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/promote.py
 - apps/api/app/routers/environments.py
 - apps/api/app/changeset/executor.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/releases.md
 File allow-list:

@@ -581,7 +581,7 @@ def prove_option_a_in_sandbox(
             "draft": draft,
             "smoke": smoke,
             "prove_status": status,
-            "promote_eligible": False,
+            "promote_eligible": False, "install_ready": False,
         }
 
     tech = str(draft.get("technical_name") or "ext_option_a")
@@ -704,7 +704,7 @@ def prove_option_a_in_sandbox(
             },
             "message": result.message,
             "prove_status": status,
-            "promote_eligible": False,
+            "promote_eligible": False, "install_ready": False,
             "install_attempts": install_attempt,
             "repairs_used": repairs_used,
         }
@@ -738,7 +738,7 @@ def prove_option_a_in_sandbox(
             "draft": draft,
             "message": "Sandbox prove exhausted without a successful install",
             "prove_status": status,
-            "promote_eligible": False,
+            "promote_eligible": False, "install_ready": False,
         }
 
     # Install succeeded — evaluate acceptance smoke; auto-repair remaining budget.
@@ -844,7 +844,7 @@ def prove_option_a_in_sandbox(
                             f"{result.message}"
                         ),
                         "prove_status": status,
-                        "promote_eligible": False,
+                        "promote_eligible": False, "install_ready": False,
                     }
                 continue
             repair_meta = feedback_repair.get("repair") or {
@@ -881,7 +881,7 @@ def prove_option_a_in_sandbox(
             "go_live_ready": draft.get("_go_live_ready"),
             "message": str(smoke.get("message") or "Acceptance / custom code smoke failed"),
             "prove_status": status,
-            "promote_eligible": False,
+            "promote_eligible": False, "install_ready": False,
         }
         if feedback_repair:
             out_fail["feedback_repair"] = feedback_repair
@@ -921,6 +921,7 @@ def prove_option_a_in_sandbox(
         "go_live_ready": draft.get("_go_live_ready"),
         "prove_status": prove_status,
         "promote_eligible": prove_status == "proved",
+        "install_ready": prove_status == "proved",
         "install_attempts": install_attempt,
         "repairs_used": repairs_used,
         "run_tests": bool(run_tests),

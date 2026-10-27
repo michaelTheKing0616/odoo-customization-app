@@ -1,5 +1,6 @@
 "use client";
 
+import { BotAvatar, BotPresenceChip } from "@/components/avatars/BotAvatar";
 import { AfterMeetingPanel } from "@/components/live-demo/AfterMeetingPanel";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -55,6 +56,12 @@ function calloutVariant(
   if (severity === "danger") return "danger";
   if (severity === "warning") return "warning";
   return "info";
+}
+
+function liveDemoPresence(busy: boolean, needsHost: boolean): "working" | "waiting_user" | "idle" {
+  if (needsHost) return "waiting_user";
+  if (busy) return "working";
+  return "idle";
 }
 
 export default function LiveDemoCopilotPage() {
@@ -557,15 +564,19 @@ export default function LiveDemoCopilotPage() {
       ) : null}
 
       <section className="ldc-panel space-y-4" data-testid="live-demo-bot-panel">
-        <div>
-          <h2 className="ldc-panel-title">3. Bot control</h2>
-          <p className="ldc-panel-sub">
-            {PRIMARY_CTA} is the only teal primary. Launch stays blocked until consent is recorded.
-            Without Attendee keys, set{" "}
-            <code className="rounded bg-surface-muted px-1">ATTENDEE_ALLOW_MOCK=true</code> for UI
-            testing (disabled when{" "}
-            <code className="rounded bg-surface-muted px-1">APP_ENVIRONMENT=production</code>).
-          </p>
+        <div className="flex items-start gap-3">
+          <BotAvatar role="front_desk" state={liveDemoPresence(busy, Boolean(status?.needs_host_action))} size={48} />
+          <div>
+            <h2 className="ldc-panel-title">3. Bot control</h2>
+            <BotPresenceChip role="front_desk" state={liveDemoPresence(busy, Boolean(status?.needs_host_action))} />
+            <p className="ldc-panel-sub">
+              {PRIMARY_CTA} is the only teal primary. Launch stays blocked until consent is recorded.
+              Without Attendee keys, set{" "}
+              <code className="rounded bg-surface-muted px-1">ATTENDEE_ALLOW_MOCK=true</code> for UI
+              testing (disabled when{" "}
+              <code className="rounded bg-surface-muted px-1">APP_ENVIRONMENT=production</code>).
+            </p>
+          </div>
         </div>
 
         {session && status ? (

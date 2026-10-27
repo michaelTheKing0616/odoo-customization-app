@@ -120,7 +120,8 @@ def setting_values(params: dict[str, Any]) -> dict[str, Any]:
     """``res.config.settings`` create values for ``setting.set``.
 
     Inputs: op params with ``key`` (a settings field name) and ``value``.
-    Outputs: ``{key: value}``.
+    Outputs: ``{key: value}``. When ``xmlid`` is a non-empty string it is
+    copied through so the fake port files the row under that id.
     Side effects: none. Raises ``ValueError`` when the key is not a field
     name, the value is missing, or the value is not a scalar or ``None``.
     """
@@ -132,7 +133,11 @@ def setting_values(params: dict[str, Any]) -> dict[str, Any]:
     value = params.get("value")
     if value is not None and not isinstance(value, _SCALAR):
         raise ValueError("setting.set value must be a scalar")
-    return {key.strip(): value}
+    values: dict[str, Any] = {key.strip(): value}
+    xmlid = params.get("xmlid")
+    if isinstance(xmlid, str) and xmlid.strip():
+        values["xmlid"] = xmlid.strip()
+    return values
 
 
 def config_param_args(params: dict[str, Any]) -> list[str]:

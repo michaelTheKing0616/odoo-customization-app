@@ -3,7 +3,7 @@
 
 ID: SEC-CACHE-SECRETS
 Title: security items not covered elsewhere (rate limits per route; ASVS gaps; SBOM/licence; secr
-Status: todo
+Status: done
 Phase: 1
 Priority: P0
 Type: test
@@ -40,3 +40,5 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+
+2026-10-24 closed. 7 passed, 1 xfailed in 1.15s. -p randomly 7 passed, 1 xfailed in 0.80s. CACHE-H-EMAIL stays Open. CACHE-H stays Done-code. P2-6 and SEC-6.3-AC1 stay Open. Reviewer APPROVE.

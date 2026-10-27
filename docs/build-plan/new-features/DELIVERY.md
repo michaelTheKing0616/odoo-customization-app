@@ -30,9 +30,15 @@ New. It reuses the stock catalog (`ai_stock_catalog`), the live schema packet (G
    - It is idempotent on `(doc_sha256, catalog_version)`.
 6. **Data / API:**
    - Tables `fitgap_docs` and `fitgap_lines` (class, evidence JSON, effort_low/high hours, override, override_reason, quote).
-   - `POST /api/connections/{id}/fitgap {upload_id|text}` → job.
+   - `POST /api/connections/{id}/fitgap {upload_id|text}` → `FitGapDoc`. A run that finishes inside the request returns the document (FITGAP-01). There is no job type in this contract. If FITGAP-03 or FITGAP-04 shows a document over 400 lines cannot finish inside the request, that card amends this line with a defined job (id, status, progress, doc_id) before it builds. It does not invent the shape ad hoc.
    - `GET …/fitgap/{doc_id}` → `{lines[{id, quote, cls: standard|config|custom|impossible, evidence[], effort_h:[lo,hi], confidence, override?}]}`.
    - `PATCH …/fitgap/{doc_id}/lines/{lid} {cls, reason}`.
+   - Models. A contract test compares these field names and no others. Names below are the ones already used in this section and in the idempotency pair in §5.
+     - `FitGapDoc {id, doc_sha256, catalog_version, lines}`. `id` is the `doc_id` in the path. `lines` is `[FitGapLine]`.
+     - `FitGapLine {id, quote, cls, evidence, effort_h, confidence, override}`. `cls` is null until the line is classified, and otherwise one of `standard`, `config`, `custom`, `impossible`. A line §5 calls "not classified" keeps `cls` null. `evidence` is `[Evidence]`. `effort_h` is `[low, high]` in hours. `override` is `LineOverride` or null.
+     - `Evidence {module, model, field, setting, not_in_community}`. Each value is a string or null. `not_in_community` is the reason in "not in Community: <reason>".
+     - `LineOverride {cls, reason}`. This is the PATCH body. `reason` is the table's `override_reason`.
+     - The POST body is not one of these models. It is `{upload_id, text}` with one of the two set.
 7. **Risks:** the effort table needs real consultant data. Until then, effort is labelled "Example" (DEC-056).
 
 <a id="sow"></a>

@@ -16,12 +16,13 @@ Context pack:
 - docs/build-plan/new-features/UNDERSTAND.md §SCAN (sections 1–7)
 - docs/build-plan/new-features/00_BASELINE.md (B1–B5)
 - docs/build-plan/FACTS.md
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/scans.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:
 - apps/web/src/app/e2e/scans/page.tsx (new)
 - apps/web/src/components/scans/ (new)
-- apps/web/src/lib/api/scans.ts (new)
+- apps/web/src/lib/api/scans.ts
 Goal: Build FindingsList and ScanStatus components (harness page) to its spec on the existing tokens and components, wired to the contract's TS client.
 Steps:
 1. Build against the spec only. Tokens only, Base UI, Sonner, `motion/react` (transform/opacity, 100–250 ms, off under reduced motion).

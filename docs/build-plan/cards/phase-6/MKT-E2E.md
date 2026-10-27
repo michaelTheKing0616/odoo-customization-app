@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/config_recipes.py
 - apps/api/app/industry_seeds.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/06_TEST_STRATEGY.md (E2E layer)
 - docs/design/specs/templates.md
 File allow-list:

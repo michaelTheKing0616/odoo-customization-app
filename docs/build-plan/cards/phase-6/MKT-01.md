@@ -10,7 +10,7 @@ Type: build
 Owner: backend-safe
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: S (caps in budget.json). Stop at 80%.
 Ledger IDs: NF-EPIC-MKT;NF-MKT-01
-Depends on: FA-A28
+Depends on: SEC-GATE-SCOPE, FA-A28
 Routing: Worker: L2 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L2 separate session · Score: 3 (C1 U0 F1 K1 V0 I0)
 Context pack:
 - docs/build-plan/new-features/BUSINESS.md §MKT (sections 1–7)
@@ -22,9 +22,11 @@ Context pack:
 - apps/api/app/security/idor_registry.py
 File allow-list:
 - apps/api/app/marketplace/contract.py (new)
+- apps/api/app/marketplace/__init__.py (new)
 - apps/api/app/routers/templates.py (new)
 - apps/api/app/main.py
 - apps/api/app/security/idor_registry.py
+- apps/api/app/safety_registry.py
 - apps/web/src/lib/api/templates.ts (new)
 - apps/api/tests/test_nf_templates_contract.py (new)
 Goal: Fix the request/response contract of this epic before any engine exists, so engine, live and UI cards build against one shape.
@@ -38,8 +40,9 @@ Acceptance criteria:
 - AC1: Pydantic models in `apps/api/app/marketplace/contract.py` carry exactly the fields listed in the epic doc §6, or in `00_BASELINE.md` B5 for the shared scan types, for: Template, TemplateVersion, TemplateInstall (a test compares each model's field set to that list).
 - AC2: Routes exist: `GET /api/templates`; `POST /api/templates`; `POST /api/templates/{tid}/submit`; `POST /api/templates/{tid}/install`. Each returns the B5 error envelope on 403, 404 and 422.
 - AC3: Workspace B calling any route with workspace A's ids gets 404, and every route is listed in `app/security/idor_registry.py` (registry test).
-- AC4: `apps/web/src/lib/api/templates.ts` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` reports no error in this card's allow-list files (errors that already exist elsewhere, such as `b0_dist.test.ts`, are listed in the Tester packet, not fixed here).
-- AC5: Handlers call one injected engine function each; with a fake engine every route returns the documented shape; this card makes no Odoo call.
+- AC4: Every new POST/PUT/PATCH/DELETE route has an explicit `SafetySpec` in `app/safety_registry.py` that matches its real effect: no Odoo write means `odoo_mutation=False`; `bypass_writes_paused=True` only on routes that read Odoo and write nothing but Ingenium scan rows (a route that creates a plan draft follows `POST:/api/inbox/plans`). `tests/test_safety_route_registry.py` and this card's test pass in one run with `-p randomly` on.
+- AC5: `apps/web/src/lib/api/templates.ts` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` reports no error in this card's allow-list files (errors that already exist elsewhere, such as `b0_dist.test.ts`, are listed in the Tester packet, not fixed here).
+- AC6: Handlers call one injected engine function each; with a fake engine every route returns the documented shape; this card makes no Odoo call.
 Decision table:
 
 | Input / evidence | Expected |

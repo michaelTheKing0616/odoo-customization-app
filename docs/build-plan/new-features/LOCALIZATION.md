@@ -34,8 +34,12 @@ Baseline `00_BASELINE.md` applies. Decomposition of BOLD-B8 (compliance packs: N
    - The plan is idempotent by xmlid or name+amount.
    - Versions: 17–20 tax field differences go through compat.
 6. **Data / API:**
-   - `GET /api/connections/{id}/l10n-ng/detect`.
-   - `POST …/l10n-ng/plan` → plan id.
+   - `GET /api/connections/{id}/l10n-ng/detect` → `NgDetect`.
+   - `POST …/l10n-ng/plan` → `NgPlanResponse`. This POST has no request body.
+   - Models. A contract test compares these field names and no others. Pinned 2026-10-22.
+     - `NgDetect {country, l10n_ng_installed, l10n_ng_available, taxes}`. `country` is the company country code. `l10n_ng_installed` and `l10n_ng_available` are booleans. `taxes` is `[NgTax]`.
+     - `NgTax {id, name, amount, type_tax_use}`. These are the current taxes from setup step 1.
+     - `NgPlanResponse {plan_id}`.
    - `GET …/l10n-ng/einvoice-readiness` → `{items[Finding], sample_payload}`.
    - `POST …/l10n-ng/payroll-compute {upload_id|from_hr: bool, period}` → `{rows[{employee_ref, gross, paye, pension_employee, pension_employer}], rules_version}`.
    - `POST …/l10n-ng/bank/convert {upload_id, bank?}` → `{bank, rows[], csv_id, try_loading:{ok, messages[]}}`.

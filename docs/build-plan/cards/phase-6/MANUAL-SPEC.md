@@ -16,6 +16,7 @@ Context pack:
 - docs/build-plan/new-features/DELIVERY.md §MANUAL (sections 1–7)
 - docs/build-plan/new-features/00_BASELINE.md (B1–B5)
 - docs/build-plan/FACTS.md
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4–§6
 - docs/build-plan/UI_REFERENCE_MAP.md
 - docs/build-plan/REFERENCE_NOTES.md

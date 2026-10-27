@@ -1,6 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { BotAvatar as IngeniumBotAvatar } from "@/components/avatars/BotAvatar";
+import type { BotState as IngeniumBotState } from "@/lib/avatars/playback";
 import { KEYSTONE_ARCH, KEYSTONE_BADGES, KEYSTONE_GLYPHS, KEYSTONE_STONE, type KeystoneBot } from "@/components/ui/icons";
 import styles from "./BotAvatar.module.css";
 
@@ -28,7 +30,18 @@ export function canMove(from: BotState, to: BotState): boolean { return from ===
 
 const GLYPH = KEYSTONE_GLYPHS;
 
+const SUITE_PRESENCE: Record<BotState, IngeniumBotState> = {
+  idle: "idle",
+  thinking: "thinking",
+  working: "working",
+  done: "done",
+  needs_you: "waiting_user",
+};
+
 export function BotAvatar({ bot, state = "idle", size = 24, showState = true }: { bot: Bot; state?: BotState; size?: 16 | 20 | 24 | 32 | 48; showState?: boolean }) {
+  if (bot === "expert") {
+    return <IngeniumBotAvatar role="expert" state={SUITE_PRESENCE[state]} size={size} />;
+  }
   const label = `${BOT_NAMES[bot]}: ${STATE_WORDS[state]}`;
   const title = `${label}. ${BOT_SPECIALTY[bot]}.`;
   return (

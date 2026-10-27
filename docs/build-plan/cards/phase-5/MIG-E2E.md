@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/data_import.py
 - apps/api/app/suite_import.py
 - IMP-OPENING card
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/06_TEST_STRATEGY.md (E2E layer)
 - docs/design/specs/migration-studio.md
 File allow-list:

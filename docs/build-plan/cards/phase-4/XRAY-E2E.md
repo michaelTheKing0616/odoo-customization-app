@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/suite_insights.py
 - apps/api/app/module_inspect.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/06_TEST_STRATEGY.md (E2E layer)
 - docs/design/specs/xray.md
 File allow-list:

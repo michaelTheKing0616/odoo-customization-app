@@ -116,7 +116,7 @@ def ok(task: str, **kw: Any) -> cl.Decision:
 
 def test_catalogue_rows_complete_and_traceable() -> None:
     rows, controls, sha = cl.catalogue()
-    assert len(rows) == 11930 and set(controls) == set(ru.CLASSES)
+    assert len(rows) == 11937 and set(controls) == set(ru.CLASSES)
     assert {c for c, _ in rows.values()} == set(ru.CLASSES)
     if CSV.exists():
         assert hashlib.sha256(CSV.read_bytes()).hexdigest() == sha

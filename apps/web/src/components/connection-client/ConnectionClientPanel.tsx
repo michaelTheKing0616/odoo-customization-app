@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { BotAvatar, BotPresenceChip } from "@/components/avatars/BotAvatar";
 import { Button } from "@/components/ui/Button";
 import { Callout } from "@/components/ui/Callout";
 import { EmptyState } from "@/components/ui/layout-primitives";
 import { Badge } from "@/components/ui/Badge";
+import { BOT_ROLES, displayName, type BotState } from "@/lib/avatars/playback";
 import { ClientSectionCard } from "./ClientSectionCard";
 import { useConnectionClientSections } from "./useConnectionClientSections";
 
@@ -152,14 +154,33 @@ export function ConnectionClientPanel({ connectionId }: Props) {
 }
 
 function CardBotRosterPlaceholder() {
+  const presence: BotState[] = ["idle", "thinking", "waiting_approval", "blocked", "done"];
   return (
-    <Callout
-      variant="info"
-      title="Bot roster"
-      testId="connection-client-bot-roster"
-    >
-      Worker bot roster is not available yet for this connection. When Track 8 ships bot
-      management, assigned bots will list here — nothing is shown until that API exists.
-    </Callout>
+    <div className="space-y-3">
+      <Callout
+        variant="info"
+        title="Bot roster"
+        testId="connection-client-bot-roster"
+      >
+        Worker bot roster is not available yet for this connection. When Track 8 ships bot
+        management, assigned bots will list here — nothing is shown until that API exists.
+      </Callout>
+      <section className="space-y-3" aria-label="Example bot roster" data-testid="connection-client-bot-roster-example">
+        <p className="text-xs text-muted">Example</p>
+        <ul className="flex flex-wrap gap-3">
+          {BOT_ROLES.map((role) => (
+            <li key={role} className="flex w-28 flex-col items-center gap-1 text-center">
+              <BotAvatar role={role} state="idle" size={48} />
+              <span className="text-xs text-ink">{displayName(role)}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-wrap gap-2" aria-label="Example presence">
+          {presence.map((state) => (
+            <BotPresenceChip key={state} role="chief_of_staff" state={state} />
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }

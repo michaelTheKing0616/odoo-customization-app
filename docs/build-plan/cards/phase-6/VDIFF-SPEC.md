@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/compat/odoo_versions.py
 - apps/api/app/migration_assist.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4–§6
 - docs/build-plan/UI_REFERENCE_MAP.md
 - docs/build-plan/REFERENCE_NOTES.md

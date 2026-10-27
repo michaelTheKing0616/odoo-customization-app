@@ -17,6 +17,7 @@ Context pack:
 - docs/build-plan/new-features/00_BASELINE.md (B1–B5)
 - docs/build-plan/FACTS.md
 - apps/api/app/suite_insights.py (data_quality)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/data-health.md
 File allow-list:

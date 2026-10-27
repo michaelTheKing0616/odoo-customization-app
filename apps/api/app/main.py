@@ -10,13 +10,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.audit import AuditLogMiddleware
 from app.dry_run_middleware import DryRunHashMiddleware
-from app.auth import ensure_env_bootstrap_key
+from app.auth import assert_auth_mode_off_boot, ensure_env_bootstrap_key
 from app.db import SessionLocal, init_db
 from app.rate_limit import RateLimitMiddleware
 from app.request_id import RequestIdMiddleware
 from app.entitlements import require_feature
 from app.safety_dependency import enforce_safety_gate
-from app.workspace_auth import require_app_auth
+from app.workspace_auth import (
+    WorkspaceTenancyMiddleware,
+    install_workspace_query_scope,
+    require_app_auth,
+)
 from app.routers import (
     access,
     accounts,
@@ -106,7 +110,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     try:
+        assert_auth_mode_off_boot()
         init_db()
+        install_workspace_query_scope()
     except RuntimeError as exc:
         logger.error("%s", exc)
         raise
@@ -177,6 +183,7 @@ from app.ai_client.ai_scope import AIScopeMiddleware  # noqa: E402
 app.add_middleware(AIScopeMiddleware)
 app.add_middleware(DryRunHashMiddleware)
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(WorkspaceTenancyMiddleware)
 
 # All /api/* routers (except auth status/bootstrap which skip inside the dependency)
 _protected = [Depends(require_app_auth), Depends(enforce_safety_gate)]

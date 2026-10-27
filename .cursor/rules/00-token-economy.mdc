@@ -21,7 +21,7 @@ ALWAYS
 - When finished, say so in one line and stop.
 
 NEVER
-- Take screenshots, except at the UI checkpoints (baseline, after, final; one contact sheet per screen).
+- Take screenshots, except at the UI checkpoints (baseline, after, final; one contact sheet per screen) and, on ui-build cards, up to 6 look-compare-fix rounds per screen (each compared side by side with the screen's reference; Tope, 22 Oct).
 - Inspect unrelated files, restate the problem, or add unrequested features, docs, or refactors.
 - Spend tokens proving what one command proves.
 - Use a model tier above the card's routing without logged failure evidence (`05_MODEL_ROUTING.md`).

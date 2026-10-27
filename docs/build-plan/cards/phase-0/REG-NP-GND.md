@@ -2,7 +2,7 @@
 
 ID: REG-NP-GND
 Title: Live schema context packet
-Status: todo
+Status: done
 Phase: 0
 Priority: P2
 Type: regression

@@ -18,15 +18,16 @@ def contract(types: str, router: str, web: str, models: list[str], endpoints: li
              extra_acs: list[str] | None = None, deps: list[str] | None = None, sfx: str = "01") -> dict:
     return {
         "sfx": sfx, "kind": "contract", "type": "build", "owner": "backend-safe", "budget": "S",
-        "score": (1, 0, 1, 1, 0, 0), "deps": deps or [],
+        "score": (1, 0, 1, 1, 0, 0), "deps": ["SEC-GATE-SCOPE"] + (deps or []),
         "title": "API contract: types, router, error envelope, tenancy, TS mirror",
-        "allow": [types, router, "apps/api/app/main.py", "apps/api/app/security/idor_registry.py", web,
+        "allow": [types, types.rsplit("/", 1)[0] + "/__init__.py", router, "apps/api/app/main.py", "apps/api/app/security/idor_registry.py", "apps/api/app/safety_registry.py", web,
                   "{T}/test_nf_{py}_contract.py"],
         "goal": "Fix the request/response contract of this epic before any engine exists, so engine, live and UI cards build against one shape.",
         "acs": [
             f"Pydantic models in `{types}` carry exactly the fields listed in the epic doc §6, or in `00_BASELINE.md` B5 for the shared scan types, for: {', '.join(models)} (a test compares each model's field set to that list).",
             "Routes exist: " + "; ".join(f"`{e}`" for e in endpoints) + ". Each returns the B5 error envelope on 403, 404 and 422.",
             "Workspace B calling any route with workspace A's ids gets 404, and every route is listed in `app/security/idor_registry.py` (registry test).",
+            "Every new POST/PUT/PATCH/DELETE route has an explicit `SafetySpec` in `app/safety_registry.py` that matches its real effect: no Odoo write means `odoo_mutation=False`; `bypass_writes_paused=True` only on routes that read Odoo and write nothing but Ingenium scan rows (a route that creates a plan draft follows `POST:/api/inbox/plans`). `tests/test_safety_route_registry.py` and this card's test pass in one run with `-p randomly` on.",
             f"`{web}` mirrors the field names (a test compares `app.openapi()` component keys with a TS key fixture); `pnpm typecheck` reports no error in this card's allow-list files (errors that already exist elsewhere, such as `b0_dist.test.ts`, are listed in the Tester packet, not fixed here).",
             "Handlers call one injected engine function each; with a fake engine every route returns the documented shape; this card makes no Odoo call.",
         ] + (extra_acs or []),
@@ -141,7 +142,7 @@ def expand(epic: dict) -> list[dict]:
                    ("a raw colour value in the spec", "replace with a token name")],
          "tests": [(f"wc -l docs/design/specs/{slug}.md", "≤ 120"),
                    (f"rg -n '#[0-9a-fA-F]{{3,8}}\\b' docs/design/specs/{slug}.md", "no matches")],
-         "context": ["docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4–§6", "docs/build-plan/UI_REFERENCE_MAP.md", "docs/build-plan/REFERENCE_NOTES.md"]},
+         "context": ["`.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)", "docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4–§6", "docs/build-plan/UI_REFERENCE_MAP.md", "docs/build-plan/REFERENCE_NOTES.md"]},
         {"id": ui_id, "kind": "ui", "type": "ui-build", "owner": "UI", "budget": "M",
          "score": (1, 1, 1, 1, 1, 0), "deps": [spec_id, live_id, "F1-TOKENS", "F1-STATES"] + epic.get("ui_deps", []),
          "title": f"Build {epic['screen']}",
@@ -156,7 +157,7 @@ def expand(epic: dict) -> list[dict]:
                    ("API returns 403 `ROLE_DENIED`", "role message; no run button")],
          "tests": [(f"cd apps/web && pnpm vitest run src/components/{slug}", "all pass"),
                    ("cd apps/web && pnpm typecheck; pnpm lint", "no error in this card's allow-list files; baseline errors elsewhere listed, not fixed")],
-         "context": [f"docs/design/specs/{slug}.md", "apps/web/src/components/ui/ (existing components)"]},
+         "context": ["`.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)", f"docs/design/specs/{slug}.md", "apps/web/src/components/ui/ (existing components)"]},
         {"id": e2e_id, "kind": "e2e", "type": "test", "owner": "UI", "budget": "S",
          "score": (1, 0, 0, 1, 1, 0), "deps": [ui_id],
          "title": f"End-to-end and accessibility: {epic['screen']}",
@@ -170,7 +171,7 @@ def expand(epic: dict) -> list[dict]:
                    ("any axe serious/critical", "fail"),
                    ("partial fixture", "partial banner visible, counts labelled")],
          "tests": [(f"cd apps/web && INGENIUM_DIST_DIR=.next-build-{e2e_id.lower()} pnpm playwright test e2e/nf-{slug}.spec.ts", "all pass on port 3100")],
-         "context": ["docs/build-plan/06_TEST_STRATEGY.md (E2E layer)", f"docs/design/specs/{slug}.md"]},
+         "context": ["`.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)", "docs/build-plan/06_TEST_STRATEGY.md (E2E layer)", f"docs/design/specs/{slug}.md"]},
         {"id": vis_id, "kind": "vis", "type": "test", "owner": "UI", "budget": "XS",
          "score": (0, 0, 0, 1, 1, 0), "deps": [e2e_id],
          "title": f"Visual check and contact sheet: {epic['screen']}",
@@ -186,7 +187,7 @@ def expand(epic: dict) -> list[dict]:
                    ("contact sheet missing 390 dark", "fail")],
          "tests": [(f"cd apps/web && INGENIUM_DIST_DIR=.next-build-{vis_id.lower()} pnpm playwright test e2e/nf-{slug}.visual.spec.ts --repeat-each=3", "no diff"),
                    ("cd apps/web && pnpm vitest run src/lib/a11y/contrast.test.ts", "pass")],
-         "context": ["docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5", f"docs/design/specs/{slug}.md"]},
+         "context": ["`.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)", "docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5", f"docs/design/specs/{slug}.md"]},
     ]
     out = cards + ladder
     for c in out:
@@ -1160,7 +1161,7 @@ EPICS.append(dict(
 # ---------------------------------------------------------------- MIG
 EPICS.append(dict(
     code="MIG", slug="migration-studio", name="Data migration studio", group="INTEGRATE", phase=5, prio="P2", value=4, status="Partial",
-    one_line="source profiles (Excel, QuickBooks Online, Sage 50), header mapping, ordered dry runs, idempotent import to test copy, reconciliation",
+    one_line="source profiles (Excel, QuickBooks Online, Sage 50, Zoho Books), header mapping, ordered dry runs, idempotent import to test copy, reconciliation",
     why="Every new Odoo client migrates from something; reuses IMP-* and the money guard; needs real export samples (DEC-066).",
     screen="Import → Migration studio", primary="Run dry run", area="09 Records tables (Airtable) + 16 Charts",
     cmds=["New migration", "Run dry run"], pages=[f"{W}/import/migration/page.tsx"], web="apps/web/src/lib/api/migration.ts",
@@ -1171,7 +1172,7 @@ EPICS.append(dict(
                  ["MigrationJob", "EntityMapping", "DryRunResult", "ReconcileReport"],
                  ["POST /api/connections/{id}/migrations", "POST …/migrations/{mid}/files", "GET …/migrations/{mid}/mapping", "PUT …/migrations/{mid}/mapping", "POST …/migrations/{mid}/dry-run", "POST …/migrations/{mid}/import", "GET …/migrations/{mid}/reconcile"]),
         storage(["migration_jobs", "migration_profiles"], ["@01"]),
-        eng("03", "Source profiles (Excel generic, QuickBooks Online, Sage 50) with golden tests",
+        eng("03", "Source profiles (Excel generic, QuickBooks Online, Sage 50, Zoho Books) with golden tests",
             ["apps/api/app/migration_studio/profiles/", "{T}/test_nf_mig_profiles.py", "{T}/fixtures/mig/"],
             "Map each supported source export to Odoo entities with tested transforms.",
             ["Each profile maps source columns to partners, products, open invoices and opening balances; golden tests on the supplied samples show 0 unmapped required columns.",
@@ -1523,38 +1524,38 @@ UMBRELLAS = {
 }
 
 DEC_HEADER = "## New-features batch (DEC-050..074; proposals until Tope answers; source: new-features brief 22 Oct)"
-DEC_INTRO = "Each row blocks only the cards named. DEC-050 is the scope approval every NF card needs before its phase's G2 (INV-06). Design: `docs/build-plan/new-features/`. Index: `NEW_FEATURES_INDEX.md`."
+DEC_INTRO = "DEC-052..074 resolved 22 Oct (Tope: accept as recommended). Two changes from the written default: scan retention is set per workspace, default and maximum 90 days (DEC-052); Zoho Books is a first-wave migration source (DEC-066). Design: `docs/build-plan/new-features/`. Index: `NEW_FEATURES_INDEX.md`."
 DECS = [
     ("DEC-050", "Approve the 27 NF epics (the brief's 26 ideas + the SCAN foundation) as build scope (INV-06)", "**Resolved 22 Oct (Tope: 'approve all').** Approve all; they enter phases 4–6 per the index and are released per phase at G2", "all NF cards (at G2)"),
     ("DEC-051", "Phase placement", "**Resolved 22 Oct (Tope: 'approve').** Fold into phases 4, 5 and 6 per the index; no Phase 8", "phase_map NF prefixes"),
-    ("DEC-052", "What scans store and for how long", "Counts, record ids and masked samples only; no field values; 90-day retention", "SCAN-02, all scan epics"),
-    ("DEC-053", "Usage signal source", "Records created/changed and log-ins only; no click-tracking addon in client Odoo", "USAGE-*"),
-    ("DEC-054", "Upgrade rehearsal data source", "No customer DB clone (AGENTS). Fresh target sandboxes with customisation replay, or an owner-supplied upgraded Test copy. OpenUpgrade (AGPL-3.0) is not bundled or run", "UPG-*"),
-    ("DEC-055", "Studio-to-code production takeover", "Zip + sandbox proof only; production install is a human Option A promote with the field-takeover warning", "S2C-*"),
-    ("DEC-056", "Effort table and rate card", "Workspace sets rates; effort defaults are labelled \"Example\" until 10 real projects calibrate them", "FITGAP-06, SOW-03, UPG-05"),
-    ("DEC-057", "Manual media", "Text plus sandbox screenshots with Example data now; video later (Playwright + LGPL ffmpeg build only)", "MANUAL-05, BOLD-B7 video part"),
-    ("DEC-058", "UAT on Live connections", "Refused; Live gets read-only checks only", "UAT-04"),
-    ("DEC-059", "Undo scope for drift restore and cleanup", "Restore views, menus, actions, automations and access rules; fields and data are report-only", "DEBT-04, DRIFT-04"),
-    ("DEC-060", "Default SoD rule set", "Ship a starting set as data, labelled \"review with your auditor\"", "SOD-03"),
-    ("DEC-061", "Nigeria rules table source", "You supply an adviser-reviewed table (VAT, WHT, PAYE bands, pension) with effective dates and sources; until then values show as Example", "NG-04 (Gate A)"),
-    ("DEC-062", "E-invoicing scope", "Readiness checks and a sample payload export from the published spec you supply; no transmission; nothing written to posted invoices", "NG-06 (Gate A)"),
-    ("DEC-063", "Bank statement samples", "You supply ≥ 2 anonymised statements for each of 5 banks (default: Access, GTBank, Zenith, First Bank, UBA); Ingenium converts and dry-runs, the owner imports", "NG-08 (Gate A)"),
-    ("DEC-064", "PAYE and pension", "Compute-only report and export; no journal entries; Community has no payroll app [Inferred; NG-LIVE verifies]", "NG-07 (Gate A)"),
-    ("DEC-065", "Connector landing and targets", "Payment events land in the Bridge inbox or an x_ staging record for human reconciliation, never account.payment; Paystack and Flutterwave first; bank-feed aggregator chosen later", "CXB-04, CXB-05, CXB-07 (Gate A)"),
-    ("DEC-066", "Migration sources, samples, file retention", "Excel/CSV, QuickBooks Online and Sage 50 first; you supply sample exports; files kept 7 days", "MIG-03 (Gate A)"),
-    ("DEC-067", "In-Odoo assistant install path", "Addon via sandbox then human promote on Odoo.sh and on-prem; Online gets a link-out", "HOWDO-06, HOWDO-LIVE"),
-    ("DEC-068", "Who sees NL report results", "Runs as the connection user; client-mode users see only reports the consultant shared", "NLR-05"),
-    ("DEC-069", "Marketplace model", "Free; metadata plans only (no Python); private plus curated public; no revenue share", "MKT-*"),
-    ("DEC-070", "Client requests and Run", "Clients create requests and approve; they never trigger Run", "PORTAL-04, PORTAL-05"),
-    ("DEC-071", "Effort tracker writes", "No writes to any Odoo, including the agency's own; CSV/PDF export only", "EFFORT-04"),
-    ("DEC-072", "Process mining window", "180 days, tracked fields only, sampling above 200k events", "PMINE-02"),
-    ("DEC-073", "Performance probe budget", "≤ 60 calls per run, ≥ 250 ms apart, stop on 429/503", "PERF-02"),
-    ("DEC-074", "Who writes the labelled eval sets (fit-gap 120 lines, NL reports 50, how-do-I 60 per DB)", "A separate L3 Oracle drafts them from seeded DBs; you spot-check 10%; never from holdout_fresh", "FITGAP-07, NLR-06, HOWDO-07 (Gate A)"),
+    ("DEC-052", "What scans store and for how long", "**Resolved 22 Oct.** Counts, record ids and masked samples only; no field values. Each workspace sets retention; the default and the maximum are 90 days", "SCAN-02, all scan epics"),
+    ("DEC-053", "Usage signal source", "**Resolved 22 Oct.** Records created/changed and log-ins only; no click-tracking addon in client Odoo", "USAGE-*"),
+    ("DEC-054", "Upgrade rehearsal data source", "**Resolved 22 Oct.** No customer DB clone (AGENTS). Fresh target sandboxes with customisation replay, or an owner-supplied upgraded Test copy. OpenUpgrade (AGPL-3.0) is not bundled or run", "UPG-*"),
+    ("DEC-055", "Studio-to-code production takeover", "**Resolved 22 Oct.** Zip + sandbox proof only; production install is a human Option A promote with the field-takeover warning", "S2C-*"),
+    ("DEC-056", "Effort table and rate card", "**Resolved 22 Oct.** Workspace sets rates; effort defaults are labelled \"Example\" until 10 real projects calibrate them", "FITGAP-06, SOW-03, UPG-05"),
+    ("DEC-057", "Manual media", "**Resolved 22 Oct.** Text plus sandbox screenshots with Example data now; video later (Playwright + LGPL ffmpeg build only)", "MANUAL-05, BOLD-B7 video part"),
+    ("DEC-058", "UAT on Live connections", "**Resolved 22 Oct.** Refused; Live gets read-only checks only", "UAT-04"),
+    ("DEC-059", "Undo scope for drift restore and cleanup", "**Resolved 22 Oct.** Restore views, menus, actions, automations and access rules; fields and data are report-only", "DEBT-04, DRIFT-04"),
+    ("DEC-060", "Default SoD rule set", "**Resolved 22 Oct.** Ship a starting set as data, labelled \"review with your auditor\"", "SOD-03"),
+    ("DEC-061", "Nigeria rules table source", "**Resolved 22 Oct.** You supply an adviser-reviewed table (VAT, WHT, PAYE bands, pension) with effective dates and sources; until then values show as Example", "NG-04"),
+    ("DEC-062", "E-invoicing scope", "**Resolved 22 Oct.** Readiness checks and a sample payload export from the published spec you supply; no transmission; nothing written to posted invoices", "NG-06"),
+    ("DEC-063", "Bank statement samples", "**Resolved 22 Oct.** You supply ≥ 2 anonymised statements for each of 5 banks (default: Access, GTBank, Zenith, First Bank, UBA); Ingenium converts and dry-runs, the owner imports", "NG-08"),
+    ("DEC-064", "PAYE and pension", "**Resolved 22 Oct.** Compute-only report and export; no journal entries; Community has no payroll app [Inferred; NG-LIVE verifies]", "NG-07"),
+    ("DEC-065", "Connector landing and targets", "**Resolved 22 Oct.** Payment events land in the Bridge inbox or an x_ staging record for human reconciliation, never account.payment; Paystack and Flutterwave first; bank-feed aggregator chosen later", "CXB-04, CXB-05, CXB-07"),
+    ("DEC-066", "Migration sources, samples, file retention", "**Resolved 22 Oct.** Excel/CSV, QuickBooks Online, Sage 50 and Zoho Books first; you supply sample exports; files kept 7 days", "MIG-03"),
+    ("DEC-067", "In-Odoo assistant install path", "**Resolved 22 Oct.** Addon via sandbox then human promote on Odoo.sh and on-prem; Online gets a link-out", "HOWDO-06, HOWDO-LIVE"),
+    ("DEC-068", "Who sees NL report results", "**Resolved 22 Oct.** Runs as the connection user; client-mode users see only reports the consultant shared", "NLR-05"),
+    ("DEC-069", "Marketplace model", "**Resolved 22 Oct.** Free; metadata plans only (no Python); private plus curated public; no revenue share", "MKT-*"),
+    ("DEC-070", "Client requests and Run", "**Resolved 22 Oct.** Clients create requests and approve; they never trigger Run", "PORTAL-04, PORTAL-05"),
+    ("DEC-071", "Effort tracker writes", "**Resolved 22 Oct.** No writes to any Odoo, including the agency's own; CSV/PDF export only", "EFFORT-04"),
+    ("DEC-072", "Process mining window", "**Resolved 22 Oct.** 180 days, tracked fields only, sampling above 200k events", "PMINE-02"),
+    ("DEC-073", "Performance probe budget", "**Resolved 22 Oct.** ≤ 60 calls per run, ≥ 250 ms apart, stop on 429/503", "PERF-02"),
+    ("DEC-074", "Who writes the labelled eval sets (fit-gap 120 lines, NL reports 50, how-do-I 60 per DB)", "**Resolved 22 Oct.** A separate L3 Oracle drafts them from seeded DBs; you spot-check 10%; never from holdout_fresh", "FITGAP-07, NLR-06, HOWDO-07"),
 ]
 
 INDEX_HEAD = """# New features index (Tope's brief, 22 Oct)
 
-Status: **scope approved 22 Oct** (DEC-050, DEC-051). Backend-safe cards may start early in the NF worktree stream (`ORCHESTRATOR_PROMPT.md` § Parallel worktree); UI cards release with their phase at G2. DEC-052..074 stay open and block only the cards they name.
+Status: **scope approved 22 Oct** (DEC-050, DEC-051). DEC-052..074 accepted 22 Oct. Scan retention is per workspace, default and maximum 90 days (DEC-052). Migration sources add Zoho Books (DEC-066). Backend-safe cards may start early in the NF worktree stream (`ORCHESTRATOR_PROMPT.md` § Parallel worktree); UI cards release with their phase at G2.
 
 - Design per epic, sections 1–7 (user and job, UX, UI, security, robustness, data/API, risks/DEC): `docs/build-plan/new-features/<GROUP>.md`. Shared rules: `new-features/00_BASELINE.md`.
 - Cards: `cards/phase-<N>/<PREFIX>-*.md`, generated by `tools/build_nf.py` from `tools/nf_data.py` (marker line `NF:`; Prep edits that delete the marker are never overwritten).
@@ -1601,8 +1602,8 @@ INDEX_TAIL = [
     "| 5 Complete scope | USAGE, DEBT, FITGAP, SOW, UAT, GOLIVE, DRIFT, PROMO, SOD, PERF, NG, STAT, MIG, HOWDO, NLR, PORTAL, EFFORT | Next to Suite, Pipelines, Import, 5B-05 and client mode, which they extend; NG and STAT go first in the phase (P1) |",
     "| 6 Polish | UPG, VDIFF, S2C, MANUAL, PMINE, MKT | They close BOLD-B1/B2/B7 and FA-A28 (already Phase 6) and need the most sandbox capacity |",
     "",
-    "## Gate A cards (wait for a decision)", "",
-    "NG-04 (DEC-061), NG-06 (DEC-062), NG-07 (DEC-064), NG-08 (DEC-063), CXB-04/05/07 (DEC-065), MIG-03 (DEC-066), FITGAP-07, NLR-06, HOWDO-07 (DEC-074).",
+    "## Decisions answered 22 Oct", "",
+    "DEC-052..074 accepted. NG-04, NG-06, NG-07, NG-08, CXB-04/05/07, MIG-03, FITGAP-07, NLR-06 and HOWDO-07 are no longer Gate A. Samples and the adviser table are still supplied by Tope before those cards store real values (their ACs).",
     "",
     "## Risks across the set", "",
     "- Effort: 269 new cards is about a third more plan (847 before). Phase weights (`budget.json`) stay as they are until DEC-050; the Orchestrator re-weights at G2 per phase.",

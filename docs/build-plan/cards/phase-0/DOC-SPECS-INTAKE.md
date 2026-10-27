@@ -2,7 +2,7 @@
 
 ID: DOC-SPECS-INTAKE
 Title: copy SPEC.md + IDEA.md from box into docs/specs/
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: docs
@@ -19,7 +19,7 @@ File allow-list:
 - docs/
 Goal: Update the named documents so `DOC-SPECS-INTAKE`'s ACs are true; no product code.
 Steps:
-1. Read the context pack. Make only the documentation change the ACs ask for, in plain words (glossary).
+1. Read the context pack. Make only the documentation change the ACs ask for, in plain words (glossary). Decision 2026-10-23: handover §0.2 box paths `/workspace/ingenium_builders/` and `/home/box/design-repo` are not on this machine. The named copies are already in `docs/specs/` and are non-empty, and the AC5/AC6 absence files are absent. Prove that with `ls`. Do not fetch, rewrite, or empty those files. Do not edit `docs/build-plan/`, `apps/api/evals/v2/PROGRESS.md`, or anything outside `docs/specs/` and `docs/brand/`. `apps/web/public/brand/` is `ls` only. If a named copy is missing or empty, STOP.
 2. Check every path and command you cite exists: `ls <path>` / `rg -n <symbol>` → found.
 3. Run `python3 scripts/plan_lint.py all` if a plan file changed → 0 new errors.
 4. STOP-AND-ASK: a needed file is outside the allow-list; an AC is ambiguous or contradicts another; a live check would need a non-`ingenium_` DB, a forbidden port, a git write or a new dependency; an oracle test looks wrong.

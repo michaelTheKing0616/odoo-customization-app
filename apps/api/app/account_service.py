@@ -619,6 +619,12 @@ def resolve_session(db: Session, raw_token: str | None) -> SessionContext | None
 
 
 def revoke_session(db: Session, raw_token: str) -> None:
+    # A request that named another workspace's connection is a not-found probe.
+    # Logging the caller out would turn every later probe into 401.
+    from app.workspace_auth import cross_tenant_request_masked
+
+    if cross_tenant_request_masked():
+        return
     digest = hash_token(raw_token)
     row = db.query(UserSession).filter(UserSession.token_hash == digest).first()
     if row and row.revoked_at is None:
@@ -628,6 +634,10 @@ def revoke_session(db: Session, raw_token: str) -> None:
 
 
 def revoke_all_sessions(db: Session, user_id: str) -> None:
+    from app.workspace_auth import cross_tenant_request_masked
+
+    if cross_tenant_request_masked():
+        return
     rows = (
         db.query(UserSession)
         .filter(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))

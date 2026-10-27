@@ -45,6 +45,7 @@ Decision:
 | xfail missing strict, a reason, a P-item, or Tope's yes | fail |
 
 STOP-AND-ASK (as well as Steps): `cd apps/api && uv run pytest -q -k understand --tb=no` does not show exactly five failures, or a failing node id lives in a file outside the allow-list.
+2026-10-24 discovery from `apps/api`: `1 failed, 51 passed, 6483 deselected, 15 warnings in 4.83s`. The only failure is `tests/test_brief_understanding_class.py::test_compound_vehicle_type_dropped_without_cue`, outside this allow-list. Tope accepted the default: do not invent five node ids, do not xfail that test here. It belongs to REG-NP-T1c. `P0-2-CL7` stays Open. `P0-2-AC1` stays Open. No file written. Card stays stopped.
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_b0_testfix_understand.py` → all pass
 - live: L2-HARNESS runner `--card B0-TESTFIX-UNDERSTAND --matrix 17,18,19,20` on disposable `ingenium_*` DBs → pass per major (Phase 2 on)

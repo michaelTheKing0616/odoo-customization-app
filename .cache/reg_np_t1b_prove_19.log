@@ -1,0 +1,55 @@
+REG-NP-T1b option_a_authored prove odoo_major=19 run_tests=True project=ingenium_sandbox_v19 port=18119
+started=2026-10-22T19:26:57.463690+00:00 finished=2026-10-22T19:27:33.287343+00:00
+install_ready='ABSENT' prove_status='proved' ok=True tests_ran=True promote_eligible=True
+message=Sandbox (Odoo 19) installed option_a_prove_note successfully (preloaded base) + tests
+test_failures=[]
+out_keys=['certification', 'certified_artifacts', 'draft', 'failures', 'go_live_ready', 'install_attempts', 'ok', 'promote_eligible', 'prove_status', 'repairs_used', 'run_tests', 'sandbox', 'score_0_10', 'smoke', 'zip_bytes']
+
+--- sandbox log_tail ---
+extracted option_a_prove_note into /Users/temitopeolaitanmichael/Odoo_Customization_App/docker/ingenium-sandbox-addons/v19 (target major=19, image=odoo:19)
+
+
+http ready
+db initialized (major=19)
+extra modules requested=['base']; newly_installed=none (already present)
+installed option_a_prove_note
+after_install hook ok
+2026-10-22 19:27:29,645 44 WARNING ? odoo.tools.config: missing --http-interface/http_interface, using 0.0.0.0 by default, will change to 127.0.0.1 in 20.0 
+2026-10-22 19:27:29,645 44 INFO ? odoo: Odoo version 19.0-20260723 
+2026-10-22 19:27:29,645 44 INFO ? odoo: Using configuration file at /etc/odoo/odoo.conf 
+2026-10-22 19:27:29,645 44 INFO ? odoo: addons paths: _NamespacePath(['/usr/lib/python3/dist-packages/odoo/addons', '/var/lib/odoo/addons/19.0', '/mnt/extra-addons', '/usr/lib/python3/dist-packages/addons']) 
+2026-10-22 19:27:29,645 44 INFO ? odoo: database: odoo@db:default 
+2026-10-22 19:27:29,914 44 INFO ? odoo.service.server: HTTP service (werkzeug) running on 348e0afd01ed:8070 
+2026-10-22 19:27:29,951 44 INFO ingenium_sandbox_test odoo.tests.common: Importing test framework 
+2026-10-22 19:27:29,970 44 INFO ingenium_sandbox_test odoo.modules.loading: loading 1 modules... 
+2026-10-22 19:27:29,973 44 INFO ingenium_sandbox_test odoo.modules.loading: 1 modules loaded in 0.00s, 0 queries (+0 extra) 
+2026-10-22 19:27:29,986 44 INFO ingenium_sandbox_test odoo.modules.loading: updating modules list 
+2026-10-22 19:27:29,987 44 INFO ingenium_sandbox_test odoo.addons.base.models.ir_module: ALLOW access to module.update_list on [] to user __system__ #1 via n/a 
+2026-10-22 19:27:30,470 44 INFO ingenium_sandbox_test odoo.addons.base.models.ir_module: ALLOW access to module.button_upgrade on ['Option A Prove Note'] to user __system__ #1 via n/a 
+2026-10-22 19:27:30,471 44 INFO ingenium_sandbox_test odoo.addons.base.models.ir_module: ALLOW access to module.update_list on ['Option A Prove Note'] to user __system__ #1 via n/a 
+2026-10-22 19:27:30,953 44 INFO ingenium_sandbox_test odoo.addons.base.models.ir_module: ALLOW access to module.button_install on [] to user __system__ #1 via n/a 
+2026-10-22 19:27:30,964 44 INFO ingenium_sandbox_test odoo.modules.loading: loading 15 modules... 
+2026-10-22 19:27:30,964 44 INFO ingenium_sandbox_test odoo.modules.loading: Loading module option_a_prove_note (2/15) 
+2026-10-22 19:27:30,969 44 INFO ingenium_sandbox_test odoo.registry: module option_a_prove_note: creating or updating database tables 
+<string>:17: (WARNING/2) Line block ends without a blank line.
+<string>:25: (WARNING/2) Line block ends without a blank line.
+<string>:17: (ERROR/3) Undefined substitution referenced: "------".
+<string>:25: (ERROR/3) Undefined substitution referenced: "------".
+2026-10-22 19:27:30,996 44 INFO ingenium_sandbox_test odoo.modules.loading: loading option_a_prove_note/security/ir.model.access.csv 
+2026-10-22 19:27:31,000 44 INFO ingenium_sandbox_test odoo.modules.loading: loading option_a_prove_note/views/menus.xml 
+2026-10-22 19:27:31,025 44 INFO ingenium_sandbox_test odoo.modules.loading: Module option_a_prove_note loaded in 0.06s, 65 queries (+65 other) 
+2026-10-22 19:27:31,141 44 INFO ingenium_sandbox_test odoo.modules.loading: 15 modules loaded in 0.18s, 65 queries (+65 extra) 
+2026-10-22 19:27:31,187 44 INFO ingenium_sandbox_test odoo.registry: verifying fields for every extended model 
+2026-10-22 19:27:31,236 44 INFO ingenium_sandbox_test odoo.modules.loading: Modules loaded. 
+2026-10-22 19:27:31,238 44 INFO ingenium_sandbox_test odoo.registry: Registry changed, signaling through the database 
+2026-10-22 19:27:31,239 44 INFO ingenium_sandbox_test odoo.registry: Registry loaded in 1.324s 
+2026-10-22 19:27:31,239 44 INFO ingenium_sandbox_test odoo.service.server: Starting post tests 
+2026-10-22 19:27:31,240 44 INFO ingenium_sandbox_test odoo.addons.option_a_prove_note.tests.test_prove_note: Starting TestProveNote.test_note_create_and_mark_seen ... 
+2026-10-22 19:27:31,242 44 INFO ingenium_sandbox_test odoo.addons.base.models.ir_attachment: filestore gc 11 checked, 0 removed 
+2026-10-22 19:27:31,243 44 INFO ingenium_sandbox_test odoo.service.server: 1 post-tests in 0.00s, 8 queries 
+2026-10-22 19:27:31,243 44 INFO ingenium_sandbox_test odoo.tests.stats: option_a_prove_note: 3 tests 0.00s 8 queries 
+2026-10-22 19:27:31,243 44 INFO ingenium_sandbox_test odoo.tests.result: 0 failed, 0 error(s) of 1 tests when loading database 'ingenium_sandbox_test' 
+2026-10-22 19:27:31,243 44 INFO ingenium_sandbox_test odoo.service.server: Initiating shutdown 
+2026-10-22 19:27:31,243 44 INFO ingenium_sandbox_test odoo.service.server: Hit CTRL-C again or send a second signal to force the shutdown. 
+2026-10-22 19:27:31,422 44 INFO ingenium_sandbox_test odoo.sql_db: ConnectionPool(read/write;used=0/count=0/max=64): Closed 1 connections
+test-enable ok for option_a_prove_note

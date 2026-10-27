@@ -17,6 +17,7 @@ Context pack:
 - docs/build-plan/new-features/00_BASELINE.md (B1–B5)
 - docs/build-plan/FACTS.md
 - apps/api/app/suite_insights.py (role_xray, access_hygiene)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/access-audit.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:

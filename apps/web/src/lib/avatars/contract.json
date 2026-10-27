@@ -1,0 +1,757 @@
+{
+ "format": "glTF 2.0 binary, Y-up, metres, PBR metallic-roughness",
+ "displayNamePattern": "Ingenium Bot · {role}",
+ "rig": "armature 'Rig' bones root/body/head/armL/armR/eyeL/eyeR/prop/crown/crown_key",
+ "avatars": {
+  "access": {
+   "display": "Ingenium Bot · Access",
+   "file": "ingenium_access.glb",
+   "bytes": 633040,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#8DBF32",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "auditor": {
+   "display": "Ingenium Bot · Auditor",
+   "file": "ingenium_auditor.glb",
+   "bytes": 649488,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#2E9E55",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "chief_of_staff": {
+   "display": "Ingenium Bot · Chief of Staff",
+   "file": "ingenium_chief_of_staff.glb",
+   "bytes": 685132,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#D9A441",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "configurator": {
+   "display": "Ingenium Bot · Configurator",
+   "file": "ingenium_configurator.glb",
+   "bytes": 779492,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#2F9E96",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "consultant": {
+   "display": "Ingenium Bot · Consultant",
+   "file": "ingenium_consultant.glb",
+   "bytes": 602396,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#3E3F9E",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "data": {
+   "display": "Ingenium Bot · Data",
+   "file": "ingenium_data.glb",
+   "bytes": 675608,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#3D6FB6",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "doctor": {
+   "display": "Ingenium Bot · Doctor",
+   "file": "ingenium_doctor.glb",
+   "bytes": 748408,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#E8738F",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "expert": {
+   "display": "Ingenium Bot · AI Expert",
+   "file": "ingenium_expert.glb",
+   "bytes": 1051164,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "listening",
+    "speaking",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [
+    "mouthOpen"
+   ],
+   "accent": "#7A4FD0",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "listening",
+    "speaking",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ],
+   "mouthOpen": "morph target on mesh 'Mouth', weight 0..1, drive from TTS amplitude at runtime"
+  },
+  "front_desk": {
+   "display": "Ingenium Bot · Front Desk",
+   "file": "ingenium_front_desk.glb",
+   "bytes": 756736,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#3DB8E0",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "ops": {
+   "display": "Ingenium Bot · Ops",
+   "file": "ingenium_ops.glb",
+   "bytes": 634564,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#F2CE1B",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "release": {
+   "display": "Ingenium Bot · Release",
+   "file": "ingenium_release.glb",
+   "bytes": 591244,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#E0702A",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "scribe": {
+   "display": "Ingenium Bot · Scribe",
+   "file": "ingenium_scribe.glb",
+   "bytes": 616636,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#8C6A4F",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  },
+  "specialist": {
+   "display": "Ingenium Bot · Domain Specialist",
+   "file": "ingenium_specialist.glb",
+   "bytes": 767484,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#B08CE0",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ],
+   "swappable": {
+    "material": "accent (baseColorFactor)",
+    "emblemNodes": [
+     "Badge",
+     "BadgeArch",
+     "BadgeArchKey"
+    ]
+   }
+  },
+  "studio": {
+   "display": "Ingenium Bot · Studio",
+   "file": "ingenium_studio.glb",
+   "bytes": 659632,
+   "clips": [
+    "acknowledged",
+    "applying",
+    "blocked",
+    "done",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "morphTargets": [],
+   "accent": "#C2479A",
+   "loop": [
+    "applying",
+    "blocked",
+    "idle",
+    "thinking",
+    "verifying",
+    "waiting_approval",
+    "waiting_user",
+    "working"
+   ],
+   "once": [
+    "acknowledged",
+    "done"
+   ]
+  }
+ },
+ "avatars_detail": {
+  "access": {
+   "file": "glb/ingenium_access.glb",
+   "bytes": 621200,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/access.webp"
+  },
+  "auditor": {
+   "file": "glb/ingenium_auditor.glb",
+   "bytes": 649436,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/auditor.webp"
+  },
+  "chief_of_staff": {
+   "file": "glb/ingenium_chief_of_staff.glb",
+   "bytes": 673284,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/chief_of_staff.webp"
+  },
+  "configurator": {
+   "file": "glb/ingenium_configurator.glb",
+   "bytes": 785336,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/configurator.webp"
+  },
+  "consultant": {
+   "file": "glb/ingenium_consultant.glb",
+   "bytes": 608248,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/consultant.webp"
+  },
+  "data": {
+   "file": "glb/ingenium_data.glb",
+   "bytes": 669664,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/data.webp"
+  },
+  "doctor": {
+   "file": "glb/ingenium_doctor.glb",
+   "bytes": 771940,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/doctor.webp"
+  },
+  "expert": {
+   "file": "glb/ingenium_expert.glb",
+   "bytes": 1051100,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done",
+    "listening",
+    "speaking"
+   ],
+   "morphs": {
+    "Sphere.008": [
+     "browUp",
+     "browDown"
+    ],
+    "Sphere.009": [
+     "blink"
+    ],
+    "Sphere.018": [
+     "mouthOpen",
+     "smile"
+    ]
+   },
+   "turntable": "turntables/expert.webp"
+  },
+  "front_desk": {
+   "file": "glb/ingenium_front_desk.glb",
+   "bytes": 756688,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/front_desk.webp"
+  },
+  "ops": {
+   "file": "glb/ingenium_ops.glb",
+   "bytes": 628616,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/ops.webp"
+  },
+  "release": {
+   "file": "glb/ingenium_release.glb",
+   "bytes": 585304,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/release.webp"
+  },
+  "scribe": {
+   "file": "glb/ingenium_scribe.glb",
+   "bytes": 616584,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/scribe.webp"
+  },
+  "specialist": {
+   "file": "glb/ingenium_specialist.glb",
+   "bytes": 773336,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/specialist.webp"
+  },
+  "studio": {
+   "file": "glb/ingenium_studio.glb",
+   "bytes": 665480,
+   "clips": [
+    "idle",
+    "acknowledged",
+    "thinking",
+    "working",
+    "waiting_user",
+    "waiting_approval",
+    "blocked",
+    "applying",
+    "verifying",
+    "done"
+   ],
+   "morphs": {},
+   "turntable": "turntables/studio.webp"
+  }
+ },
+ "version": "2.1",
+ "max_glb_bytes": 1051100,
+ "silhouette_48_min": 0.241,
+ "threejs_test": "threejs_test.json (three r169 headless Chrome: all clips animate, expert morphs settable)",
+ "keystone": "#CF4527"
+}

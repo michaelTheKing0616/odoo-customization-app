@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/expert/ask.py
 - apps/api/app/expert/live_schema_ask.py
 - packages/odoo-expert-bridge/README.md
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/how-do-i.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:

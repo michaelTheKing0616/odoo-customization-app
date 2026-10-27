@@ -1,0 +1,46 @@
+{
+  "_label": "Example data for the UI trial only. Not from any database. Every screen that shows it must say \"Example\".",
+  "run": {"id": "run_example_01", "status": "partial", "started_at": "2026-10-22T09:12:04Z", "finished_at": "2026-10-22T09:19:41Z", "odoo_version": "19.0", "areas_done": 8, "areas_total": 9, "skipped_area": "integrations", "skipped_reason": "The Odoo user cannot read outgoing mail servers."},
+  "summary": {"apps_installed": 41, "custom_objects": 186, "users": 73, "companies": 2},
+  "apps": [
+    {"name": "Sales", "tech_name": "sale", "origin": "stock", "author": "Odoo S.A."},
+    {"name": "Invoicing", "tech_name": "account", "origin": "stock", "author": "Odoo S.A."},
+    {"name": "Inventory", "tech_name": "stock", "origin": "stock", "author": "Odoo S.A."},
+    {"name": "Purchase", "tech_name": "purchase", "origin": "stock", "author": "Odoo S.A."},
+    {"name": "Fleet Fuel Log", "tech_name": "x_fleet_fuel", "origin": "custom", "author": "In-house"},
+    {"name": "Nigeria VAT Reports", "tech_name": "l10n_ng_vat_reports", "origin": "third_party", "author": "as declared by the module: Example Partner Ltd"},
+    {"name": "WhatsApp Connector", "tech_name": "wa_connector", "origin": "third_party", "author": "as declared by the module: Example Apps"}
+  ],
+  "models": [
+    {"model": "res.partner", "count": 18342, "custom": false},
+    {"model": "sale.order", "count": 9120, "custom": false},
+    {"model": "account.move", "count": 27755, "custom": false},
+    {"model": "stock.picking", "count": 11408, "custom": false},
+    {"model": "x_fleet_fuel_log", "count": 2210, "custom": true},
+    {"model": "x_site_visit", "count": 0, "custom": true}
+  ],
+  "customisations": [
+    {"kind": "field", "tech_name": "x_studio_region", "app": "Sales", "created": "2024-03-11", "changed": "2026-09-30", "by_ingenium": false},
+    {"kind": "field", "tech_name": "x_credit_hold", "app": "Invoicing", "created": "2025-01-20", "changed": "2025-01-20", "by_ingenium": true},
+    {"kind": "view", "tech_name": "sale.order.form.region", "app": "Sales", "created": "2024-03-11", "changed": "2026-09-30", "by_ingenium": false},
+    {"kind": "automation", "tech_name": "Notify manager on large quote", "app": "Sales", "created": "2025-06-02", "changed": "2026-02-14", "by_ingenium": true},
+    {"kind": "server_action", "tech_name": "Recompute fuel cost", "app": "Fleet Fuel Log", "created": "2024-08-19", "changed": "2024-08-19", "by_ingenium": false},
+    {"kind": "report", "tech_name": "Delivery slip with site map", "app": "Inventory", "created": "2023-11-05", "changed": "2025-10-01", "by_ingenium": false},
+    {"kind": "menu", "tech_name": "Fleet Fuel Log / Logs", "app": "Fleet Fuel Log", "created": "2024-08-19", "changed": "2024-08-19", "by_ingenium": false}
+  ],
+  "people": {"by_group": [
+    {"group": "Sales / Administrator", "users": 4},
+    {"group": "Sales / User: Own Documents Only", "users": 31},
+    {"group": "Invoicing / Billing", "users": 9},
+    {"group": "Inventory / User", "users": 22},
+    {"group": "Settings (full access)", "users": 7}
+  ]},
+  "integrations": [],
+  "risks": [
+    {"severity": "high", "title": "7 people have full Settings access", "plain_why": "Anyone with Settings access can change every app. Most teams need 2 or 3.", "count": 7, "links_to": "access"},
+    {"severity": "high", "title": "Server action edits fuel costs with no log", "plain_why": "\"Recompute fuel cost\" changes amounts and leaves no history.", "count": 1, "links_to": "debt"},
+    {"severity": "medium", "title": "1,904 contacts have no email or phone", "plain_why": "Invoices and reminders cannot reach them.", "count": 1904, "links_to": "data_health"},
+    {"severity": "medium", "title": "Custom model with no records", "plain_why": "\"x_site_visit\" was created and never used.", "count": 1, "links_to": "debt"},
+    {"severity": "low", "title": "Two modules declare third-party authors", "plain_why": "Check who maintains them before an upgrade.", "count": 2, "links_to": "upgrade"}
+  ]
+}

@@ -6,7 +6,7 @@ from typing import Any
 
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -40,6 +40,10 @@ from app.write_mode_service import normalize_write_mode
 from app.tier_matrix import invalidate_matrix_cache
 
 router = APIRouter(prefix="/connections", tags=["connections"])
+
+# Same bounds as apps/web/src/lib/connectScreen.ts (GET /api/connections).
+CONNECTIONS_PAGE_DEFAULT = 50
+CONNECTIONS_PAGE_MAX = 200
 
 
 def _store_protected_manifest(row: OdooConnection, manifest: dict) -> None:
@@ -84,13 +88,60 @@ def _connection_out(row: OdooConnection) -> ConnectionOut:
     )
 
 
+def _like_contains(column: Any, term: str) -> Any:
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return column.ilike(f"%{escaped}%", escape="\\")
+
+
+def _filtered_connection_query(
+    db: Session,
+    auth: WorkspaceAuth,
+    q: str | None,
+    group: str | None,
+):
+    """Search and group run before the page, on the workspace-scoped query."""
+    query = scoped_connection_query(db, auth)
+    label = (group or "").strip()
+    if label:
+        query = query.filter(OdooConnection.group_label == label)
+    term = (q or "").strip()
+    if term:
+        query = query.filter(
+            _like_contains(OdooConnection.name, term)
+            | _like_contains(OdooConnection.url, term)
+            | _like_contains(OdooConnection.db_name, term)
+            | _like_contains(OdooConnection.group_label, term)
+        )
+    return query
+
+
 @router.get("", response_model=list[ConnectionOut])
 def list_connections(
+    response: Response,
     db: Session = Depends(get_db),
     auth: WorkspaceAuth = Depends(get_workspace_auth),
+    limit: int = Query(CONNECTIONS_PAGE_DEFAULT, ge=1, le=CONNECTIONS_PAGE_MAX),
+    offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=200),
+    group: str | None = Query(None, max_length=80),
 ) -> list[ConnectionOut]:
-    rows = scoped_connection_query(db, auth).order_by(OdooConnection.created_at.desc()).all()
-    return [_connection_out(r) for r in rows]
+    """Newest page of saved connections. Default 50, max 200. Search and group run first."""
+    # count() must not reuse the paged query: SQLAlchemy's count can wrap it.
+    total = _filtered_connection_query(db, auth, q, group).count()
+    rows = (
+        _filtered_connection_query(db, auth, q, group)
+        .order_by(OdooConnection.created_at.desc(), OdooConnection.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Limit"] = str(limit)
+    response.headers["X-Offset"] = str(offset)
+    next_offset = offset + len(rows)
+    if next_offset < total:
+        response.headers["X-Next-Offset"] = str(next_offset)
+    return [_connection_out(row) for row in rows]
 
 
 @router.get("/resolve/by-instance", response_model=ConnectionResolveOut)

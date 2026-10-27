@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/production_readiness.py
 - apps/api/app/suite_insights.py (numbering_check)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/go-live.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:

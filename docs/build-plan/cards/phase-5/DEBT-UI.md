@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/suite_upkeep.py
 - apps/api/app/suite_insights.py (automation_catalogue)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/tech-debt.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:

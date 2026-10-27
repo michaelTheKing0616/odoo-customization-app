@@ -34,3 +34,4 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+Harness card: `F1-VISUAL-HARNESS` (build, blocked, not started). Tope, 25 Oct. `UI-5.14-AC` stays Open.

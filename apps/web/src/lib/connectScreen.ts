@@ -239,3 +239,187 @@ export function connectErrorGuide(
 export function hasEmOrEnDash(text: string): boolean {
   return /[\u2014\u2013]/.test(text);
 }
+
+/** Saved-connection paging. Mirrors GET /api/connections (default 50, max 200). */
+export const CONNECTIONS_PAGE_DEFAULT = 50;
+export const CONNECTIONS_PAGE_MAX = 200;
+/** h-11. Virtuoso needs the same row height in pixels. */
+export const SAVED_CONNECTION_ROW_PX = 44;
+/** Extra rows Virtuoso may mount on each side of the viewport. */
+export const SAVED_CONNECTION_OVERSCAN_MAX = 2;
+export const SAVED_CONNECTIONS_VIEWPORT_PX = 440;
+
+const LIMIT_DETAIL = "limit must be from 1 to 200";
+const OFFSET_DETAIL = "offset must be a non-negative integer";
+const SEARCH_DETAIL = "search must be at most 200 characters";
+const GROUP_DETAIL = "group must be at most 80 characters";
+const OVERSCAN_DETAIL = "overscan must be an integer from 0 to 2";
+const VIEWPORT_DETAIL = "viewport and row height must be positive";
+
+export type SavedConnectionRow = {
+  id: string;
+  name: string;
+  url: string;
+  db_name: string;
+  group_label: string | null;
+};
+
+export type ConnectionsPageQuery = {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  group?: string;
+};
+
+export type ConnectionsPageError = {
+  ok: false;
+  status: 422;
+  detail: string;
+};
+
+export type ConnectionsQueryPlan = {
+  ok: true;
+  limit: number;
+  offset: number;
+  search: string;
+  group: string;
+  path: string;
+};
+
+export type ConnectionsPage<T> = {
+  ok: true;
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  nextOffset: number | null;
+  path: string;
+};
+
+type ResolvedPaging = {
+  limit: number;
+  offset: number;
+  search: string;
+  group: string;
+};
+
+function resolvePaging(query: ConnectionsPageQuery): ResolvedPaging | ConnectionsPageError {
+  const limit = query.limit === undefined ? CONNECTIONS_PAGE_DEFAULT : query.limit;
+  const offset = query.offset === undefined ? 0 : query.offset;
+  if (!Number.isInteger(limit) || limit < 1 || limit > CONNECTIONS_PAGE_MAX) {
+    return { ok: false, status: 422, detail: LIMIT_DETAIL };
+  }
+  if (!Number.isInteger(offset) || offset < 0) {
+    return { ok: false, status: 422, detail: OFFSET_DETAIL };
+  }
+  const search = (query.search ?? "").trim();
+  const group = (query.group ?? "").trim();
+  if (search.length > 200) {
+    return { ok: false, status: 422, detail: SEARCH_DETAIL };
+  }
+  if (group.length > 80) {
+    return { ok: false, status: 422, detail: GROUP_DETAIL };
+  }
+  return { limit, offset, search, group };
+}
+
+function connectionsListPath(paging: ResolvedPaging): string {
+  const params = new URLSearchParams();
+  params.set("limit", String(paging.limit));
+  params.set("offset", String(paging.offset));
+  if (paging.search) params.set("q", paging.search);
+  if (paging.group) params.set("group", paging.group);
+  return `/api/connections?${params.toString()}`;
+}
+
+function toConnectionsQueryPlan(
+  query: ConnectionsPageQuery,
+): ConnectionsQueryPlan | ConnectionsPageError {
+  const paging = resolvePaging(query);
+  if ("status" in paging) return paging;
+  return { ok: true, ...paging, path: connectionsListPath(paging) };
+}
+
+function matchesGroup(row: SavedConnectionRow, group: string): boolean {
+  if (!group) return true;
+  return row.group_label === group;
+}
+
+function matchesSearch(row: SavedConnectionRow, search: string): boolean {
+  if (!search) return true;
+  const needle = search.toLowerCase();
+  const fields = [row.name, row.url, row.db_name, row.group_label ?? ""];
+  return fields.some((field) => field.toLowerCase().includes(needle));
+}
+
+export function applyConnectionsQuery<T extends SavedConnectionRow>(
+  rows: readonly T[],
+  query: ConnectionsPageQuery = {},
+): ConnectionsPage<T> | ConnectionsPageError {
+  const plan = toConnectionsQueryPlan(query);
+  if (!plan.ok) return plan;
+  const filtered = rows.filter(
+    (row) => matchesGroup(row, plan.group) && matchesSearch(row, plan.search),
+  );
+  const items = filtered.slice(plan.offset, plan.offset + plan.limit);
+  const next = plan.offset + items.length;
+  return {
+    ok: true,
+    items,
+    total: filtered.length,
+    limit: plan.limit,
+    offset: plan.offset,
+    nextOffset: next < filtered.length ? next : null,
+    path: plan.path,
+  };
+}
+
+/**
+ * A new search or group starts at the first page. Keeping the old offset
+ * can land past the new matches and look like a frozen empty list.
+ */
+export function nextSavedConnectionsQuery(
+  current: ConnectionsPageQuery,
+  change: ConnectionsPageQuery,
+): ConnectionsQueryPlan | ConnectionsPageError {
+  const filterChanged = change.search !== undefined || change.group !== undefined;
+  return toConnectionsQueryPlan({
+    limit: change.limit !== undefined ? change.limit : current.limit,
+    offset: change.offset !== undefined ? change.offset : filterChanged ? 0 : current.offset,
+    search: change.search !== undefined ? change.search : current.search,
+    group: change.group !== undefined ? change.group : current.group,
+  });
+}
+
+export function clampSavedListOverscan(
+  requested: number,
+): { ok: true; overscan: number } | ConnectionsPageError {
+  if (!Number.isInteger(requested) || requested < 0 || requested > SAVED_CONNECTION_OVERSCAN_MAX) {
+    return { ok: false, status: 422, detail: OVERSCAN_DETAIL };
+  }
+  return { ok: true, overscan: requested };
+}
+
+export function savedConnectionMountCap(
+  viewportHeight: number,
+  rowPx: number,
+  overscanItems: number,
+): { ok: true; mountAtMost: number } | ConnectionsPageError {
+  if (!(viewportHeight > 0) || !(rowPx > 0)) {
+    return { ok: false, status: 422, detail: VIEWPORT_DETAIL };
+  }
+  const overscan = clampSavedListOverscan(overscanItems);
+  if (!overscan.ok) return overscan;
+  const visible = Math.ceil(viewportHeight / rowPx);
+  // Numeric Virtuoso overscan is applied on both sides of the viewport.
+  return { ok: true, mountAtMost: visible + overscan.overscan * 2 };
+}
+
+export function savedConnectionsViewportPx(viewportHeight: number): number {
+  const cap = savedConnectionMountCap(
+    viewportHeight,
+    SAVED_CONNECTION_ROW_PX,
+    SAVED_CONNECTION_OVERSCAN_MAX,
+  );
+  return cap.ok ? viewportHeight : SAVED_CONNECTIONS_VIEWPORT_PX;
+}

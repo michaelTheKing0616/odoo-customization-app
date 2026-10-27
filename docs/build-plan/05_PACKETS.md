@@ -7,6 +7,8 @@ Each role receives **the card + the previous packet**, never the previous sessio
 ```
 DISPATCH <card-id> · role: Oracle|Worker|Tester|Reviewer · tier: L1|L2|L3|E1 · loop: n/2
 card: docs/build-plan/cards/phase-N/<ID>.md
+context: .cursor/skills/ingenium-ui-excellence/SKILL.md   (UI sessions only: first item; load the main-tree file in full before any work)
+floor: docs/design/UI_DIRECTION.md · docs/design/bar/xray-floor.png   (ui-spec and ui-build: read both; the floor is the minimum; beat it)
 locks: <file set from the card's allow-list>   (STATE.md lock table row id)
 budget: <class> · this role cap <tokens> · stop at 80%
 input packet: <previous packet, pasted below, or "none">
@@ -33,6 +35,7 @@ commands for Tester:
   <exact command 1>  → expect <result>
   <exact command 2>  → expect <result>
 ACs self-check: AC1 ✓ · AC2 ✓ · AC3 ? (<why>)
+ui: §1 Step 7 of .cursor/skills/ingenium-ui-excellence/SKILL.md, every line filled, or n/a
 risks: <≤ 2 lines>
 oracles edited: no
 ```
@@ -69,7 +72,7 @@ REVIEW <card-id> · CHANGES
 REVIEW <card-id> · ESCALATE · <reason: e.g. oracle contradicts AC2; needs E1 fix note>
 ```
 
-The Reviewer checks: every AC has evidence; no scope creep or file outside the allow-list; INV-01..18; write-gate / money-guard / auth impact; tests would fail if the feature were broken; UI checklist (`07_UI_EXCELLENCE_PROTOCOL.md` §6) for UI cards; token-charter compliance.
+The Reviewer checks: every AC has evidence; no scope creep or file outside the allow-list; INV-01..18; write-gate / money-guard / auth impact; tests would fail if the feature were broken; UI checklist (`07_UI_EXCELLENCE_PROTOCOL.md` §6) for UI cards; token-charter compliance. For ui-spec and ui-build, the Reviewer also puts the contact sheet beside `docs/design/bar/xray-floor.png` and rates states, density and hierarchy, dark mode, 390 px, and copy each as at, above, or below the floor. Any "below" is CHANGES. Patterns come from `docs/design/UI_DIRECTION.md`. The main stream aims to beat the floor.
 
 ## Close-out (Orchestrator, T0 script where possible), ≤ 6 lines
 

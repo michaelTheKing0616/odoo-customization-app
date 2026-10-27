@@ -3,7 +3,7 @@
 
 ID: SEC-TENANCY-OBJ
 Title: object-level checks: connections plans approvals History bots flows files
-Status: todo
+Status: done
 Phase: 1
 Priority: P0
 Type: test
@@ -42,3 +42,5 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+
+2026-10-24 closed. 2 passed, 2 xfailed in 17.53s. -p randomly 2 passed, 2 xfailed in 10.50s. SEC-6.2-AC2 stays Open. SEC-6.2-OBJ-APPROVAL and SEC-6.2-OBJ-FLOW stay Open. Reviewer APPROVE. The existing API pytest job already runs this file.

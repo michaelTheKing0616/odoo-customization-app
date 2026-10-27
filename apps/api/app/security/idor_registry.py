@@ -112,3 +112,53 @@ def missing_registered_routes(
     return [
         (m, p) for m, p in routes if m.lower() not in (openapi_paths.get(p) or {})
     ]
+
+
+# Today's cross-tenant gaps (hand filters in routers, nullable workspace ids,
+# and connection-scoped tables with no workspace id). The sweep fails if this
+# set and the live set diverge. Shrink it only when a gap is actually gone.
+CROSS_TENANT_GAP_BASELINE: tuple[str, ...] = (
+    "hand:routers/accounts.py:accept_invite_route",
+    "hand:routers/accounts.py:list_connection_grants",
+    "hand:routers/admin.py:grant_plan",
+    "hand:routers/admin.py:list_workspaces",
+    "hand:routers/admin.py:set_beta_partner",
+    "hand:routers/admin.py:set_writes_paused",
+    "hand:routers/bot_verify.py:set_walk_approval",
+    "hand:routers/bridge.py:_ws_connection_ids",
+    "hand:routers/script_runner.py:list_saved_scripts",
+    "missing-workspace-id:ai_draft_cache",
+    "missing-workspace-id:ai_sessions",
+    "missing-workspace-id:approval_entries",
+    "missing-workspace-id:approval_rules",
+    "missing-workspace-id:background_jobs",
+    "missing-workspace-id:bulk_runs",
+    "missing-workspace-id:connection_mutation_hourly",
+    "missing-workspace-id:connection_production_readiness",
+    "missing-workspace-id:dry_run_receipts",
+    "missing-workspace-id:env_pipelines",
+    "missing-workspace-id:health_check_runs",
+    "missing-workspace-id:ingest_jobs",
+    "missing-workspace-id:integration_events",
+    "missing-workspace-id:metadata_snapshots",
+    "missing-workspace-id:pipeline_hops",
+    "missing-workspace-id:plan_cards",
+    "missing-workspace-id:promoted_modules",
+    "missing-workspace-id:sandbox_validations",
+    "missing-workspace-id:verify_artifacts",
+    "missing-workspace-id:verify_audit",
+    "missing-workspace-id:verify_walk_approvals",
+    "missing-workspace-id:view_builder_items",
+    "missing-workspace-id:view_comments",
+    "missing-workspace-id:view_layer_versions",
+    "nullable-workspace-id:customization_projects",
+    "nullable-workspace-id:live_demo_answers",
+    "nullable-workspace-id:live_demo_consent_audit",
+    "nullable-workspace-id:live_demo_copilot_sessions",
+    "nullable-workspace-id:live_demo_transcript_lines",
+    "nullable-workspace-id:odoo_connections",
+    "nullable-workspace-id:script_runs",
+    "nullable-workspace-id:trust_anomaly_events",
+    "nullable-workspace-id:user_sessions",
+    "nullable-workspace-id:verify_runs",
+)

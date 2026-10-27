@@ -79,7 +79,7 @@ export function Ask() {
           <span className={styles.muted}>For example: confirm all the sent quotations, or set payment terms to 30 Days on quotations</span>
           <input id="suite-ask" value={text} onChange={(e) => setText(e.target.value)} style={{ inlineSize: "100%" }} data-testid="suite-ask-input" />
         </label>
-        <BotAvatar bot="expert" size={32} state={askState(busy === "ask", error, answer, steps.length > 0)} />
+        <BotAvatar bot="expert" size={48} state={askState(busy === "ask", error, answer, steps.length > 0)} />
         {busy === "ask" ? (
           <>
             <Button type="submit" variant="secondary" data-testid="suite-ask-redirect">Change course</Button>

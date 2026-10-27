@@ -202,6 +202,21 @@ def _ollama_local_model(requested: str | None = None) -> str:
     return "qwen3:8b"
 
 
+def _ollama_configured_tag(*, reasoning: bool) -> str | None:
+    """Ollama tag from settings, ignoring the active cloud provider.
+
+    ``resolve_bulk_model`` drops an Ollama-shaped tag when the assist mode is
+    Gemini or another cloud provider. This client is Ollama, so that tag is
+    the model the call should send. A cloud model name returns None and the
+    caller falls back to the local Ollama tag.
+    """
+    raw = settings.ai_model_reasoning if reasoning else settings.ai_model_bulk
+    text = (raw or "").strip()
+    if text and _looks_like_ollama_model(text):
+        return text
+    return None
+
+
 _FAMILY_PREFIXES: dict[str, tuple[str, ...]] = {
     "openai": ("gpt-", "o1", "o3", "o4", "chatgpt-"),
     "anthropic": ("claude-",),
@@ -592,9 +607,7 @@ class OllamaProvider(LLMProvider):
         model: str | None = None,
         num_predict: int | None = None,
     ) -> str:
-        chosen = _ollama_local_model(
-            model or (resolve_reasoning_model() if reasoning else resolve_bulk_model())
-        )
+        chosen = _ollama_local_model(model or _ollama_configured_tag(reasoning=reasoning))
         caps = probe_ollama_capabilities(base_url=self.base_url, model=chosen)
         use_think = resolve_thinking_enabled(
             reasoning=reasoning,
@@ -666,7 +679,7 @@ class OllamaProvider(LLMProvider):
         temperature: float | None = None,
         model: str | None = None,
     ) -> str:
-        chosen = _ollama_local_model(model or resolve_bulk_model())
+        chosen = _ollama_local_model(model or _ollama_configured_tag(reasoning=False))
         url = f"{self.base_url}/api/generate"
         full = f"{system}\n\n{prompt}" if system else prompt
         temp = 0.2 if temperature is None else temperature

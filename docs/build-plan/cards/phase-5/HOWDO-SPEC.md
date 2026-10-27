@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/expert/ask.py
 - apps/api/app/expert/live_schema_ask.py
 - packages/odoo-expert-bridge/README.md
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4–§6
 - docs/build-plan/UI_REFERENCE_MAP.md
 - docs/build-plan/REFERENCE_NOTES.md

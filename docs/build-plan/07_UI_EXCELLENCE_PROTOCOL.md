@@ -39,6 +39,8 @@ Tokens with paired `on-*` tokens (contrast enforced by data, Tope's rule: light-
 
 ## §4 Per-screen process (`ui-spec` card precedes each `ui-build` card)
 
+Every session on a UI card loads `.cursor/skills/ingenium-ui-excellence/SKILL.md` first (Tope, 22 Oct). Where the skill is stricter than this section, the skill wins.
+
 1. **Spec** (L3 for P1-10 flagship screens, else L2) writes `docs/design/specs/<screen>.md`, ≤ 120 lines:
    - job of the screen and the one primary action;
    - the two references: paste only their `REFERENCE_NOTES.md` entries, plus 3–5 patterns adopted from `MANIFEST.md` / `MOTION_NOTES.md` for this area (layout, density, type scale, hover/focus, transitions) and what is deliberately different;
@@ -47,8 +49,10 @@ Tokens with paired `on-*` tokens (contrast enforced by data, Tope's rule: light-
    - keyboard map; a11y notes; responsive plan (390/768/1024/1440/1920); density (Comfortable/Compact); dark parity.
 2. **Build** (L2; L3 for canvas/editor engines) against the spec only.
 3. **T0 checks before any model looks:** contrast + Tope's rule, axe, hydration, perf, jargon/term guard, reduced motion, CLS, visual diff.
-4. **Screenshot checkpoints (the only allowed ones):** baseline, after, final. Light and dark at 1440×900 and 390×844, assembled into **one contact sheet per screen** in `docs/vision-verify/<screen>/`.
+4. **Screenshot checkpoints (contact sheet):** baseline, after, final. Light and dark at 1440×900 and 390×844, assembled into **one contact sheet per screen** in `docs/vision-verify/<screen>/`.
+   4a. **Iteration rounds (ui-build only; Tope, 22 Oct):** between after and final, up to **6 look-compare-fix rounds** per screen. Each round: screenshot the screen (any of the four size/theme combinations), put it next to the reference, list the gaps, fix them. The Worker packet lists the rounds used and the gaps closed per round. Round screenshots stay out of the contact sheet and the repo (scratch folder, deleted on close). A 7th round is a stop-and-report.
 5. **Side-by-side:** the Worker packet states which reference patterns were matched and what was done differently, and why.
+   5a. **Floor (DEC-075):** the contact sheet is also put next to `docs/design/bar/xray-floor.png`. States, density and hierarchy, dark mode, 390 px and copy are each rated at, above or below the floor. Any "below" is CHANGES. Patterns come from `docs/design/UI_DIRECTION.md`.
 6. **Reviewer** checks §6 against the contact sheet and spec.
 7. **GATE-B:** Tope reviews the contact sheet before the card closes.
 

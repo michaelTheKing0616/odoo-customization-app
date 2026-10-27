@@ -1624,12 +1624,9 @@ def _llm_enrich(
         )
         llm_ast = expert_gate_llm_ast(det_ast, llm_ast)
         if llm_ast is not None:
-            try:
-                from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
+            from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
 
-                llm_ast = scrub_uncued_invent_from_llm_ast(llm_ast, prompt=prompt)
-            except Exception:  # noqa: BLE001
-                pass
+            llm_ast = scrub_uncued_invent_from_llm_ast(llm_ast, prompt=prompt)
             if packet is not None:
                 kept = []
                 design_names = _design_allow(det)
@@ -1647,14 +1644,13 @@ def _llm_enrich(
                 if llm_ast.host and not admit_host_from_packet(str(llm_ast.host), packet):
                     llm_ast.host = None
             llm_constraints = _dedupe(ast_to_must_do(llm_ast) + llm_constraints)
-            try:
-                from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+            from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
 
-                llm_constraints = scrub_uncued_invent_must_do_rows(
-                    llm_constraints, prompt=prompt
-                )
-            except Exception:  # noqa: BLE001
-                pass
+            llm_constraints = scrub_uncued_invent_must_do_rows(
+                llm_constraints, prompt=prompt
+            )
+    except AssertionError:
+        raise
     except Exception:  # noqa: BLE001
         pass
 
@@ -1703,23 +1699,19 @@ def _llm_enrich(
                     parse_llm(repaired),
                 )
                 if repair_ast is not None:
-                    try:
-                        from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
+                    from app.ai_brief_cues import scrub_uncued_invent_from_llm_ast
 
-                        repair_ast = scrub_uncued_invent_from_llm_ast(
-                            repair_ast, prompt=prompt
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
+                    repair_ast = scrub_uncued_invent_from_llm_ast(
+                        repair_ast, prompt=prompt
+                    )
                     repair_rows = _dedupe(ast_to_must_do(repair_ast) + repair_rows)
-                    try:
-                        from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
+                    from app.ai_brief_cues import scrub_uncued_invent_must_do_rows
 
-                        repair_rows = scrub_uncued_invent_must_do_rows(
-                            repair_rows, prompt=prompt
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
+                    repair_rows = scrub_uncued_invent_must_do_rows(
+                        repair_rows, prompt=prompt
+                    )
+            except AssertionError:
+                raise
             except Exception:  # noqa: BLE001
                 pass
             if repair_rows:

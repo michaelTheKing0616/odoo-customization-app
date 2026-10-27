@@ -36,7 +36,7 @@ Acceptance criteria:
 - AC5: Free-text fields (function, comment, description and other Text/Html fields) are masked in samples and evidence; grep over the evidence bundle finds no seeded PII string.
 - AC6: One change-set per op family applied and read back on each of 17–20: pass on the good set, fail on its seeded-defect twin ([Done, live]).
 Test plan:
-- pytest -q -m live tests/test_nf_bot_verify_live.py → pass on 17–20 (live env); offline run → all skipped with reason
+- pytest -q -m odoo_live tests/test_nf_bot_verify_live.py → pass on 17–20 (live env); offline run → all skipped with reason
 Focused set: own test + tests/test_nf_bot_verify_collector.py, tests/test_verify.py, tests/test_safety_route_registry.py, tests/test_protected_registry.py, tests/test_trust7_idor.py, tests/test_trust7_credentials.py, tests/test_trust7_app_db_restore.py.
 Combined set (both orders): own test + tests/test_sec_gate_scope.py + tests/test_reg_np_dev.py + earlier NF contract tests (test_nf_*_contract.py). Random-order AC deferred until the main stream installs pytest-randomly.
 Gate: none. Narrowest named test green → Tester PASS (separate session; runs the oracle tests unmodified) → Reviewer PASS (separate session; INV-01..18, the allow-list and the ACs line by line).

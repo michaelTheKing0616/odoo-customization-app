@@ -21,7 +21,7 @@
 - If a task is finished, say so in one line and stop.
 
 ## NEVER
-- Take screenshots, except at the UI checkpoints in `07_UI_EXCELLENCE_PROTOCOL.md` (baseline, after, final; one contact sheet per screen).
+- Take screenshots, except at the UI checkpoints in `07_UI_EXCELLENCE_PROTOCOL.md` (baseline, after, final; one contact sheet per screen) and the ui-build iteration rounds defined there (§4 step 4a).
 - Inspect unrelated files, repeat the problem statement, or add unrequested features, docs, or refactors.
 - Spend tokens proving something one command can prove.
 - Use a higher-tier model than the card's routing assigns. Escalate only on logged failure evidence (`05_MODEL_ROUTING.md`).

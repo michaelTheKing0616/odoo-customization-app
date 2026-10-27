@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/migration_assist.py
 - apps/api/app/version_watch.py
 - O20-16 card (spec replay)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/upgrade-rehearsal.md
 File allow-list:

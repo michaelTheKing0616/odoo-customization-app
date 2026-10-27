@@ -16,6 +16,7 @@ Context pack:
 - docs/build-plan/new-features/AI_IN_ODOO.md §PMINE (sections 1–7)
 - docs/build-plan/new-features/00_BASELINE.md (B1–B5)
 - docs/build-plan/FACTS.md
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/06_TEST_STRATEGY.md (E2E layer)
 - docs/design/specs/process-map.md
 File allow-list:

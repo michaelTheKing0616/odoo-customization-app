@@ -40,7 +40,7 @@ Decision table:
 
 Test plan:
 - `cd apps/api && uv run pytest -q tests/test_nf_nlr_eval.py` → all pass
-Gate: A (DEC-074: who writes the labelled eval sets). Starts only after Tope answers DEC-074; then: none. Narrowest named test green → Tester PASS (separate session; runs the oracle tests unmodified) → Reviewer PASS (separate session; INV-01..18, the allow-list and the ACs line by line).
+Gate: none. Narrowest named test green → Tester PASS (separate session; runs the oracle tests unmodified) → Reviewer PASS (separate session; INV-01..18, the allow-list and the ACs line by line).
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code], or [Done, live] for live cards). Tester packet and Reviewer verdict summary in `docs/build-plan/STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). No Odoo writes outside dropped `ingenium_*` DBs.
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; the owner tag is respected (backend-safe cards add no screen or component); Orchestrator updates the ledger rows; Status set to done.

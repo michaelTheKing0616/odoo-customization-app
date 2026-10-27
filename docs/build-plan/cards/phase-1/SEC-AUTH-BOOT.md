@@ -3,7 +3,7 @@
 
 ID: SEC-AUTH-BOOT
 Title: production refuses auth_mode=off unless ENV=development + loopback
-Status: todo
+Status: done
 Phase: 1
 Priority: P0
 Type: test
@@ -42,3 +42,5 @@ Gate: none (no Tope gate). Narrowest named test green → Tester PASS (separate 
 Evidence to log: One line in `apps/api/evals/v2/PROGRESS.md`: date · card ID · command · result counts · label ([Done, code] or [Done, live]). Tester packet and Reviewer verdict summary in `STATE.md` token ledger.
 Rollback: Revert this card's diff (allow-list files only). Odoo changes made during checks exist only in dropped `ingenium_*` DBs; any product write path keeps its snapshot + Undo (History).
 Definition of Done: Every AC has evidence; oracle tests unmodified and green; no file outside the allow-list changed; Orchestrator updates the ledger rows; Status set to done.
+
+2026-10-24 closed. 2 passed in 0.31s. -p randomly 2 passed in 0.31s. SEC-6.1-AC1 is [Done, code]. Reviewer APPROVE.

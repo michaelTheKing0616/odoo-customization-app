@@ -376,8 +376,11 @@ describe("DraftOdooPreview + OdooViewRenderer", () => {
       />,
     );
     const empty = screen.getByTestId("draft-odoo-preview-empty");
-    expect(empty.textContent).toMatch(/form people already use/i);
+    expect(empty.textContent).toBe(
+      "This should preview the extra fields on a form people already use (for example vendor bills). Generate again if the canvas is empty.",
+    );
     expect(empty.textContent).not.toMatch(/x_\*/);
+    expect(empty.textContent).not.toMatch(/ModuleSpec|Option A module|vertical pack|which domain/);
     cleanup();
   });
 
@@ -389,8 +392,11 @@ describe("DraftOdooPreview + OdooViewRenderer", () => {
       />,
     );
     const empty = screen.getByTestId("draft-odoo-preview-empty");
-    expect(empty.textContent).toMatch(/custom-code module/i);
+    expect(empty.textContent).toBe(
+      "This is a custom-code module on a stock form (for example Sales markup). Live Install will not land Python. Download zip → sandbox prove → Promote after the authoring gate passes.",
+    );
     expect(empty.textContent).not.toMatch(/Start a new app/i);
+    expect(empty.textContent).not.toMatch(/ModuleSpec|Option A module|vertical pack|which domain/);
     cleanup();
   });
 

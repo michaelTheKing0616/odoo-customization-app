@@ -129,7 +129,9 @@ def render(card: dict, epic: dict) -> str:
     gate = GATE[gate_kind].replace("{screen}", epic["slug"])
     if card.get("gate_dec"):
         dec, why = card["gate_dec"]
-        gate = f"A ({dec}: {why}). Starts only after Tope answers {dec}; then: " + gate
+        answered = any(row[0] == dec and str(row[2]).startswith("**Resolved") for row in D.DECS)
+        if not answered:
+            gate = f"A ({dec}: {why}). Starts only after Tope answers {dec}; then: " + gate
     rollback = ROLLBACK[card.get("rollback", "storage" if kind == "storage" else "default")]
     lines = [
         NF_MARKER,

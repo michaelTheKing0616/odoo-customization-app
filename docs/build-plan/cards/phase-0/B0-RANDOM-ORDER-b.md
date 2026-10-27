@@ -2,7 +2,7 @@
 
 ID: B0-RANDOM-ORDER-b
 Title: order leaks fixed at the source, sqlite engine first
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test
@@ -38,6 +38,8 @@ Worked example:
 - `cd apps/api && uv run pytest -q -p randomly -p randomly_seed=1766196243 <list (b) node ids> > /tmp/B0-RANDOM-ORDER-b_seed1766196243.txt 2>&1`
 Decision:
 2026-10-23 opened from the split. The red `-p randomly` run is expected and is not re-looped on the parent. Hypothesis, not yet bisected: one import swaps `app.db.engine` / `SessionLocal` onto SQLite and a later test uses that engine. Confirm with the seed before editing.
+2026-10-24 parent merged `9e8e360b`. Worker starts from that conftest. Seed invocation is `-p randomly --randomly-seed=1766196243` (`-p` loads a plugin, so `-p randomly_seed=` is not the seed flag). Postgres is the existing container `ingenium-b0-pg54329` on 127.0.0.1:54329.
+2026-10-24 closed. List (b) under that seed: 63 passed, 15 warnings in 26.70s. No `no such table: users`. Allow-list diff empty. `pytest.ini` still `-p no:randomly`. Reviewer APPROVE. Shuffle stays off.
 Test plan:
 - One fixed-seed run of all list (b) nodes, log file as above, summary line green.
 - Do not turn `-p randomly` on in `pytest.ini` in this card until two further seeds also pass.

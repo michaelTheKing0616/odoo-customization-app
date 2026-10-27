@@ -19,6 +19,7 @@ Context pack:
 - apps/api/app/invoicing_l10n.py
 - apps/api/app/ai_markup_wht_class.py
 - 5B-05 card (l10n_ng adopt)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/nigeria-pack.md
 File allow-list:

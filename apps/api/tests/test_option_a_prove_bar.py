@@ -76,6 +76,7 @@ def test_smoke_only_success_leaves_prove_pending(monkeypatch) -> None:
     assert out["ok"] is True
     assert out["prove_status"] == "pending"
     assert out["promote_eligible"] is False
+    assert out["install_ready"] is False
     assert draft.get("prove_status") == "pending"
 
 
@@ -95,6 +96,7 @@ def test_run_tests_true_stamps_proved(monkeypatch) -> None:
     assert out["ok"] is True
     assert out["prove_status"] == "proved"
     assert out["promote_eligible"] is True
+    assert out["install_ready"] is True
     assert draft.get("prove_status") == "proved"
     assert (draft.get("_generation_engine") or {}).get("prove_status") == "proved"
 
@@ -134,6 +136,7 @@ def test_fail_repair_then_ok_with_tests_stamps_proved(monkeypatch) -> None:
     assert out["repairs_used"] >= 1
     assert out["prove_status"] == "proved"
     assert out["promote_eligible"] is True
+    assert out["install_ready"] is True
 
 
 def test_three_install_fails_stamps_failed(monkeypatch) -> None:
@@ -168,6 +171,7 @@ def test_three_install_fails_stamps_failed(monkeypatch) -> None:
     assert calls["n"] == 3
     assert out["prove_status"] == "failed"
     assert out["promote_eligible"] is False
+    assert out["install_ready"] is False
     assert draft.get("prove_status") == "failed"
 
 

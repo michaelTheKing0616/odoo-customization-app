@@ -2,7 +2,7 @@
 
 ID: B0-RANDOM-ORDER
 Title: suite passes twice in random order (or reverse file order once)
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: test

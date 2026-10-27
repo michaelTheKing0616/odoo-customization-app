@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - SUITE-40 card
 - apps/api/app/routers/job_autopilot.py (smoke)
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/build-plan/07_UI_EXCELLENCE_PROTOCOL.md §4 step 4 and §5
 - docs/design/specs/uat.md
 File allow-list:

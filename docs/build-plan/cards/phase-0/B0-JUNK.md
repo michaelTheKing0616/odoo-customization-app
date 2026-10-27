@@ -2,12 +2,12 @@
 
 ID: B0-JUNK
 Title: scripts/cleanup_test_connections.py dry-run default; --apply after Tope yes; pg_dump -Fc f
-Status: todo
+Status: done
 Phase: 0
 Priority: P0
 Type: build
 TOKEN CHARTER: docs/build-plan/01_TOKEN_CHARTER.md applies. Budget: M (caps in budget.json). Stop at 80%.
-Ledger IDs: P0-3-AC3;P0-3-AC4;ARCH-1
+Ledger IDs: P0-3-AC3;ARCH-1
 Depends on: B0-INV
 Routing: Worker: L2 (grok-4.7-xhigh) · Tester: T0 + L2 separate session · Reviewer: L2 separate session · Score: 5 (C0 U1 F1 K1 V0 I2)
 Context pack:
@@ -29,8 +29,8 @@ Steps:
 7. STOP-AND-ASK: a needed file is outside the allow-list; an AC is ambiguous or contradicts another; a live check would need a non-`ingenium_` DB, a forbidden port, a git write or a new dependency; an oracle test looks wrong.
 Acceptance criteria:
 - AC1: a cleanup script (`scripts/cleanup_test_connections.py`, dry run by default) lists rows that match test-fixture patterns and have never been used by a real session, prints counts, and deletes only with `--apply` after Tope's yes. Back up the App DB with `pg_dump -Fc` first. (needs Tope) (source: INGENIUM_MASTER_HANDOVER.md L475)
-- AC2: after cleanup, `GET /api/connections` returns only real connections, and the count is reported to Tope. (source: INGENIUM_MASTER_HANDOVER.md L476)
-- AC3: Production test builds overwrite the dev server's `.next`. `next.config.ts` uses `distDir` only when `INGENIUM_DIST_DIR` or `PLAYWRIGHT_E2E_BUILD=1` is set. Otherwise `next build` writes `output: "standalone"` into the default `.next`, the same folder `next dev` on `:3002` uses. G9 used an isolated build (`INGENIUM_DIST_DIR`, port 3017), but nothing enforces it. See P0-4. (source: INGENIUM_MASTER_HANDOVER.md L189)
+- AC2: after cleanup, `GET /api/connections` returns only real connections, and the count is reported to Tope. (source: INGENIUM_MASTER_HANDOVER.md L476). Not claimed here. Moved to B0-JUNKb on 2026-10-22. `--apply` stays off.
+- AC3: Production test builds overwrite the dev server's `.next`. `next.config.ts` uses `distDir` only when `INGENIUM_DIST_DIR` or `PLAYWRIGHT_E2E_BUILD=1` is set. Otherwise `next build` writes `output: "standalone"` into the default `.next`, the same folder `next dev` on `:3002` uses. G9 used an isolated build (`INGENIUM_DIST_DIR`, port 3017), but nothing enforces it. See P0-4. (source: INGENIUM_MASTER_HANDOVER.md L189). Not claimed here. Moved to B0-JUNKb on 2026-10-22. B0-DIST already holds P0-4 as `[Done, live]`.
 - AC4: Idempotency: running the same plan twice on a disposable DB writes 0 records the second time
 Symbols:
 - New `scripts/cleanup_test_connections.py`. No flag means dry-run. `--apply` deletes.

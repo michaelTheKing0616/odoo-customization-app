@@ -18,6 +18,7 @@ Context pack:
 - docs/build-plan/FACTS.md
 - apps/api/app/ingest/
 - apps/api/app/ai_stock_catalog.py
+- `.cursor/skills/ingenium-ui-excellence/SKILL.md` (load in full first; the X-ray floor is the minimum)
 - docs/design/specs/fit-gap.md
 - apps/web/src/components/ui/ (existing components)
 File allow-list:
