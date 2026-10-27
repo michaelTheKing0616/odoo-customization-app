@@ -678,3 +678,37 @@ def test_upgrade_file_list_must_match_change_set(T3, monkeypatch, files) -> None
     with pytest.raises(sp.SpineError) as e:
         _apply(store, p, cs, mh, gate_report=report(mh, prior_hash=PRIOR))
     assert e.value.code == "not-approved" and "files" in str(e.value.message)
+
+
+# ------------------------------------------------------------------ review 3: kill recheck
+def test_kill_thrown_after_apply_stops_install(T3, monkeypatch) -> None:
+    store, plan, cs, mh = T3
+    store.approve("conn-a", store.submit(plan)["id"], OWNER)
+    monkeypatch.setattr(sp, "_t3_ready", lambda: True)
+    assert _apply(store, plan, cs, mh)
+    sp.t3_before_install(store, plan)  # nothing thrown yet
+    monkeypatch.setattr(store.switch, "check", lambda db: gd.refusal_kill(db))
+    with pytest.raises(sp.SpineError) as e:
+        sp.t3_before_install(store, plan)
+    assert e.value.code == "killed"
+
+
+def test_before_install_refuses_with_switch_off(T3) -> None:
+    store, plan, _cs, _mh = T3
+    with pytest.raises(sp.SpineError) as e:
+        sp.t3_before_install(store, plan)
+    assert e.value.code == "t3-off"
+
+
+def test_install_call_requires_kill_recheck() -> None:
+    """Guard for when install is wired: every install call in spine follows t3_before_install."""
+    import inspect
+    import re
+
+    src = inspect.getsource(sp)
+    calls = [
+        m.start()
+        for m in re.finditer(r"button_immediate_install|button_install|\.install\(|-i ", src)
+    ]
+    for pos in calls:
+        assert "t3_before_install(store" in src[max(0, pos - 2000) : pos], src[pos - 80 : pos + 40]

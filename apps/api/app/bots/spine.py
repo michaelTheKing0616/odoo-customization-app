@@ -673,3 +673,15 @@ def apply_t3(
     if not _t3_ready():
         raise SpineError("t3-off", "module-code changes are switched off in this release")
     return out
+
+
+def t3_before_install(store: ap.ApprovalStore, plan: ap.Plan) -> None:
+    """Call immediately before installing what ``apply_t3`` returned. ``apply_t3`` checks the
+    kill switch only at its start; a switch thrown since then must still stop the write.
+    Install is not wired in this release; whoever wires it calls this right before the write
+    (a test fails if an install call appears in this module without it)."""
+    ref = store.switch.check(plan.db_fingerprint)
+    if ref is not None:
+        raise SpineError("killed", ref.text())
+    if not _t3_ready():
+        raise SpineError("t3-off", "module-code changes are switched off in this release")
