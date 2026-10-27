@@ -674,6 +674,9 @@ def _ensure_workflow_minimum_fields(draft: dict[str, Any]) -> list[str]:
             and not m.get("is_workflow")
         ):
             continue
+        if m.get("is_workflow") is False:
+            # Declared non-workflow (e.g. pack line x_status flag): do not promote.
+            continue
         mid = str(m.get("model") or "")
         fields = list(m.get("fields") or [])
         if "x_status" not in names and "x_state" not in names:
