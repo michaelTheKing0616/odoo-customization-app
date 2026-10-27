@@ -648,6 +648,8 @@ def test_app_bar_prunes_generic_loop_on_music_prompt() -> None:
         "session lines, and customer invoices"
     )
     draft = {
+        # 6648b166 closed-class gate: uncued vertical roles need craft approval.
+        "_approved_craft": {"allow": ["x_equipment", "x_rate", "x_agreement", "x_expense", "x_maintenance"]},
         "technical_name": "music_production_recording_studios",
         "display_name": "Music Production Recording Studios",
         "depends": ["base", "mail", "contacts"],
@@ -900,6 +902,8 @@ def test_domain_density_fills_music_vertical_without_generic_loop() -> None:
 
     prompt = "A music production company with multiple recording studios and artistes"
     draft = {
+        # 6648b166 closed-class gate: uncued vertical roles need craft approval.
+        "_approved_craft": {"allow": ["x_equipment", "x_rate", "x_agreement", "x_expense", "x_maintenance"]},
         "_ambition": "comprehensive",
         "_user_prompt": prompt,
         "models": [
@@ -948,6 +952,8 @@ def test_domain_density_bootstraps_empty_music_draft_from_prompt() -> None:
 
     prompt = "A music production company with multiple recording studios and artistes"
     draft: dict[str, Any] = {
+        # 6648b166 closed-class gate: uncued vertical roles need craft approval.
+        "_approved_craft": {"allow": ["x_equipment", "x_rate", "x_agreement", "x_expense", "x_maintenance"]},
         "_ambition": "comprehensive",
         "_user_prompt": prompt,
         "models": [],
@@ -959,6 +965,12 @@ def test_domain_density_bootstraps_empty_music_draft_from_prompt() -> None:
     assert "x_artist" in ids
     assert "x_equipment" in ids
     assert len({m for m in ids if not str(m).endswith("_line")}) >= 8
+
+    bare: dict[str, Any] = {"_ambition": "comprehensive", "_user_prompt": prompt, "models": []}
+    ensure_domain_density(bare, user_prompt=prompt, ambition="comprehensive")
+    bare_ids = {m["model"] for m in bare["models"]}
+    assert {"x_studio", "x_artist", "x_recording"} <= bare_ids
+    assert "x_equipment" not in bare_ids
 
 
 def test_oil_gas_branches_prompt_does_not_match_retail() -> None:
