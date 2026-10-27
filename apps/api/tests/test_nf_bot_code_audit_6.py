@@ -489,3 +489,20 @@ def test_l2_po_plural_code(e):
 @pytest.mark.parametrize("e", ["(n > 1)", "(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2)"])
 def test_l2_po_plural_standard_ok(e):
     assert ("po-plural-forms", "low") not in codes(_po(e))
+
+
+# ---------------------------------------------------------------- L3 private Node dirs are owner-only
+def test_l3_private_dir_requires_0700(tmp_path):
+    from app.bots import code_audit_web as w
+    d = tmp_path / "n"
+    d.mkdir()
+    d.chmod(0o755)
+    assert not w._private_dir_ok(d)
+    d.chmod(0o700)
+    assert w._private_dir_ok(d)
+
+
+def test_l3_build_chmods_inner_dir():
+    import inspect
+    from app.bots import code_audit_web as w
+    assert "tmp.chmod(0o700)" in inspect.getsource(w._private_node)

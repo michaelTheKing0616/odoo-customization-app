@@ -426,6 +426,14 @@ def _private_dir_ok(p: Path) -> bool:
     return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077
 
 
+# Node TOCTOU decision (review 5, goal 5): a process running as the owner account can
+# rewrite any file this account owns, including this Python audit and the verified copies,
+# between verification and exec; macOS has no fexecve to run from a verified fd. The owner
+# account is therefore the trust boundary and same-uid tampering is out of scope. Within
+# it, everything fails closed: the helper and its dependencies are copied to a fresh 0700
+# mkdtemp and hashed there per run, the Node closure lives in owner-only (0700) dirs and is
+# re-hashed file by file before every use (rebuilt on any mismatch), and any mismatch,
+# missing pin or non-owner-only directory yields web-unaudited HIGH.
 def _private_node(pin: dict[str, Any]) -> tuple[Path | None, str | None]:
     """The relinked private Node closure for this pin: built once (the first launch of a
     freshly signed binary costs seconds of OS verification), re-verified file by file
@@ -450,6 +458,7 @@ def _private_node(pin: dict[str, Any]) -> tuple[Path | None, str | None]:
             return None, why
         if want is not None and _tree_shas(tmp) != want:
             return None, "Node.js private closure does not match its pin"
+        tmp.chmod(0o700)  # L3: owner-only inner dir too (defence in depth; parent is 0700)
         os.rename(tmp, d)
     except OSError as e:
         return None, f"private Node.js build failed ({type(e).__name__})"
