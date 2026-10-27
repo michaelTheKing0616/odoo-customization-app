@@ -25,6 +25,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from app.bots import code_audit_flow as flow
 from app.bots import code_audit_web as web
 from app.bots.versioncaps import caps
 
@@ -272,6 +273,8 @@ class _Ctx:
         self.view_fields: list[tuple[str, str, str, int]] = []  # model, field, file, line
         self.module = ""
         self.prod_tests: set[str] = set()  # test-dir files production code imports or loads
+        self.text_fields: frozenset[str] = flow.USER_TEXT
+        self.db_helpers: dict[str, str] = {}
         # (key, file, first line, kind, text) for code_audit_web: files and inline <script>s
         self.web: list[tuple[str, str, int, str, str]] = []
 
@@ -732,6 +735,16 @@ def _py_danger(call: ast.Call, aliases: dict[str, str] | None = None) -> str:
     return ""
 
 
+def _resolved_danger(call: ast.Call, res: flow.Resolver) -> str:
+    """Dangerous targets reached through re-binding, getattr("literal"), literal dynamic
+    imports, sys.modules / __builtins__ subscripts or star imports."""
+    raw = _chain(call.func) or ast.unparse(call.func)[:60]
+    d = res.call_target(call)
+    if d and d != raw and (d in _DANGER_EXACT or d.startswith(_DANGER_PREFIX)):
+        return f"{raw} ({d})()"
+    return ""
+
+
 def _sql_has_variable(n: ast.AST, safe: frozenset[str] = frozenset()) -> bool:
     """True when a formatted query interpolates anything except literals or the model table."""
     if isinstance(n, ast.JoinedStr):
@@ -925,12 +938,14 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                                 "Use a plain value or a cheap context-based default.",
                             )
     # calls
-    loops = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While, ast.comprehension))]
-    in_loop: set[int] = set()
-    for lp in loops:
-        for node in ast.walk(lp):
-            if node is not lp and isinstance(node, ast.Call):
-                in_loop.add(id(node))
+    # per-iteration code only: a for-loop's iterable and a comprehension's first iterable
+    # run once; comprehension elements and ORM lambdas (mapped/filtered/sorted) run per item
+    in_loop: set[int] = {
+        id(node)
+        for _, parts in flow._loop_bodies(tree)
+        for node in flow._walk_parts(parts)
+        if isinstance(node, ast.Call)
+    }
     searched: list[tuple[str, int]] = []
     has_hook = any(
         isinstance(d, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -938,6 +953,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
         for d in ast.walk(tree)
     )
     aliases = _aliases(tree)
+    res = flow.Resolver(tree, _ALIAS_ROOTS)
     local_sql, sql_safe = _local_sql(tree)
     for n in ast.walk(tree):
         if not isinstance(n, ast.Call):
@@ -945,7 +961,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
         fn = n.func
         name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
         ln = getattr(n, "lineno", 0)
-        danger = _py_danger(n, aliases)
+        danger = _py_danger(n, aliases) or _resolved_danger(n, res)
         if danger:
             c.add(
                 HIGH,
@@ -1141,6 +1157,15 @@ def _audit_py(c: _Ctx, path: str, body: bytes) -> None:
                 "Remove builtins access.",
             )
     _tamper_scan(c, path, tree)
+    sqli = {f.line for f in c.f if f.file == path and f.code == "sql-injection"}
+    for h in (
+        flow.taint_hits(tree, c.text_fields, res)
+        + flow.loop_hits(tree, c.db_helpers)
+        + flow.dynamic_hits(tree, res)
+    ):
+        if h.code == "tainted-sql" and h.line in sqli:
+            continue  # already reported as sql-injection on that line
+        c.add(h.sev, h.code, path, h.line, h.msg, h.fix)
     seen_idx = c.seen_idx
     for fname, ln in searched:
         for m, flds in c.model_fields.items():
@@ -1396,7 +1421,16 @@ _WEB_FIX = {
 
 def _audit_web(c: _Ctx) -> None:
     """JS and stylesheets through the pinned parser helper; fail closed per file."""
-    todo = [w for w in c.web if w[3] != "unparseable"]
+    todo = [w for w in c.web if w[3] not in ("unparseable", "inert")]
+    for _, file, line, _, _ in (w for w in c.web if w[3] == "inert"):
+        c.add(
+            INFO,
+            "web-unaudited",
+            file,
+            line,
+            "Cannot parse, unaudited: Odoo's asset bundles never load this file type.",
+            "Ship only the built JavaScript, or review this file by hand.",
+        )
     for _, file, line, _, _ in (w for w in c.web if w[3] == "unparseable"):
         c.add(
             HIGH,
@@ -1806,6 +1840,28 @@ def _prod_tests(files: dict[str, bytes], module: str, manifest: dict[str, Any] |
     return out
 
 
+def _module_index(files: dict[str, bytes]) -> tuple[frozenset[str], dict[str, str]]:
+    """Module-wide facts for the flow checks: user-text field names (Char/Text/Html) and
+    helpers that reach the database."""
+    trees: dict[str, ast.AST] = {}
+    for p, b in files.items():
+        if p.endswith(".py"):
+            try:
+                trees[p] = ast.parse(b.decode("utf-8-sig"))
+            except (SyntaxError, UnicodeDecodeError, ValueError, RecursionError, MemoryError):
+                continue  # reported as parse-error by _audit_py
+    text = set(flow.USER_TEXT)
+    for t in trees.values():
+        for n in ast.walk(t):
+            if (
+                isinstance(n, ast.Assign)
+                and isinstance(n.value, ast.Call)
+                and _chain(n.value.func) in ("fields.Char", "fields.Text", "fields.Html")
+            ):
+                text |= {x.id for x in n.targets if isinstance(x, ast.Name)}
+    return frozenset(text), flow.module_db_helpers(trees)
+
+
 def audit(
     src: bytes | Path,
     *,
@@ -1835,6 +1891,7 @@ def audit(
     try:
         manifest = _audit_manifest(c)
         c.prod_tests = _prod_tests(files, name, manifest)
+        c.text_fields, c.db_helpers = _module_index(files)
         for path in sorted(files):
             body = files[path]
             try:

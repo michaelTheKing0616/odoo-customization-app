@@ -30,7 +30,9 @@ NODE_MIN_MAJOR = 20
 TIMEOUT_S = 120
 WEB_KINDS = {".js": "js", ".mjs": "js", ".cjs": "js", ".css": "css", ".scss": "scss"}
 WEB_KINDS[".less"] = "less"
-UNPARSEABLE = (".sass", ".ts", ".tsx", ".jsx", ".coffee", ".styl")  # no parser: unaudited
+# no parser here: unaudited. .sass is loaded by Odoo's asset bundles (HIGH); the others are
+# never served by Odoo's bundler (type declarations, sources for a build step) -> INFO
+UNPARSEABLE = (".sass", ".ts", ".tsx", ".jsx", ".coffee", ".styl")
 
 
 def web_kind(path: str) -> str | None:
@@ -38,7 +40,9 @@ def web_kind(path: str) -> str | None:
     for ext, kind in WEB_KINDS.items():
         if low.endswith(ext):
             return kind
-    return "unparseable" if low.endswith(UNPARSEABLE) else None
+    if low.endswith(".sass"):
+        return "unparseable"
+    return "inert" if low.endswith(UNPARSEABLE) else None
 
 
 def _sha(p: Path) -> str:

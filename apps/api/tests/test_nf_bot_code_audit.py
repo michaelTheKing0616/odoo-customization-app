@@ -1005,8 +1005,9 @@ def test_web_parse_error_unaudited():
 
 
 def test_web_no_parser_type_unaudited():
-    r = _web({"static/src/a.ts": "let a: number = 1;\n"})
-    assert "web-unaudited" in _codes(r, "static/src/a.ts")
+    r = _web({"static/src/a.ts": "let a: number = 1;\n", "static/src/b.sass": "a\n  b: c\n"})
+    sev = {f.file: f.severity for f in r.findings if f.code == "web-unaudited"}
+    assert sev == {"static/src/a.ts": "info", "static/src/b.sass": "high"}
 
 
 @pytest.mark.parametrize(
@@ -1035,3 +1036,177 @@ def test_web_node_missing_fails_closed(monkeypatch):
     monkeypatch.setattr(w, "_node", lambda: None)
     r = _web({"static/src/a.js": "const a = 1;\n"})
     assert "web-unaudited" in _codes(r, "static/src/a.js")
+
+
+# ---------------------------------------------------------------- BOT-CODE-AUDIT-2 python flow
+
+
+def _py(src, path="models/x.py"):
+    r = ca.audit(zbytes(_tree(**{path: src})), version=17)
+    assert r.ok, r.error
+    return [(f.code, f.line, f.severity) for f in r.findings if f.file == path]
+
+
+@pytest.mark.parametrize(
+    "src,line",
+    [
+        ("import os as o\no.system('x')\n", 2),
+        ("from os import system as s\ns('x')\n", 2),
+        ("import os\ns = os\nf = s.system\nf('x')\n", 4),
+        ("import os\ngetattr(os, 'system')('x')\n", 2),
+        ("import importlib\nm = importlib.import_module('subprocess')\nm.run(['x'])\n", 3),
+        ("m = __import__('os')\nm.system('x')\n", 2),
+        ("import sys\nsys.modules['os'].system('x')\n", 2),
+        ("try:\n    import subprocess as sp\nexcept ImportError:\n    sp = None\nsp.run('x')\n", 5),
+        ("if True:\n    from os import popen\npopen('x')\n", 3),
+        ("from os import *\nsystem('x')\n", 2),
+        ("import os.path as p\nimport shutil as sh\nsh.rmtree(p.join('a'))\n", 3),
+    ],
+)
+def test_flow_alias_shapes(src, line):
+    got = _py(src)
+    assert ("dangerous-call", line, "high") in got, got
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "import os.path\nos.path.join('a', 'b')\n",
+        "from odoo import api as a\na.model\n",
+        "def system(x):\n    return x\nsystem('x')\n",
+        "import json as j\nj.dumps({})\n",
+        "x = getattr(self, 'name')\n",
+    ],
+)
+def test_flow_alias_negative(src):
+    assert not [g for g in _py(src) if g[0] == "dangerous-call"]
+
+
+def test_flow_dynamic_module_attr_flagged():
+    got = _py("import odoo.tools as t\ndef f(n):\n    return getattr(t, n)()\n")
+    assert ("dynamic-dispatch", 3, "low") in got
+
+
+CTRL = "from odoo import http\nfrom odoo.http import request\nfrom markupsafe import Markup\n"
+
+
+@pytest.mark.parametrize(
+    "body,code,line",
+    [
+        ("@http.route('/a')\ndef a(self, q):\n    return Markup(q)\n", "tainted-markup", 6),
+        (
+            "@http.route('/a')\ndef a(self, **kw):\n    s = '<b>%s</b>' % kw.get('q')\n"
+            "    return Markup(s)\n",
+            "tainted-markup",
+            7,
+        ),
+        (
+            "def a(self):\n    q = request.params['q']\n    self.env.cr.execute(q)\n",
+            "tainted-sql",
+            6,
+        ),
+        (
+            "def a(self):\n    v = request.httprequest.args.get('x')\n"
+            "    self.env.cr.execute('SELECT ' + v)\n",
+            "sql-injection",
+            6,
+        ),
+        ("def a(self):\n    return Markup(self.description)\n", "tainted-markup", 5),
+        (
+            "def a(self):\n    for r in self:\n        h = f'<p>{r.note}</p>'\n"
+            "        yield Markup(h)\n",
+            "tainted-markup",
+            7,
+        ),
+        (
+            "@http.route('/a')\ndef a(self, expr):\n"
+            "    from odoo.tools.safe_eval import safe_eval\n"
+            "    return safe_eval(expr)\n",
+            "tainted-eval",
+            7,
+        ),
+        (
+            "@http.route('/a')\ndef a(self, q):\n    return request.make_response('<p>' + q)\n",
+            "tainted-response",
+            6,
+        ),
+        (
+            "import werkzeug\n@http.route('/a')\ndef a(self, url):\n"
+            "    return werkzeug.utils.redirect(url)\n",
+            "open-redirect",
+            7,
+        ),
+        (
+            "@http.route('/a')\ndef a(self, url):\n    return request.redirect(url, local=False)\n",
+            "open-redirect",
+            6,
+        ),
+    ],
+)
+def test_flow_taint_shapes(body, code, line):
+    got = _py(CTRL + body, "controllers/main.py")
+    assert any(g[0] == code and g[1] == line for g in got), got
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "@http.route('/a')\ndef a(self, q):\n    return Markup('<b>%s</b>') % q\n",
+        "@http.route('/a')\ndef a(self, q):\n    return Markup(escape(q))\n",
+        "@http.route('/a')\ndef a(self, q):\n"
+        "    self.env.cr.execute('SELECT 1 WHERE a = %s', [q])\n",
+        "@http.route('/a')\ndef a(self, q):\n    return request.redirect(q)\n",
+        "@http.route('/a')\ndef a(self, i):\n    return request.make_response(self._pdf(int(i)))\n",
+        "def a(self):\n    return Markup(self.amount_total)\n",
+        "def a(self, q):\n    return Markup(q)\n",
+    ],
+)
+def test_flow_taint_negative(body):
+    got = _py(CTRL + body, "controllers/main.py")
+    assert not [g for g in got if g[0].startswith("tainted") or g[0] == "open-redirect"], got
+
+
+@pytest.mark.parametrize(
+    "src,code,line",
+    [
+        ("def f(self, ids):\n    for i in ids:\n        self.browse(i).name\n", "query-in-loop", 3),
+        (
+            "def f(self, ids):\n    return [self.search([('id', '=', i)]) for i in ids]\n",
+            "query-in-loop",
+            2,
+        ),
+        (
+            "def f(self):\n    return self.mapped(lambda r: r.env['x'].search_count([]))\n",
+            "query-in-loop",
+            2,
+        ),
+        ("def f(self, vals):\n    for v in vals:\n        self.create(v)\n", "orm-in-loop", 3),
+        (
+            "def _h(self):\n    return self.env['x'].search([])\n"
+            "def _g(self):\n    return self._h()\n"
+            "def f(self):\n    for r in self:\n        r._g()\n",
+            "query-in-loop-helper",
+            7,
+        ),
+        ("def f(self):\n    for r in self:\n        r.sudo().partner_id.name\n", "n-plus-one", 3),
+        ("def f(self, ids):\n    while ids:\n        self.browse(ids.pop())\n", "query-in-loop", 3),
+    ],
+)
+def test_flow_loop_shapes(src, code, line):
+    got = _py(src)
+    assert any(g[0] == code and g[1] == line for g in got), got
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "def f(self):\n    for r in self.search([]):\n        r.name\n",
+        "def f(self):\n    return [r.partner_id.name for r in self.search([])]\n",
+        "def f(self):\n    for r in self:\n        r.partner_id.name\n",
+        "def f(self):\n    for r in self:\n        r.with_company(r.company_id).x = 1\n",
+        "def f(self):\n    recs = self.search([])\n    for r in recs:\n        pass\n",
+    ],
+)
+def test_flow_loop_negative(src):
+    got = _py(src)
+    assert not [g for g in got if "loop" in g[0] or g[0] == "n-plus-one"], got
