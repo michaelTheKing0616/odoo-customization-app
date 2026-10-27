@@ -238,6 +238,16 @@ def _effect(task_id: str, base: str, ctx: ClassifyCtx) -> bt.Effect | bt.Unresol
 _READ_VERBS = ("export",)
 
 
+def _tier_floor(task_id: str, ctx: ClassifyCtx) -> int:
+    """Reviewed approval floor (rules.FIELD_TIER_FLOORS) for the fields a write task touches."""
+    kind, rest = _parts(task_id)
+    if kind == "s":
+        return rules.field_tier_floor("res.config.settings", frozenset({rest}))
+    if kind == "m" and rest.rsplit(":", 1)[-1] not in _READ_VERBS:
+        return rules.field_tier_floor(_model_of(task_id), ctx.fields)
+    return 1
+
+
 def task_floor(task_id: str, fields: frozenset[str] | None = None) -> tuple[str, str] | None:
     """The sensitivity floor of the model/fields/key a task touches (reads have none)."""
     kind, rest = _parts(task_id)
@@ -344,7 +354,7 @@ def classify(task_id: str, ctx: ClassifyCtx) -> Decision | Refusal:
         cls=cls,
         subkind=sub,
         controls=tuple(rules.route_controls(cls, sub, ctx.route, controls[cls])),
-        tier=rules.required_tier(cls, sub, ctx.route, ctx.policy),
+        tier=max(rules.required_tier(cls, sub, ctx.route, ctx.policy), _tier_floor(task_id, ctx)),
         route=ctx.route,
         version=ctx.version,
         strict_copy=rules.strict_copy(cls, sub, ctx.route),
