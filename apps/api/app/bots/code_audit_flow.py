@@ -97,9 +97,38 @@ _STR_PASS = frozenset(
         "unquote_plus",
     }
 )
+# calls that always query (browse() does not: it only builds a recordset)
 _DB_READ = frozenset(
-    {"search", "search_count", "browse", "read", "search_read", "read_group", "_read_group"}
+    {"search", "search_count", "read", "search_read", "read_group", "_read_group"}
 ) | {"search_fetch", "fetch", "execute", "_search", "name_search"}
+# BaseModel API names a module may override; a call by that name is the ORM's, not a helper
+_ORM_API = frozenset(
+    {
+        "new",
+        "invalidate_recordset",
+        "invalidate_model",
+        "flush_recordset",
+        "flush_model",
+        "modified",
+        "ensure_one",
+        "default_get",
+        "fields_get",
+        "name_get",
+        "name_create",
+        "onchange",
+        "check_access",
+        "check_access_rights",
+        "check_access_rule",
+        "has_access",
+        "_check_company",
+        "_field_will_change",
+        "_compute_display_name",
+        "get_metadata",
+        "update",
+        "filtered_domain",
+    }
+)
+MAX_HELPER_HOPS = 2
 _SQL_EXEC = frozenset({"execute", "executemany", "mogrify", "execute_values", "execute_batch"})
 
 
@@ -485,7 +514,11 @@ def module_db_helpers(trees: dict[str, ast.AST]) -> dict[str, str]:
     defs: dict[str, list[ast.AST]] = {}
     for tree in trees.values():
         for n in ast.walk(tree):
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name not in DB_CALLS:
+            if (
+                isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and n.name not in DB_CALLS
+                and n.name not in _ORM_API
+            ):
                 defs.setdefault(n.name, []).append(n)
     reach: dict[str, str] = {}
     for name, fns in defs.items():
@@ -495,22 +528,25 @@ def module_db_helpers(trees: dict[str, ast.AST]) -> dict[str, str]:
                     cn = c.func.attr if isinstance(c.func, ast.Attribute) else ""
                     if cn in _DB_READ:
                         reach[name] = f"{cn}()"
-    for _ in range(8):
-        changed = False
+    for _ in range(16):  # full transitive closure, one hop per pass (snapshot)
+        snap = dict(reach)
         for name, fns in defs.items():
-            if name in reach:
+            if name in snap:
                 continue
-            for fn in fns:
-                for c in ast.walk(fn):
-                    if isinstance(c, ast.Call):
-                        cn = chain(c.func).rsplit(".", 1)[-1] if chain(c.func) else ""
-                        if cn in reach and cn != name:
-                            reach[name] = f"{cn}() -> {reach[cn]}"
-                            changed = True
-                            break
-                if name in reach:
-                    break
-        if not changed:
+            hit = next(
+                (
+                    cn
+                    for fn in fns
+                    for c in ast.walk(fn)
+                    if isinstance(c, ast.Call)
+                    for cn in [chain(c.func).rsplit(".", 1)[-1] if chain(c.func) else ""]
+                    if cn in snap and cn != name
+                ),
+                None,
+            )
+            if hit:
+                reach[name] = f"{hit}() -> {snap[hit]}"
+        if len(reach) == len(snap):
             break
     return reach
 
@@ -564,9 +600,10 @@ def loop_hits(tree: ast.AST, helpers: dict[str, str]) -> list[Hit]:
                 )
             elif name in helpers:
                 seen.add(id(n))
+                hops = helpers[name].count("->") + 1
                 out.append(
                     Hit(
-                        LOW,
+                        LOW if hops <= MAX_HELPER_HOPS else INFO,
                         "query-in-loop-helper",
                         n.lineno,
                         f"{name}() inside a {kind} runs a query each time ({helpers[name]}).",
