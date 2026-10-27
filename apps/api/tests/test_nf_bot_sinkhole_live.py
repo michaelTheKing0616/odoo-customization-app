@@ -1,6 +1,7 @@
 """BOT-SINKHOLE live: Odoo 17 + 20 over JSON-RPC only (Odoo 20 has no XML-RPC).
 
-Needs ODOO_LIVE=1 and the nf sandbox stacks (ports 18117 / 18120, DB ingenium_nf_bv_<v> with
+Needs ODOO_LIVE=1 and the nf sandbox stacks (ports ODOO_LIVE_PORT_BASE+v: 1811v, nf3 1831v;
+DB ingenium_nf_bv_<v> with
 crm + base_automation, admin/admin). A test-side writer seeds one automation rule that emails
 on every lead write; the sinkhole must hold that email, restore the queue cron, and release
 it exactly once.
@@ -27,7 +28,8 @@ ME = sk.SessionActor(OWNER, "live-session-0001")
 LIVE = os.environ.get("ODOO_LIVE") == "1"
 pytestmark = [pytest.mark.no_app_db, pytest.mark.skipif(not LIVE, reason="live: ODOO_LIVE=1")]
 EVIDENCE = Path.home() / ".ingenium_nf" / "nfwt" / "BOT-SINKHOLE_live.txt"
-PORTS = {17: 18117, 19: 18119, 20: 18120}
+_BASE = int(os.environ.get("ODOO_LIVE_PORT_BASE", "18100"))  # nf3 stacks: 18300
+PORTS = {v: _BASE + v for v in (17, 18, 19, 20)}
 
 
 class Json:
