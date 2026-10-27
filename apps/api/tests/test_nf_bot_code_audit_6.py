@@ -150,3 +150,94 @@ def test_h17_render_value_call_in_template_not_high(expr):
 def test_h17_variants_still_high(expr):
     f = X(f"<template id='t'><span t-att-class=\"{expr}\"/></template>")
     assert ("unsafe-expression", "high") in codes(f), expr
+
+
+# ---------------------------------------------------------------- H1-H6 python
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "class C(http.Controller):\n    @http.route('/a',auth='public')\n    def a(self,**kw):\n        request.env.user.sudo().write({'groups_id':[(4,request.env.ref('base.group_system').id)]})\n",
+        "class C(http.Controller):\n    @http.route('/a',auth='none')\n    def a(self):\n        request.env.user.sudo().write({'active': True})\n",
+        "class C(http.Controller):\n    @http.route('/a',auth='public')\n    def a(self):\n        request.env.company.sudo().write({'name': 'x'})\n",
+    ],
+)
+def test_h1_public_route_writes_current_user(src):
+    assert ("public-sudo-access", "high") in codes(pyt(src))
+
+
+def test_h1_negative_user_route_read():
+    src = "class C(http.Controller):\n    @http.route('/a',auth='user')\n    def a(self):\n        return request.env.user.name\n"
+    assert ("public-sudo-access", "high") not in codes(pyt(src))
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "setattr(Users,'_check_'+'credentials',lambda *a,**k: None)",
+        "setattr(Users,''.join(['_check_','credentials']),lambda *a,**k: None)",
+        "setattr(Users,'%s' % '_check_credentials',lambda *a,**k: None)",
+        "setattr(Users,f'_check_{\"credentials\"}',lambda *a,**k: None)",
+    ],
+)
+def test_h2_folded_setattr(line):
+    src = "from odoo.addons.base.models.res_users import Users\n" + line + "\n"
+    assert ("auth-override", "high") in codes(pyt(src))
+
+
+def test_h2_non_literal_setattr_on_odoo_class():
+    src = "from odoo.addons.base.models.res_users import Users\nn=input()\nsetattr(Users,n,None)\n"
+    assert ("core-patch", "high") in codes(pyt(src))
+
+
+def test_h2_negative_setattr_on_own_object():
+    src = "class K:\n    pass\nk=K()\nsetattr(k,'name','x')\n"
+    assert ("core-patch", "high") not in codes(pyt(src))
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "from odoo import http\nhttp.Request._authenticate_explicit=lambda *a,**k: True\n",
+        "import odoo.http as h\nh.Session.authenticate=lambda *a: 1\n",
+        "from odoo.http import Request\nRequest.x = 1\n",
+        "from odoo.service import security\nsecurity.check_session=lambda *a: True\n",
+        "from odoo import http\nsetattr(http.Request,'x',1)\n",
+    ],
+)
+def test_h3_http_internals_patch(src):
+    assert ("core-patch", "high") in codes(pyt(src))
+
+
+@pytest.mark.parametrize("meth", ["_auth_method_user", "_auth_method_public", "_authenticate", "_auth_method_custom"])
+def test_h4_ir_http_auth_override(meth):
+    src = f"class I(models.AbstractModel):\n    _inherit='ir.http'\n    @classmethod\n    def {meth}(cls):\n        return True\n"
+    assert ("auth-override", "high") in codes(pyt(src))
+
+
+@pytest.mark.parametrize(
+    "q",
+    ["UPDATE res_users SET active=false", "DELETE FROM res_groups_users_rel", "TRUNCATE ir_rule", "update ir_config_parameter set value=1"],
+)
+def test_h5_core_dml_anywhere(q):
+    src = f"class A(models.Model):\n    _inherit='res.partner'\n    def init(self):\n        self.env.cr.execute('{q}')\n"
+    assert ("core-table-dml", "high") in codes(pyt(src))
+
+
+def test_h5_negative_own_table_dml():
+    src = "class A(models.Model):\n    _name='x.y'\n    def init(self):\n        self.env.cr.execute('UPDATE x_y SET a=1')\n"
+    assert ("core-table-dml", "high") not in codes(pyt(src))
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "import asyncio\nasyncio.run(asyncio.create_subprocess_shell('id'))\n",
+        "import asyncio\nasyncio.create_subprocess_exec('id')\n",
+        "import asyncio\nloop=asyncio.get_event_loop()\nloop.subprocess_shell(None,'id')\n",
+        "from asyncio import create_subprocess_shell as c\nc('id')\n",
+    ],
+)
+def test_h6_asyncio_subprocess(src):
+    assert ("dangerous-call", "high") in codes(pyt(src))

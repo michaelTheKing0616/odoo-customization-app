@@ -1278,24 +1278,7 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
 
 
 # security core: writes here change who may do what, or run code later
-SENSITIVE_MODELS = frozenset(
-    {
-        "res.users",
-        "res.groups",
-        "ir.rule",
-        "ir.model.access",
-        "ir.config_parameter",
-        "ir.cron",
-        "ir.actions.server",
-        "ir.module.module",
-        "res.users.apikeys",
-        "ir.model.data",
-        "ir.mail_server",
-        "auth.totp.device",
-        "base.automation",
-        "ir.ui.view",
-    }
-)
+SENSITIVE_MODELS = policy.SENSITIVE_MODELS  # one central deny-by-default list
 _SENSITIVE_WRITES = frozenset(
     {
         "write",
@@ -1564,7 +1547,7 @@ def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> N
         for f in cls.body:
             if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            if f.name not in _AUTH_METHODS or _route_auth(f):
+            if not _is_auth_name(f.name) or _route_auth(f):
                 continue
             sup = any(isinstance(x, ast.Call) and _dotted(x.func) == "super" for x in ast.walk(f))
             c.add(
@@ -1581,15 +1564,15 @@ def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> N
         name = ""
         if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
             for t in n.targets if isinstance(n, ast.Assign) else [n.target]:
-                if isinstance(t, ast.Attribute) and t.attr in _AUTH_METHODS:
+                if isinstance(t, ast.Attribute) and _is_auth_name(t.attr):
                     name = t.attr
         elif (
             isinstance(n, ast.Call)
             and _dotted(n.func) in ("setattr", "builtins.setattr", "object.__setattr__")
             and len(n.args) >= 2
         ):
-            v = _const(n.args[1])
-            if v in _AUTH_METHODS:
+            v = _fold_str(n.args[1])
+            if v is not None and _is_auth_name(v):
                 name = v
         if name:
             c.add(
@@ -1640,7 +1623,7 @@ def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> N
                     if isinstance(y, ast.Subscript) and isinstance(_const(y.slice), str)
                 ),
                 "",
-            )
+            ) or _env_record_model(x.func.value)
             direct = any(
                 isinstance(y, ast.Call)
                 and _dotted(y.func).split(".")[-1] == "browse"
@@ -1670,6 +1653,153 @@ def _auth_bypass(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> N
                 "Use auth='user', drop sudo(), or check the record belongs to the caller"
                 " (access token) and whitelist the fields written.",
             )
+
+
+def _is_auth_name(name: str) -> bool:
+    return name in _AUTH_METHODS or name.startswith("_auth_method_") or name in (
+        "_authenticate",
+        "_authenticate_explicit",
+        "_check_credentials",
+        "check_credentials",
+        "_check_session_validity",
+        "check_session",
+        "_auth_method",
+        "_check_access",
+        "check_access_rights",
+        "check_access_rule",
+        "_check_access_rights",
+    )
+
+
+def _fold_str(n: ast.AST) -> str | None:
+    """Constant-fold a string built from literals ('_check_'+'credentials', f'{"a"}b',
+    ''.join([...]), '%s' % 'x'); None when any part is not a literal."""
+    if isinstance(n, ast.Constant) and isinstance(n.value, str):
+        return n.value
+    if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+        a, b = _fold_str(n.left), _fold_str(n.right)
+        return a + b if a is not None and b is not None else None
+    if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Mod):
+        a, b = _fold_str(n.left), _fold_str(n.right)
+        try:
+            return a % b if a is not None and b is not None else None
+        except (TypeError, ValueError):
+            return None
+    if isinstance(n, ast.JoinedStr):
+        out = []
+        for v in n.values:
+            x = _fold_str(v.value) if isinstance(v, ast.FormattedValue) else _fold_str(v)
+            if x is None:
+                return None
+            out.append(x)
+        return "".join(out)
+    if (
+        isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "join"
+        and len(n.args) == 1
+        and isinstance(n.args[0], (ast.List, ast.Tuple))
+    ):
+        sep = _fold_str(n.func.value)
+        parts = [_fold_str(e) for e in n.args[0].elts]
+        if sep is None or any(p is None for p in parts):
+            return None
+        return sep.join(parts)  # type: ignore[arg-type]
+    return None
+
+
+def _env_record_model(n: ast.AST) -> str:
+    """request.env.user / self.env.user -> res.users; env.company -> res.company."""
+    for y in ast.walk(n):
+        if isinstance(y, ast.Attribute) and _chain(y.value).endswith("env"):
+            if y.attr in ("user", "uid"):
+                return "res.users"
+            if y.attr in ("company", "companies"):
+                return "res.company"
+    return ""
+
+
+_CORE_PATCH_ROOTS = ("odoo.http", "odoo.service", "odoo.addons.base.models.ir_http", "odoo.modules", "odoo.sql_db", "odoo.api", "odoo.models", "odoo.fields", "odoo.tools", "odoo.addons")
+_ASYNC_SPAWN = frozenset({"create_subprocess_shell", "create_subprocess_exec", "subprocess_shell", "subprocess_exec"})
+_CORE_DML = re.compile(r"^\s*(?:UPDATE|DELETE\s+FROM|DELETE|TRUNCATE(?:\s+TABLE)?|DROP\s+TABLE|ALTER\s+TABLE|INSERT\s+INTO)\b", re.I)
+
+
+def _odoo_imports(tree: ast.AST) -> dict[str, str]:
+    """Local name -> dotted origin for odoo imports (from odoo import http; import odoo.http as h)."""
+    out: dict[str, str] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name.split(".")[0] == "odoo":
+                    out[a.asname or "odoo"] = a.name if a.asname else "odoo"
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            if n.module.split(".")[0] == "odoo":
+                for a in n.names:
+                    if a.name != "*":
+                        out[a.asname or a.name] = f"{n.module}.{a.name}"
+    return out
+
+
+def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
+    """H2/H3/H5/H6 of review 5: non-literal setattr on an imported Odoo class, assignments
+    into odoo.http/odoo.service internals, literal DML on core tables anywhere, and asyncio
+    subprocess spawns."""
+    imp = _odoo_imports(tree)
+    spawn_alias = {
+        a.asname or a.name
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] == "asyncio"
+        for a in n.names
+        if a.name in _ASYNC_SPAWN
+    }
+
+    def origin(x: ast.AST) -> str:
+        d = _dotted(x)
+        head, _, rest = d.partition(".")
+        if head in imp:
+            return f"{imp[head]}.{rest}" if rest else imp[head]
+        return d
+
+    for n in ast.walk(tree):
+        targets: list[ast.AST] = []
+        if isinstance(n, ast.Assign):
+            targets = list(n.targets)
+        elif isinstance(n, (ast.AugAssign, ast.AnnAssign)):
+            targets = [n.target]
+        for t in targets:
+            if isinstance(t, ast.Attribute):
+                o = origin(t.value)
+                if o.startswith(("odoo.http", "odoo.service", "odoo.addons.base.models.ir_http")):
+                    c.add(HIGH, "core-patch", path, n.lineno,
+                          f"Assigns {o}.{t.attr}: patches Odoo's HTTP/auth/service internals at import.",
+                          "Never patch odoo.http/odoo.service; inherit ir.http and call super().")  # fmt: skip
+        if not isinstance(n, ast.Call):
+            continue
+        fn = _dotted(n.func)
+        if fn in ("setattr", "builtins.setattr", "object.__setattr__", "type.__setattr__") and len(n.args) >= 2:
+            o = origin(n.args[0])
+            lit = _fold_str(n.args[1])
+            if o.startswith("odoo.") and lit is None:
+                c.add(HIGH, "core-patch", path, n.lineno,
+                      f"setattr on {o} with a computed attribute name: patches an Odoo class"
+                      " (cannot prove it is not a security method).",
+                      "Never monkeypatch Odoo classes; inherit and call super().")  # fmt: skip
+            elif o.startswith(("odoo.http", "odoo.service", "odoo.addons.base.models.ir_http")):
+                c.add(HIGH, "core-patch", path, n.lineno, f"setattr on {o}: patches Odoo's HTTP/auth internals.",
+                      "Never patch odoo.http/odoo.service; inherit ir.http and call super().")  # fmt: skip
+        attr = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", "")
+        if attr in _ASYNC_SPAWN or attr in spawn_alias:
+            c.add(HIGH, "dangerous-call", path, n.lineno,
+                  f"{fn or attr}() starts an OS process (asyncio subprocess).",
+                  "Never run shell commands from a module.")  # fmt: skip
+        if attr in ("execute", "executemany", "copy_expert", "copy_from", "copy_to") and n.args:
+            q = _fold_str(n.args[0])
+            if q is None and isinstance(n.args[0], ast.Call) and n.args[0].args:
+                q = _fold_str(n.args[0].args[0])  # SQL('...') wrapper
+            if q and _CORE_DML.search(q) and _CORE_TABLES.search(q):
+                c.add(HIGH, "core-table-dml", path, n.lineno,
+                      f"Literal SQL changes a core table ({q.strip()[:60]!r}) bypassing the ORM and access rules.",
+                      "Never write core tables with SQL; use the ORM on your own models.")  # fmt: skip
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
@@ -1838,6 +1968,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
     _danger_refs(c, path, tree, res)
     _sensitive_writes(c, path, tree, malias, server_code)
     _auth_bypass(c, path, tree, malias)
+    _core_patches(c, path, tree)
     _server_code_grades(c, path, tree, server_code)
     if server_code:
         for n in ast.walk(tree):
@@ -3850,7 +3981,7 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
 
 
 _CORE_TABLES = re.compile(
-    r"\b(?:res_users|res_groups|res_company|ir_\w+|auth_\w+|res_partner)\b", re.I
+    r"\b(?:res_users\w*|res_groups\w*|res_company\w*|ir_\w+|auth_\w+|res_partner\w*)\b", re.I
 )
 
 
