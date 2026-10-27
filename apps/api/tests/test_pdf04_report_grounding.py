@@ -92,8 +92,10 @@ def test_ground_design_spec_loads_related_for_o2m() -> None:
 
 
 def test_default_qweb_uses_external_layout() -> None:
-    assert "web.external_layout" in reports_router.DEFAULT_QWEB
-    assert "web.html_container" not in reports_router.DEFAULT_QWEB
+    # Odoo's report idiom: html_container wraps the docs loop, external_layout each page.
+    qweb = reports_router.DEFAULT_QWEB
+    assert "web.external_layout" in qweb
+    assert qweb.index("web.html_container") < qweb.index('t-foreach="docs"') < qweb.index("web.external_layout")
 
 
 def test_compile_after_grounding_does_not_write_unknown() -> None:

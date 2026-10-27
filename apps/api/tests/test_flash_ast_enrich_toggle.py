@@ -63,7 +63,7 @@ def test_toggle_on_opens_enrich_gate(monkeypatch: pytest.MonkeyPatch) -> None:
         assert intent_llm_enabled() is True
         det = u_mod._deterministic_understanding(PREFER_SALES)
         assert u_mod._should_llm_enrich(PREFER_SALES, det) is True
-        with patch.object(u_mod, "_llm_enrich", side_effect=lambda prompt, det: det) as enrich:
+        with patch.object(u_mod, "_llm_enrich", side_effect=lambda prompt, det, **_kw: det) as enrich:
             u_mod.build_understanding(PREFER_SALES)
             assert enrich.called
     finally:
