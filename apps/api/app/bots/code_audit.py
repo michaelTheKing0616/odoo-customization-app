@@ -19,6 +19,7 @@ import io
 import re
 import stat
 import zipfile
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -2827,6 +2828,36 @@ def _po_entries(text: str):
         yield "".join(msgid), "".join(msgstr), line
 
 
+# attributes Odoo translates inside terms (their text may differ); every other attribute
+# and every tag must match the source term exactly
+_PO_TEXT_ATTRS = frozenset({"title", "alt", "label", "placeholder", "aria-label", "data-tooltip"})
+
+
+def _po_structure(s: str) -> tuple[Counter[tuple[str, tuple[tuple[str, str], ...]]], bool]:
+    """Multiset of (tag, attributes) a term renders as, the way Odoo's xml/html translate
+    parses it (lxml HTML fragment); True when it does not parse."""
+    from lxml import etree
+    from lxml import html as lhtml
+
+    out: Counter[tuple[str, tuple[tuple[str, str], ...]]] = Counter()
+    try:
+        root = lhtml.fragment_fromstring(s, create_parent="div")
+    except (etree.ParserError, ValueError, TypeError):
+        return out, True
+    for el in root.iterdescendants():
+        if not isinstance(el.tag, str):
+            out[("#" + type(el).__name__.lower(), ())] += 1  # comments / PIs
+            continue
+        attrs = tuple(
+            sorted(
+                (str(k).lower(), "" if str(k).lower() in _PO_TEXT_ATTRS else str(v))
+                for k, v in el.attrib.items()
+            )
+        )
+        out[(el.tag.lower(), attrs)] += 1
+    return out, False
+
+
 def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
     """Translated template terms render as markup: a translation must not add script,
     event handlers or javascript: URLs its source text does not have."""
@@ -2843,6 +2874,33 @@ def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
                 f"Translation adds {new[0]!r} that the source term does not contain: rendered as"
                 " markup in templates (stored XSS).",
                 "Translate text only; keep the source term's markup unchanged.",
+            )
+            continue
+        if "<" not in msgstr and "&" not in msgstr:
+            continue
+        got, bad = _po_structure(msgstr)
+        want, _ = _po_structure(msgid)
+        if bad and "<" in msgstr:
+            c.add(
+                HIGH,
+                "po-markup-injection",
+                path,
+                line,
+                "Translation markup does not parse: its rendered structure is undecidable.",
+                "Translate text only; keep the source term's markup unchanged.",
+            )
+            continue
+        extra = got - want
+        if extra:
+            tag, attrs = next(iter(extra))
+            c.add(
+                MEDIUM,
+                "po-markup-change",
+                path,
+                line,
+                f"Translation adds or changes markup <{tag}{''.join(' ' + a for a, _ in attrs)}>"
+                " that the source term does not have (Odoo keeps translated markup).",
+                "Keep exactly the source term's tags and attributes; translate text only.",
             )
 
 

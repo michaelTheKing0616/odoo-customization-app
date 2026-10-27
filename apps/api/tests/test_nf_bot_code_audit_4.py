@@ -329,3 +329,44 @@ def test_h8_owl_static_xml(tpl, sev):
     assert got == ({sev} if sev else set()), r.findings
     # OWL expressions are JavaScript: never run through the Python safe_eval audit
     assert not [f for f in r.findings if f.code in ("unsafe-expression", "expression-call")]
+
+
+# --- .po structural model ---------------------------------------------------------
+
+
+def _po(msgid: str, msgstr: str) -> set[tuple[str, str]]:
+    po = f'msgid ""\nmsgstr ""\n\nmsgid "{msgid}"\nmsgstr "{msgstr}"\n'.encode()
+    r = ca.audit(_zip(BASE | {"i18n/fr.po": po}), version=17, module_name=MOD)
+    return {(f.severity, f.code) for f in r.findings if f.file == "i18n/fr.po"}
+
+
+@pytest.mark.parametrize(
+    "msgid,msgstr,want",
+    [
+        ("Hello", "<img src=x onerror=alert(1)>", ("high", "po-markup-injection")),
+        ("<b>Hi</b>", "<b onclick=x>Salut</b>", ("high", "po-markup-injection")),
+        ("<a href='/x'>Go</a>", "<a href='//evil.example'>Va</a>", ("medium", "po-markup-change")),
+        ("Hi", "<b>Salut</b>", ("medium", "po-markup-change")),
+        (
+            "<span class='a'>Hi</span>",
+            "<span class='a' style='x'>Salut</span>",
+            ("medium", "po-markup-change"),
+        ),
+        ("Hi", "<!-- x -->Salut", ("medium", "po-markup-change")),
+    ],
+)
+def test_po_structure_flags(msgid, msgstr, want):
+    assert want in _po(msgid, msgstr)
+
+
+@pytest.mark.parametrize(
+    "msgid,msgstr",
+    [
+        ("<b>Hi</b>", "<b>Salut</b>"),
+        ("<span title='Hello'>Hi</span>", "<span title='Bonjour'>Salut</span>"),
+        ("Hi &amp; bye", "Salut &amp; au revoir"),
+        ("Hi", "Salut &lt;script&gt;"),
+    ],
+)
+def test_po_structure_quiet(msgid, msgstr):
+    assert not _po(msgid, msgstr)
