@@ -453,6 +453,8 @@ function auditJs(text) {
         const t = elemOf(o) || (o.type === "Identifier" ? elems.get(o.name) : null);
         loadSink(n, t, n.right, prop);
       }
+      if (/(^|\.)document\.domain$/.test(r)) add("low", "js-document-domain", n,
+        "document.domain relaxed: same-origin policy widened to sibling subdomains.");
       if (/(^|\.)location(\.href)?$/.test(r) && !/\.(hash|search|pathname)$/.test(r)) {
         const s = lit(n.right);
         if (s !== null && /^\s*javascript:/i.test(s)) add("high", "js-eval", n, "Navigates to a javascript: URL.");

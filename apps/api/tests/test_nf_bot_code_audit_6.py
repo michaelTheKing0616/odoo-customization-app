@@ -464,3 +464,13 @@ def test_m5_test_tamper_once_per_line(call):
     r = t5.run(f)
     lines = [x.line for x in r.findings if x.code == "test-tamper"]
     assert lines and len(lines) == len(set(lines))
+
+
+# ---------------------------------------------------------------- L1 document.domain
+@pytest.mark.parametrize("src", ["document.domain='e.v';", "window.document.domain = 'odoo.com';", "globalThis.document.domain = h;"])
+def test_l1_document_domain(src):
+    assert ("js-document-domain", "low") in codes({"static/src/a.js": src + "\n"})
+
+
+def test_l1_read_document_domain_ok():
+    assert not has({"static/src/a.js": "const d = document.domain;\n"}, "js-document-domain", "low")
