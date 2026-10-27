@@ -65,8 +65,8 @@ def test_patch_field_refuses_stock_non_custom(client: TestClient) -> None:
         )
     assert res.status_code == 403, res.text
     detail = res.json()["detail"]
-    assert "Only custom fields can be edited" in detail
-    assert "built-in" in detail
+    assert "one of Odoo's own fields" in detail
+    assert "can't be changed in place" in detail
     fake.update_field.assert_not_called()
 
 
