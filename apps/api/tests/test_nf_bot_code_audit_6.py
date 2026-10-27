@@ -421,3 +421,36 @@ def test_m3_multi_foreign_children(e):
 
 def test_m3_multi_own_children_ok():
     assert not has(X(M3.format(e="[(4,ref('s2')),(4,ref('x.s3'))]")), "server-multi-foreign")
+
+
+# ---------------------------------------------------------------- M4 passthrough loop capped and fail closed
+def _chain(n):
+    src = "".join(f"def f{i}(x):\n    return f{i + 1}(x)\n" for i in range(n)) + f"def f{n}(x):\n    return x\n"
+    return pyt(src + "class A(models.Model):\n    _name='a.a'\n    def g(self, q):\n        self.env.cr.execute(f0(q))\n")
+
+
+def test_m4_passthrough_fails_closed(monkeypatch):
+    import app.bots.code_audit as ca
+    import io, zipfile
+    from tests.test_nf_bot_code_audit_5 import MAN
+    monkeypatch.setattr(ca, "MAX_FLOW_ROUNDS", 2)
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w") as z:
+        z.writestr("x/__manifest__.py", MAN)
+        z.writestr("x/__init__.py", "from . import models\n")
+        z.writestr("x/models/__init__.py", "from . import a\n")
+        z.writestr("x/models/a.py", _chain(8)["models/a.py"])
+    r = ca.audit(b.getvalue(), version=17)
+    assert not r.ok and "FlowIncomplete" in (r.error or "")
+
+
+def test_m4_passthrough_converges_under_cap():
+    c = codes(_chain(8))
+    assert ("flow-incomplete", "high") not in c
+
+
+# ---------------------------------------------------------------- M6 not-checked outcomes are never baselined
+@pytest.mark.parametrize("code", ["expression-unparsed", "web-encoding", "flow-incomplete", "js-flow-incomplete", "data-unaudited"])
+def test_m6_unbaselinable(code):
+    import app.bots.code_audit as ca
+    assert ca.unbaselinable(code)

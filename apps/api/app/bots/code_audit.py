@@ -4757,6 +4757,8 @@ UNBASELINABLE = frozenset(
         "sql-data-file",
         "key-material",
         "flow-incomplete",
+        "expression-unparsed",
+        "web-encoding",
     }
 )
 
@@ -4784,13 +4786,15 @@ def _module_flow(
                 continue
             trees.append((t, flow.Resolver(t, _ALIAS_ROOTS)))
     pt: frozenset[str] = frozenset()
-    for _ in range(3):
+    for _ in range(MAX_FLOW_ROUNDS):
         new = pt
         for t, r in trees:
             new = new | flow.passthrough_functions(t, r, new)
         if new == pt:
             break
         pt = new
+    else:  # M4: passthrough summaries must converge too, or the audit fails closed
+        raise FlowIncomplete("passthrough summaries did not converge")
     # sink summaries to a fixpoint over the module call graph: a helper calling a helper
     # that reaches a sink is itself a sink for the parameter that flows (any depth, any file)
     defs = [(fn, r) for t, r in trees for fn in flow.function_defs(t)]
