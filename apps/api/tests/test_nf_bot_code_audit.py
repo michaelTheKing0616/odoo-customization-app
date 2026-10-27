@@ -210,12 +210,12 @@ def test_hostile_archives_refused(files, root, mode, needle):
 
 
 def test_zip_bomb_and_limits(monkeypatch):
-    bomb = zbytes({"__manifest__.py": "{}", "big.txt": "0" * 3_000_000})
+    bomb = zbytes({"__manifest__.py": "{}", "big.py": "#" * 3_000_000})
     r = ca.audit(bomb, version=17)
     # one oversized file is reported HIGH unaudited; the rest of the module is still audited
     assert "over-compressed" in r.error or (
         r.ok
-        and ("high", "file-unaudited", "big.txt")
+        and ("high", "file-unaudited", "big.py")
         in {(f.severity, f.code, f.file) for f in r.findings}
     )
     monkeypatch.setattr(ca, "MAX_RATIO", 1_000_000)
@@ -886,8 +886,18 @@ def test_r7_runner_hooks_and_introspection_are_high(src):
     ],
 )
 def test_r7_test_files_fixed_shape(files):
-    r = _r5_files(files)
+    # owned (generated) modules: the gate's test layout is enforced HIGH
+    base = {
+        "__manifest__.py": b"{'name': 'x_r5', 'version': '17.0.1.0.0', 'depends': ['base'],"
+        b" 'license': 'LGPL-3', 'data': []}",
+        "__init__.py": b"from . import models\n",
+        "models/__init__.py": b"",
+    } | {k: v.encode() for k, v in files.items()}
+    r = ca.audit(zbytes(base, root="x_r5"), version=17, owned_names=["x_r5"])
     assert any(f.code == "test-tamper" and f.severity == ca.HIGH for f in r.findings), files
+    # foreign modules: a layout note only (M5 noise), never silent
+    r = _r5_files(files)
+    assert any(f.code in ("test-layout", "test-tamper") for f in r.findings), files
 
 
 def test_r7_plain_test_shape_is_clean():

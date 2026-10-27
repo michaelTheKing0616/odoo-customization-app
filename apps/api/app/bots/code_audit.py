@@ -60,15 +60,19 @@ _QWEB_ORM = re.compile(
     r"\.sudo\s*\(|\.(?:write|create|unlink|search|search_read|search_count|browse|read_group"
     r"|with_user|execute)\s*\(|\b(?:password|password_crypt|api_key|totp_secret|signup_token)\b"
 )
-_ASSET_EXT = (
+# inert content: never executed by Odoo, Python or the browser (served with a non-script type)
+_INERT_EXT = (
     ".png",
     ".jpg",
     ".jpeg",
     ".gif",
-    ".svg",
     ".webp",
     ".ico",
     ".bmp",
+    ".tif",
+    ".tiff",
+    ".avif",
+    ".cur",
     ".woff",
     ".woff2",
     ".ttf",
@@ -77,14 +81,67 @@ _ASSET_EXT = (
     ".mp3",
     ".mp4",
     ".webm",
+    ".ogg",
+    ".wav",
+    ".m4a",
+    ".mov",
     ".pdf",
-    ".zip",
-    ".gz",
+    ".txt",
+    ".md",
+    ".rst",
+    ".json",
     ".map",
-    ".pyc",
-    ".po",
-    ".pot",
+    ".bcmap",
+    ".ftl",
+    ".typed",
+    ".xsd",
+    ".xls",
+    ".xlsx",
+    ".ods",
+    ".odt",
+    ".doc",
+    ".docx",
+    ".eml",
+    ".gitignore",
+    ".ds_store",
 )
+# executable code Python, the OS or the browser would run without it ever being audited
+_BINARY_CODE = (
+    ".pyc",
+    ".pyo",
+    ".pyd",
+    ".so",
+    ".dylib",
+    ".dll",
+    ".wasm",
+    ".node",
+    ".jar",
+    ".class",
+    ".exe",
+    ".bin",
+    ".elf",
+    ".whl",
+    ".egg",
+)
+_SCRIPT_EXT = (
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".service",
+    ".rules",
+    ".conf",
+    ".local",
+    ".vimrc",
+    ".pl",
+    ".rb",
+    ".php",
+    ".lua",
+    ".vbs",
+)
+_KEY_EXT = (".pem", ".p12", ".pfx", ".key", ".p7m", ".crt", ".cer", ".der", ".jks")
 MAX_INDEX_FINDINGS = 20
 MAX_PO_TOTAL = 120_000_000  # translations are audited too, on their own budget
 _DB_CALLS = frozenset({"search", "search_count", "browse", "read", "search_read", "read_group"})
@@ -144,12 +201,9 @@ def _is_asset(rel: str) -> bool:
     templates under static/ (OWL), JavaScript, stylesheets, SVG/HTML documents
     (code_audit_web) and translations (translated template terms render as markup)."""
     low = rel.lower()
-    if low.endswith(".py") or web.web_kind(rel) or _is_po(rel):
+    if low.endswith((".py", ".pyw")) or web.web_kind(rel) or _is_po(rel):
         return False
-    parts = rel.split("/")
-    if "static" in parts[:-1] and low.endswith(".xml"):
-        return False
-    return bool({"static", "i18n", "__pycache__"} & set(parts[:-1])) or low.endswith(_ASSET_EXT)
+    return low.endswith(_INERT_EXT)
 
 
 def _check_name(rel: str) -> None:
@@ -442,9 +496,10 @@ class _Ctx:
         self.text_fields: frozenset[str] = flow.USER_TEXT
         self.db_helpers: dict[str, str] = {}
         self.flow_pt: frozenset[str] = frozenset()  # module-wide passthrough functions
-        self.flow_sinks: dict[str, tuple[str, str]] = {}  # module-wide sink helpers
+        self.flow_sinks: dict[str, flow.Summary] = {}  # module-wide sink helpers
         # (key, file, first line, kind, text) for code_audit_web: files and inline <script>s
         self.web: list[tuple[str, str, int, str, str]] = []
+        self.pycache: list[str] = []
 
     def add(self, sev, code, file, line, msg, fix):
         tdir = file.startswith("tests/") or "/tests/" in file
@@ -735,6 +790,15 @@ def _chain(n: ast.AST) -> str:
     return ".".join(reversed(parts))
 
 
+_RUNNER_CLS = re.compile(
+    r"(?:^|\.)(?:\w*TestCase|TestResult|\w*TestRunner|TestLoader|TestSuite|OdooSuite|Case)$"
+    r"|unittest|odoo\.tests|sys\.modules|builtins"
+)
+_TEST_SAFE_IMPORTS = re.compile(
+    r"^unittest(?:\.mock(?:\.\w+)?|\.(?:skip|skipIf|skipUnless|SkipTest|expectedFailure|mock))?$"
+)
+
+
 def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
     """Every way found so far to neuter assertions, reach the result file or race the
     runner. Fails closed: anything matching is HIGH test-tamper, also in tests/."""
@@ -750,6 +814,21 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
             "runs background workers.",
         )
 
+    def layout(n: ast.AST, why: str) -> None:
+        # generated (owned) modules must keep the gate's test layout; for foreign code it
+        # is a style note, the behavioural tamper rules below stay HIGH everywhere
+        if getattr(c, "owned", True):
+            hit(n, why)
+        else:
+            c.add(
+                LOW,
+                "test-layout",
+                path,
+                getattr(n, "lineno", 1),
+                why[:200],
+                "Layout note only (foreign module).",
+            )
+
     test_names = {"unittest"}
     for n in ast.walk(tree):
         if isinstance(n, ast.ImportFrom) and (n.module or "").startswith(
@@ -763,7 +842,7 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
                 if a.name.startswith(("odoo.tests", "unittest"))
             }
     if (path.startswith("tests/") or "/tests/" in path) and not _TEST_FILE.match(path):
-        hit(tree, f"{path}: test files must be flat tests/__init__.py or tests/test_*.py.")
+        layout(tree, f"{path}: test files must be flat tests/__init__.py or tests/test_*.py.")
     if path == "tests/__init__.py":
         for st in getattr(tree, "body", []):
             if not (
@@ -774,7 +853,7 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
                     re.fullmatch(r"test_[a-z0-9_]{1,60}", a.name) and not a.asname for a in st.names
                 )
             ):
-                hit(st, "tests/__init__.py may only contain 'from . import test_x' lines.")
+                layout(st, "tests/__init__.py may only contain 'from . import test_x' lines.")
     aliases: dict[str, str] = {}  # import inspect as i / from sys import _getframe as g
     for n in ast.walk(tree):
         if isinstance(n, ast.Import):
@@ -857,10 +936,18 @@ def _tamper_scan(c: Any, path: str, tree: ast.AST) -> None:
                 hit(n, f"{name}() on {tgt or 'an object'}: can neuter assertions.")
         if name in ("patch", "object", "dict", "multiple") and ("patch" in d or "mock" in d):
             txt = " ".join(str(a) for a in args if isinstance(a, str))
+            tgt0 = _chain(n.args[0]) if n.args else ""
             if (
                 re.search(r"assert|fail|unittest|odoo\.tests|sys\.modules|TestCase", txt)
-                or (name == "object" and n.args and re.search(r"Case|Test", _chain(n.args[0])))
-                or name == "dict"
+                or (name == "object" and n.args and _RUNNER_CLS.search(tgt0))
+                or (
+                    name == "dict"
+                    and (
+                        not tgt0
+                        or _RUNNER_CLS.search(tgt0)
+                        or tgt0 in ("sys.modules", "builtins.__dict__", "globals")
+                    )
+                )
             ):
                 hit(n, "Patches the test framework or sys.modules.")
         if d.startswith("sys.modules.") or d in ("sys.modules.update", "sys.modules.setdefault"):
@@ -976,8 +1063,12 @@ def _ancestors(n: ast.AST, parent: dict[int, ast.AST]):
         yield n
 
 
+_SQL_COMPOSED = frozenset({"SQL", "Identifier", "Literal", "Placeholder", "Composed", "identifier"})
+
+
 def _sql_has_variable(n: ast.AST, safe: frozenset[str] = frozenset()) -> bool:
-    """True when a formatted query interpolates anything except literals or the model table."""
+    """True when a formatted query interpolates anything except literals, safe names, the
+    model table, record ids, literal-returning methods or SQL()/psycopg2.sql objects."""
     if isinstance(n, ast.JoinedStr):
         parts = [v.value for v in n.values if isinstance(v, ast.FormattedValue)]
     elif isinstance(n, ast.BinOp):
@@ -986,29 +1077,53 @@ def _sql_has_variable(n: ast.AST, safe: frozenset[str] = frozenset()) -> bool:
         parts = [n.func.value, *n.args, *(k.value for k in n.keywords)]  # type: ignore[attr-defined]
     else:
         return False
-    for p in parts:
-        if isinstance(p, ast.Constant) or (isinstance(p, ast.Name) and p.id in safe):
-            continue
-        if isinstance(p, (ast.JoinedStr, ast.BinOp)):
-            if _sql_has_variable(p, safe):
-                return True
-            continue
-        if isinstance(p, (ast.Tuple, ast.List, ast.Set)) and all(
-            isinstance(e, ast.Constant)
-            or (isinstance(e, ast.Name) and e.id in safe)
-            or (isinstance(e, ast.Attribute) and e.attr == "_table")
-            for e in p.elts
-        ):
-            continue
-        if isinstance(p, ast.Attribute) and p.attr == "_table":
-            continue
+    return not all(_sql_safe_part(p, safe) for p in parts)
+
+
+def _sql_safe_part(p: ast.AST, safe: frozenset[str]) -> bool:
+    if isinstance(p, ast.Constant) or (isinstance(p, ast.Name) and p.id in safe) or _literal(p):
         return True
+    if isinstance(p, ast.Attribute) and p.attr in ("_table", "id"):
+        return True  # the model's own table; a record id (an integer)
+    if isinstance(p, (ast.JoinedStr, ast.BinOp)):
+        return not _sql_has_variable(p, safe)
+    if isinstance(p, ast.IfExp):
+        return _sql_safe_part(p.body, safe) and _sql_safe_part(p.orelse, safe)
+    if isinstance(p, (ast.Tuple, ast.List, ast.Set)):
+        return all(_sql_safe_part(e, safe) for e in p.elts)
+    if isinstance(p, ast.Call):
+        if not p.args and not p.keywords and "()" + _chain(p.func).rsplit(".", 1)[-1] in safe:
+            return True  # self._select(): a method that only ever returns a literal
+        if isinstance(p.func, (ast.Name, ast.Attribute)) and (
+            _chain(p.func).rsplit(".", 1)[-1] in _SQL_COMPOSED
+        ):
+            return True  # odoo.tools.SQL / psycopg2.sql objects: quoted by construction
+        if (
+            isinstance(p.func, ast.Attribute)
+            and p.func.attr in ("join", "format")
+            and isinstance(p.func.value, ast.Call)
+            and _chain(p.func.value.func).rsplit(".", 1)[-1] == "SQL"
+        ):
+            return True
     return False
 
 
 def _literal(v: ast.AST) -> bool:
     if isinstance(v, ast.Constant):
         return True
+    if isinstance(v, (ast.List, ast.Tuple)):
+        return all(_literal(e) for e in v.elts)  # a list of literal SQL fragments
+    if isinstance(v, ast.BinOp) and isinstance(v.op, ast.Mult):
+        return _literal(v.left) and isinstance(v.left, (ast.List, ast.Tuple))  # [lit] * n
+    if (
+        isinstance(v, ast.Call)
+        and isinstance(v.func, ast.Attribute)
+        and v.func.attr == "join"
+        and isinstance(v.func.value, ast.Constant)
+        and len(v.args) == 1
+        and _literal(v.args[0])
+    ):
+        return True  # ' OR '.join([literal, ...])
     return isinstance(v, ast.IfExp) and _literal(v.body) and _literal(v.orelse)
 
 
@@ -1018,6 +1133,12 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
     resolve to the augmentation itself so ``q += name`` is still seen as dynamic."""
     out: dict[int, ast.AST] = {}
     safe_of: dict[int, frozenset[str]] = {}
+    lit_funcs = set()
+    for f in ast.walk(tree):
+        if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            rets = [r for r in ast.walk(f) if isinstance(r, ast.Return)]
+            if rets and all(r.value is not None and _literal(r.value) for r in rets):
+                lit_funcs.add("()" + f.name)
     scopes = [
         tree,
         *(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)),
@@ -1052,14 +1173,10 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
                 if k in chain:
                     continue
                 vals = plain.get(k, []) + aug.get(k, [])
-                if all(
-                    _literal(v)
-                    or (_is_dynamic_str(v) and not _sql_has_variable(v, frozenset(chain | {k})))
-                    for v in vals
-                ):
+                if all(_sql_safe_part(v, frozenset(chain | {k}) | lit_funcs) for v in vals):
                     chain.add(k)
                     changed = True
-        safe = frozenset(chain)
+        safe = frozenset(chain) | lit_funcs
         for n in ast.walk(scope):
             if (
                 isinstance(n, ast.Call)
@@ -1080,10 +1197,13 @@ def _local_sql(tree: ast.AST) -> tuple[dict[int, ast.AST], dict[int, frozenset[s
                     for a in aug.get(nm, []) + plain.get(nm, [])
                     if _is_dynamic_str(a) and _sql_has_variable(a, safe)
                 ]
+                # innermost scope wins: a module-level walk also sees other functions' names
                 if dyn:
                     out[id(n)] = dyn[0]
                 elif len(plain.get(nm, [])) == 1:
                     out[id(n)] = plain[nm][0]
+                else:
+                    out.pop(id(n), None)
     return out, safe_of
 
 
@@ -1165,7 +1285,9 @@ def _elevating(n: ast.AST, malias: dict[str, str]) -> str:
     return ""
 
 
-def _sensitive_writes(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
+def _sensitive_writes(
+    c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str], server_code: bool = False
+) -> None:
     """ORM writes on the security core; HIGH when the receiver runs elevated."""
     model_vars: dict[str, str] = {}
     elev_vars: set[str] = set()
@@ -1207,7 +1329,7 @@ def _sensitive_writes(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str])
         model = model_of(n.func.value)
         if model not in SENSITIVE_MODELS:
             continue
-        why = elevated(n.func.value)
+        why = elevated(n.func.value) or ("stored server code" if server_code else "")
         cfg = model == "ir.config_parameter"
         sev = (MEDIUM if cfg else HIGH) if why else (LOW if cfg else MEDIUM)
         c.add(
@@ -1220,6 +1342,63 @@ def _sensitive_writes(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str])
             "Do not change security records from module code; if required, check the"
             " caller's rights explicitly and never with sudo().",
         )
+
+
+_SERVER_DML = re.compile(
+    r"\b(?:update|delete|insert|drop|alter|truncate|create|grant|revoke|copy|vacuum|reindex)\b",
+    re.I,
+)
+
+
+def _mass_search(x: ast.AST) -> bool:
+    """search() with no domain or an empty literal domain: every record of the model."""
+    if not (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)):
+        return False
+    if x.func.attr not in ("search", "with_context", "sudo", "with_user", "browse"):
+        return False
+    if x.func.attr != "search":
+        return _mass_search(x.func.value)
+    dom = x.args[0] if x.args else next((k.value for k in x.keywords if k.arg == "domain"), None)
+    return dom is None or (isinstance(dom, (ast.List, ast.Tuple)) and not dom.elts)
+
+
+def _server_code_grades(c: _Ctx, path: str, tree: ast.AST) -> None:
+    """Stored server/cron/automation code runs unattended (crons as their user, often
+    root): mass unlink/write over a whole model and write-DML through cr.execute are HIGH."""
+    mass_vars = {
+        t.id
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Assign) and _mass_search(n.value)
+        for t in n.targets
+        if isinstance(t, ast.Name)
+    }
+    for n in ast.walk(tree):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
+            continue
+        recv, attr = n.func.value, n.func.attr
+        if attr in ("unlink", "write", "action_archive", "toggle_active") and (
+            _mass_search(recv) or (isinstance(recv, ast.Name) and recv.id in mass_vars)
+        ):
+            c.add(
+                HIGH,
+                "server-mass-change",
+                path,
+                n.lineno,
+                f"Stored server code runs {attr}() on every record of a model (search([])).",
+                "Restrict the domain to the records the action is about (records / record).",
+            )
+        if attr in ("execute", "execute_values", "execute_batch") and n.args:
+            q = _sql_text(n.args[0]) or ast.unparse(n.args[0])
+            if _SERVER_DML.search(q):
+                c.add(
+                    HIGH,
+                    "server-raw-dml",
+                    path,
+                    n.lineno,
+                    "Stored server code changes the database with raw SQL (no access rights,"
+                    " no ORM, no audit trail).",
+                    "Use the ORM on the intended records; never raw DML in stored code.",
+                )
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
@@ -1331,8 +1510,9 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
         if a is not None and a.arg not in ("self", "cls")
     }
     _danger_refs(c, path, tree, res)
-    _sensitive_writes(c, path, tree, malias)
+    _sensitive_writes(c, path, tree, malias, server_code)
     if server_code:
+        _server_code_grades(c, path, tree)
         for n in ast.walk(tree):
             if isinstance(n, (ast.Import, ast.ImportFrom)):
                 c.add(
@@ -1369,6 +1549,27 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
                 ln,
                 "open() reads or writes server files.",
                 "Use attachments (ir.attachment) or odoo.tools.file_open for module files.",
+            )
+        tgt = res.expr(fn)
+        if tgt in flow._GETTERS and not (n.args and isinstance(_const(n.args[0]), str)):
+            c.add(
+                HIGH,
+                "dangerous-call",
+                path,
+                ln,
+                f"{tgt.split('.')[-1]}() with a computed name: any method can be reached.",
+                "Call the method directly by name.",
+            )
+        if res.call_target(n) in ("compile", "builtins.compile"):
+            lit = bool(n.args) and isinstance(_const(n.args[0]), (str, bytes))
+            c.add(
+                MEDIUM if lit else HIGH,
+                "compile-code",
+                path,
+                ln,
+                "compile() builds a code object"
+                + ("." if lit else " from computed text (reaches exec via types/FunctionType)."),
+                "Remove it; modules never need to compile Python at runtime.",
             )
         if isinstance(fn, ast.Name) and name in ("eval", "exec"):
             c.add(
@@ -1523,7 +1724,9 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
             full = [a.name for a in n.names]
         elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
             full = [n.module, *(f"{n.module}.{a.name}" for a in n.names)]
-        bad_t = sorted({m for m in full if m.startswith(_TEST_MODULES)})
+        bad_t = sorted(
+            {m for m in full if m.startswith(_TEST_MODULES) and not _TEST_SAFE_IMPORTS.match(m)}
+        )
         if bad_t:
             c.add(
                 HIGH,
@@ -1850,6 +2053,332 @@ _READ_ONLY_CALLS = frozenset(
 )
 
 
+_EXPR_FIELDS = frozenset(
+    {"domain", "domain_force", "context", "filter_domain", "filter_pre_domain", "domain_filter"}
+)
+_EXPR_WRITE = frozenset(
+    {
+        "write",
+        "create",
+        "unlink",
+        "sudo",
+        "with_user",
+        "with_env",
+        "execute",
+        "set_param",
+        "copy",
+        "toggle_active",
+        "action_archive",
+        "action_unarchive",
+        "message_post",
+        "send_mail",
+        "commit",
+        "rollback",
+        "update",
+        "setdefault",
+        "pop",
+        "clear",
+        "invalidate_all",
+        "flush_all",
+        "_write",
+        "_create",
+        "_set_password",
+        "unlink_all",
+    }
+)
+_EXPR_ESCAPE = frozenset({"cr", "_cr", "pool", "registry", "env_su", "_env", "func_globals"})
+_EXPR_BAD_CALLS = frozenset(
+    {
+        "eval",
+        "exec",
+        "compile",
+        "__import__",
+        "getattr",
+        "setattr",
+        "delattr",
+        "open",
+        "globals",
+        "locals",
+        "vars",
+        "type",
+        "super",
+        "breakpoint",
+        "input",
+        "memoryview",
+    }
+)
+_EXPR_SAFE_CALLS = frozenset(
+    {
+        "ref",
+        "context_today",
+        "relativedelta",
+        "timedelta",
+        "datetime",
+        "date",
+        "time",
+        "strftime",
+        "strptime",
+        "now",
+        "today",
+        "to_string",
+        "to_date",
+        "to_datetime",
+        "str",
+        "int",
+        "float",
+        "bool",
+        "len",
+        "list",
+        "tuple",
+        "set",
+        "dict",
+        "sorted",
+        "min",
+        "max",
+        "sum",
+        "abs",
+        "any",
+        "all",
+        "round",
+        "get",
+        "mapped",
+        "filtered",
+        "ids",
+        "search",
+        "browse",
+        "exists",
+        "filtered_domain",
+        "get_param",
+        "has_group",
+        "user_has_groups",
+        "obj",
+        "isoformat",
+        "replace",
+        "combine",
+        "join",
+        "split",
+        "strip",
+        "lower",
+        "upper",
+        "format",
+        "startswith",
+        "endswith",
+        "range",
+        "enumerate",
+        "zip",
+        "keys",
+        "values",
+        "items",
+        "localize",
+        "astimezone",
+        "timezone",
+        "fromisoformat",
+        "utcnow",
+        "AND",
+        "OR",
+        "_",
+        "_t",
+        "is_html_empty",
+        "format_date",
+        "format_datetime",
+        "format_amount",
+        "format_duration",
+        "_get_company",
+        "company",
+        "user",
+    }
+)
+_INLINE_EXPR = re.compile(r"\{\{(.+?)\}\}|\$\{(.+?)\}", re.S)
+_TPL_EXPR_ATTRS = (
+    "t-out",
+    "t-esc",
+    "t-raw",
+    "t-if",
+    "t-elif",
+    "t-foreach",
+    "t-value",
+    "t-att",
+    "t-options",
+    "t-set",
+)
+_CFG_SECURITY = re.compile(
+    r"secret|token|passw|key|auth|signup|oauth|totp|login|session|database\.|web\.base\.url"
+    r"|mail\.(?:catchall|bounce|default)|server|url|domain|uuid|cors|iap|webhook",
+    re.I,
+)
+
+
+def _audit_expr(
+    c: _Ctx, path: str, line: int, text: str, where: str, template: bool = False
+) -> None:
+    """A stored/load-time Python expression (safe_eval domain, context, eval=, QWeb t-*,
+    {{ }} inline template): writes, sudo, cursor/registry access, dunders and dynamic
+    builtins are HIGH; other unknown calls in a domain/context are MEDIUM."""
+    src = (text or "").strip()
+    if not src:
+        return
+    try:
+        tree = ast.parse(src, mode="eval")
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        bad = _DANGER_PY.search(src) or re.search(r"__|\.(?:sudo|write|unlink|create)\s*\(", src)
+        c.add(
+            HIGH if bad else LOW,
+            "unsafe-expression" if bad else "expression-unparsed",
+            path,
+            line,
+            f"{where}: expression does not parse as Python"
+            + (" and reaches internals or writes." if bad else " (Odoo would fail on it)."),
+            "Use field names, literals and the documented evaluation context only.",
+        )
+        return
+    high, unknown = [], []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Attribute) and (n.attr.startswith("__") or n.attr in _EXPR_ESCAPE):
+            high.append(f".{n.attr}")
+        elif isinstance(n, ast.Name) and n.id.startswith("__"):
+            high.append(n.id)
+        elif isinstance(n, ast.Call):
+            fn = n.func
+            nm = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+            if isinstance(fn, ast.Attribute) and getattr(fn.value, "id", "") == "Command":
+                continue  # x2many command tuples
+            if template and nm in ("sudo", "with_user", "with_env"):
+                continue  # read under elevation for display: qweb-orm-call (MEDIUM)
+            if nm in _EXPR_BAD_CALLS or nm in _EXPR_WRITE or not nm:
+                high.append(f"{nm or ast.unparse(fn)[:30]}()")
+            elif nm not in _EXPR_SAFE_CALLS:
+                unknown.append(f"{nm}()")
+    if high:
+        c.add(
+            HIGH,
+            "unsafe-expression",
+            path,
+            line,
+            f"{where}: expression {', '.join(sorted(set(high))[:4])} writes data, elevates or"
+            " reaches the interpreter/cursor.",
+            "Expressions must only read: field names, literals, ref(), dates, user/company.",
+        )
+    elif unknown and not template:
+        c.add(
+            MEDIUM,
+            "expression-call",
+            path,
+            line,
+            f"{where}: expression calls {', '.join(sorted(set(unknown))[:4])} (runs on every"
+            " evaluation with the evaluating user's rights).",
+            "Keep domains/contexts to literals, ref(), user/company fields and dates.",
+        )
+
+
+def _audit_template_html(c: _Ctx, path: str, line: int, html: str, where: str) -> None:
+    """Escaped body_html (mail/sms templates, report bodies) parsed as QWeb/HTML."""
+    try:
+        import lxml.html as lh
+
+        root = lh.fragment_fromstring(html, create_parent="div")
+    except Exception:  # noqa: BLE001 - unparsable markup: fail closed on script text
+        if re.search(r"<\s*script|\bon\w+\s*=|javascript:", html, re.I):
+            c.add(HIGH, "template-script", path, line, f"{where}: script in template.", "Remove.")
+        return
+    _audit_template_tree(c, path, line, root.iter(), where)
+
+
+def _audit_template_tree(c: _Ctx, path: str, line: int, els: Any, where: str) -> None:
+    for e in els:
+        if not isinstance(e.tag, str):
+            continue
+        ln = line + max(0, (e.sourceline or 1) - 1) if hasattr(e, "sourceline") else line
+        if e.tag.lower() in ("script", "iframe", "object", "embed", "base", "meta"):
+            c.add(
+                HIGH,
+                "template-script",
+                path,
+                ln,
+                f"{where}: <{e.tag}> in a rendered template (runs in the reader's session or"
+                " mail client).",
+                "Templates must only hold static markup and escaped values.",
+            )
+        for a, v in e.attrib.items():
+            al = a.lower()
+            if al.startswith("on") or (al in _URL_ATTRS and _JS_URL.search(v or "")):
+                c.add(
+                    HIGH,
+                    "template-script",
+                    path,
+                    ln,
+                    f"{where}: {a} runs script in a rendered template.",
+                    "Remove event handlers and javascript: URLs.",
+                )
+            if al in _TPL_EXPR_ATTRS or al.startswith(("t-att-", "t-attf-")):
+                if al.startswith("t-attf-"):
+                    for m in _INLINE_EXPR.finditer(v or ""):
+                        _audit_expr(c, path, ln, m.group(1) or m.group(2), where, True)
+                elif al == "t-foreach" or al != "t-set":
+                    _audit_expr(c, path, ln, v, f"{where} {a}", True)
+        for t in (e.text, e.tail):
+            for m in _INLINE_EXPR.finditer(t or ""):
+                _audit_expr(c, path, ln, m.group(1) or m.group(2), f"{where} {{{{ }}}}", True)
+
+
+def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
+    """domain/context/domain_force/filter_domain (safe_eval), eval= (load time),
+    {{ }} inline templates, body_html QWeb, config parameter records."""
+    tag = el.tag if isinstance(el.tag, str) else ""
+    if tag != "field":
+        for a, v in el.attrib.items():
+            if a in _TPL_EXPR_ATTRS[:-1] or a.startswith("t-att-"):
+                _audit_expr(c, path, xl.el(el, a), v, f"QWeb {a}", True)
+                if a in ("t-out", "t-esc") and re.search(r"\brequest\.(?:params|httprequest)", v):
+                    c.add(
+                        LOW,
+                        "qweb-request-output",
+                        path,
+                        xl.el(el, a),
+                        f"{a} prints request input (escaped unless it is Markup).",
+                        "Validate the parameter; never wrap it in Markup.",
+                    )
+            elif a.startswith("t-attf-"):
+                for m in _INLINE_EXPR.finditer(v or ""):
+                    _audit_expr(c, path, xl.el(el, a), m.group(1) or m.group(2), f"QWeb {a}", True)
+        return
+    parent = el.getparent()
+    model = parent.get("model") if parent is not None else ""
+    name = el.get("name") or ""
+    if el.get("eval") is not None:
+        _audit_expr(c, path, xl.el(el, "eval"), el.get("eval"), f"{model}.{name} eval=")
+    text = el.text or ""
+    lead = len(text) - len(text.lstrip())
+    if name in _EXPR_FIELDS and text.strip() and len(el) == 0:
+        _audit_expr(c, path, xl.body(el, lead), text, f"{model or 'record'}.{name}")
+    if len(el):
+        return  # type="html"/"xml" children: audited element by element by the caller
+    if len(el) == 0 and text.strip():
+        if "<" in text and name in ("body_html", "body", "description", "arch_db", "note"):
+            _audit_template_html(c, path, xl.body(el, lead), text, f"{model}.{name}")
+        elif _INLINE_EXPR.search(text):
+            for m in _INLINE_EXPR.finditer(text):
+                _audit_expr(
+                    c,
+                    path,
+                    xl.body(el, m.start()),
+                    m.group(1) or m.group(2),
+                    f"{model}.{name} inline template",
+                    True,
+                )
+    if model == "ir.config_parameter" and name == "key" and text.strip():
+        key = text.strip()
+        hi = bool(_CFG_SECURITY.search(key))
+        c.add(
+            HIGH if hi else MEDIUM,
+            "config-parameter-record",
+            path,
+            xl.body(el, lead),
+            f"Data record sets system parameter {key!r}"
+            + (" (security / auth / routing setting)." if hi else "."),
+            "Do not ship system parameters in module data; document the setting instead.",
+        )
+
+
 def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     """Server action / cron / automation code (audited with the Python rules), <function>
     calls and <delete> at install or update."""
@@ -2033,9 +2562,10 @@ def _audit_xml(c: _Ctx, path: str, body: bytes) -> None:
                 )
         _qweb_resources(c, path, xl, el)
         _xml_operations(c, path, xl, el)
+        _xml_expressions(c, path, xl, el)
         if (
             el.tag == "field"
-            and el.get("name") in ("domain", "context", "code")
+            and el.get("name") == "code"
             and el.text
             and _DANGER_PY.search(el.text)
         ):
@@ -2259,6 +2789,78 @@ def _audit_po(c: _Ctx, path: str, body: bytes) -> None:
             )
 
 
+_SMIL = frozenset({"set", "animate", "animatetransform", "animatemotion", "animatecolor"})
+
+
+def _markup_doc_checks(c: _Ctx, path: str, el: Any, tag: str, ln: int, kind: str) -> None:
+    """Navigation / origin hijacks in static documents and SVG animation that rewrites
+    handlers or links (SMIL set/animate)."""
+    at = {a.rsplit("}", 1)[-1].lower(): v or "" for a, v in el.attrib.items()}
+    if tag == "meta" and at.get("http-equiv", "").lower() == "refresh":
+        url = at.get("content", "").split("=", 1)[-1]
+        js = bool(_JS_URL.search(url) or "javascript:" in url.lower().replace(" ", ""))
+        if js or _EXT_URL.search(url) or "url=" in at.get("content", "").lower():
+            c.add(
+                HIGH if js or _EXT_URL.search(url) else MEDIUM,
+                "markup-redirect",
+                path,
+                ln,
+                "meta refresh navigates the reader (javascript: or another host).",
+                "Remove the redirect.",
+            )
+    if tag == "base" and at.get("href"):
+        c.add(
+            HIGH if _EXT_URL.search(at["href"]) or _JS_URL.search(at["href"]) else MEDIUM,
+            "markup-base",
+            path,
+            ln,
+            "<base href> rewrites every relative URL of the document.",
+            "Remove <base>.",
+        )
+    if tag == "form" or (tag in ("button", "input") and at.get("formaction")):
+        act = at.get("action") or at.get("formaction") or ""
+        if _EXT_URL.search(act) or _JS_URL.search(act):
+            pwd = any(
+                (x.get("type") or "").lower() == "password"
+                for x in el.iter()
+                if isinstance(x.tag, str)
+            )
+            c.add(
+                HIGH if pwd or _JS_URL.search(act) else MEDIUM,
+                "markup-form-action",
+                path,
+                ln,
+                "Form posts to another host" + (" with a password field." if pwd else "."),
+                "Post only to this server's routes.",
+            )
+    if tag in _SMIL:
+        name = at.get("attributename", "").lower().rsplit(":", 1)[-1]
+        vals = " ".join(at.get(k, "") for k in ("to", "values", "from", "by"))
+        if (
+            name.startswith("on")
+            or (
+                name in ("href", "src")
+                and (
+                    _JS_URL.search(vals)
+                    or "javascript:" in vals.lower()
+                    or _EXT_URL.search(vals)
+                    or not vals.strip()
+                )
+            )
+            or name in ("href", "src")
+            and "data:" in vals.lower()
+        ):
+            c.add(
+                HIGH,
+                "markup-animation",
+                path,
+                ln,
+                f"SVG <{tag}> rewrites {name or 'an attribute'} (script or navigation on"
+                " interaction).",
+                "Remove animations of handlers and links.",
+            )
+
+
 def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
     """SVG / HTML documents served from static/: scripts, handlers and javascript: URLs run
     in the server's origin when the file is opened."""
@@ -2305,7 +2907,7 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
             an = a.rsplit("}", 1)[-1].lower()
             if re.fullmatch(r"on[a-z]{3,30}", an):
                 c.add(
-                    HIGH if kind == "svg" else MEDIUM,
+                    HIGH,
                     "markup-inline-handler",
                     path,
                     ln,
@@ -2326,16 +2928,16 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
                         f"<{tag}> loads from an external host ({val[:80]}).",
                         "Bundle the resource with the module.",
                     )
+        _markup_doc_checks(c, path, el, tag, ln, kind)
         if tag == "script":
-            if kind == "svg":
-                c.add(
-                    HIGH,
-                    "markup-script",
-                    path,
-                    ln,
-                    "SVG contains a <script>: it runs in the server's origin when opened.",
-                    "Ship SVG images without scripts.",
-                )
+            c.add(
+                HIGH,
+                "markup-script",
+                path,
+                ln,
+                f"{kind.upper()} contains a <script>: it runs in the server's origin when opened.",
+                "Ship static documents without scripts.",
+            )
             code = "".join(el.itertext())
             if code.strip():
                 c.web.append((f"{path}#script@{ln}", path, ln, "js", code))
@@ -2352,6 +2954,114 @@ def _audit_markup_file(c: _Ctx, path: str, body: bytes, kind: str) -> None:
                 "SVG embeds HTML (foreignObject).",
                 "Ship plain vector images.",
             )
+
+
+_CORE_TABLES = re.compile(
+    r"\b(?:res_users|res_groups|res_company|ir_\w+|auth_\w+|res_partner)\b", re.I
+)
+
+
+def _manifest_files(manifest: dict[str, Any] | None) -> set[str]:
+    out: set[str] = set()
+    for k in ("data", "demo", "init_xml", "update_xml", "demo_xml"):
+        v = (manifest or {}).get(k)
+        if isinstance(v, (list, tuple)):
+            out |= {str(x) for x in v}
+    return out
+
+
+def _audit_other_file(c: _Ctx, path: str, body: bytes, manifest: dict[str, Any] | None) -> None:
+    """Every file that is neither audited code nor on the inert allow-list: graded, never
+    silently skipped (fail closed)."""
+    low = path.lower()
+    name = low.rsplit("/", 1)[-1]
+    if low.endswith(".svgz"):
+        import gzip
+
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(body)) as g:
+                svg = g.read(MAX_FILE + 1)
+            if len(svg) > MAX_FILE:
+                raise ValueError("expands over the size limit")
+        except (OSError, EOFError, ValueError) as e:
+            c.add(
+                HIGH,
+                "web-unaudited",
+                path,
+                0,
+                f"Compressed SVG cannot be expanded, unaudited ({str(e)[:80]}).",
+                "Ship a plain .svg.",
+            )
+            return
+        _audit_markup_file(c, path, svg, "svg")
+        return
+    if low.endswith(_BINARY_CODE):
+        if "/__pycache__/" in f"/{low}" and low.endswith((".pyc", ".pyo")):
+            c.pycache.append(path)
+            return
+        c.add(
+            HIGH,
+            "binary-code",
+            path,
+            0,
+            "Compiled/binary code (bytecode, native library, WebAssembly, package): it runs"
+            " without its source ever being audited.",
+            "Remove it; ship source only.",
+        )
+        return
+    if low.endswith(".sql"):
+        text = body.decode("utf-8", "replace")
+        loaded = path in _manifest_files(manifest)
+        if _SQL_DANGER.search(text) or (_SERVER_DML.search(text) and _CORE_TABLES.search(text)):
+            sev = HIGH
+        else:
+            sev = MEDIUM if loaded else LOW
+        c.add(
+            sev,
+            "sql-data-file",
+            path,
+            1,
+            "SQL file"
+            + (" run at install/update" if loaded else "")
+            + (": changes security/core tables or the server." if sev == HIGH else "."),
+            "Use XML/CSV data or the ORM; raw SQL bypasses access rights.",
+        )
+        return
+    if low.endswith(_KEY_EXT) or name == "enc_key":
+        c.add(
+            MEDIUM,
+            "key-material",
+            path,
+            0,
+            "Key or certificate file shipped in the module.",
+            "Never ship private keys; load secrets from configuration.",
+        )
+        return
+    if "." not in name and not body.startswith(b"#!") and b"\x00" not in body[:4096]:
+        return  # extensionless text (LICENSE, COPYRIGHT): never imported or served as script
+    kind = name.rsplit(".", 1)[-1] if "." in name else "no extension"
+    c.add(
+        HIGH,
+        "script-file" if low.endswith(_SCRIPT_EXT) or body.startswith(b"#!") else "file-unaudited",
+        path,
+        0,
+        f"Unknown/unaudited file type ({kind}): nothing about it was checked.",
+        "Remove it, or use a supported type (py, xml, csv, js, css/scss, svg, html, po, inert"
+        " media).",
+    )
+
+
+def _bytecode_summary(c: _Ctx) -> None:
+    if c.pycache:
+        c.add(
+            HIGH,
+            "binary-code",
+            sorted(c.pycache)[0],
+            0,
+            f"{len(c.pycache)} Python bytecode cache file(s) in __pycache__: a forged .pyc runs"
+            " instead of the audited .py.",
+            "Delete every __pycache__ directory before packaging or installing.",
+        )
 
 
 def _audit_csv(c: _Ctx, path: str, body: bytes) -> None:
@@ -2726,9 +3436,16 @@ def _prod_tests(files: dict[str, bytes], module: str, manifest: dict[str, Any] |
     return out
 
 
+MAX_FLOW_ROUNDS = 64
+
+
+class FlowIncomplete(RuntimeError):
+    """Interprocedural summaries did not reach a fixpoint: the audit fails closed."""
+
+
 def _module_flow(
     files: dict[str, bytes],
-) -> tuple[frozenset[str], dict[str, tuple[str, str]]]:
+) -> tuple[frozenset[str], dict[str, flow.Summary]]:
     """Cross-file taint summaries: functions returning (a transform of) a parameter, and
     functions passing a parameter into a sink, over every Python file of the module."""
     trees = []
@@ -2747,10 +3464,33 @@ def _module_flow(
         if new == pt:
             break
         pt = new
-    sinks: dict[str, tuple[str, str]] = {}
-    for t, r in trees:
-        sinks.update(flow.sink_summaries(t, r, pt))
-    return pt, sinks
+    # sink summaries to a fixpoint over the module call graph: a helper calling a helper
+    # that reaches a sink is itself a sink for the parameter that flows (any depth, any file)
+    defs = [(fn, r) for t, r in trees for fn in flow.function_defs(t)]
+    calls = {
+        id(fn): {flow.call_name(n, {}) for n in ast.walk(fn) if isinstance(n, ast.Call)}
+        for fn, _ in defs
+    }
+    sinks: dict[str, flow.Summary] = {}
+    dirty: set[str] | None = None  # None: first round, every function
+    for _ in range(MAX_FLOW_ROUNDS):
+        new: dict[str, flow.Summary] = {}
+        for fn, r in defs:
+            if dirty is not None and not (calls[id(fn)] & dirty):
+                if fn.name in sinks:
+                    new[fn.name] = flow.merge_summary(new.get(fn.name, {}), sinks[fn.name])
+                continue
+            sm = flow.function_summary(fn, r, pt, sinks)
+            if sm:
+                new[fn.name] = flow.merge_summary(new.get(fn.name, {}), sm)
+        # monotone: never lose an earlier summary
+        for k, v in sinks.items():
+            new[k] = flow.merge_summary(new.get(k, {}), v)
+        dirty = {k for k in new if new[k] != sinks.get(k)}
+        sinks = new
+        if not dirty:
+            return pt, sinks
+    raise FlowIncomplete("taint summaries did not converge")
 
 
 def _module_index(files: dict[str, bytes]) -> tuple[frozenset[str], dict[str, str]]:
@@ -2820,7 +3560,7 @@ def audit(
         for path in sorted(files):
             body = files[path]
             try:
-                if path.endswith(".py"):
+                if path.endswith((".py", ".pyw")):
                     _audit_py(c, path, body)
                 elif path.endswith(".xml"):
                     _audit_xml(c, path, body)
@@ -2843,6 +3583,8 @@ def audit(
                             "Save the file as UTF-8.",
                         )
                     c.web.append((path, path, 1, kind, text))
+                else:
+                    _audit_other_file(c, path, body, manifest)
             except (RecursionError, MemoryError) as e:
                 c.add(
                     HIGH,
@@ -2852,6 +3594,7 @@ def audit(
                     f"File too deeply nested to audit ({type(e).__name__}).",
                     "Simplify the file; it is not a normal module source file.",
                 )
+        _bytecode_summary(c)
         _audit_web(c)
         _module_checks(c, manifest)
         if (
