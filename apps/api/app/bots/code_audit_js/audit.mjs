@@ -811,7 +811,7 @@ function auditJs(text) {
     }
     if (!body) {  // no payload: only a route that itself names model/method is a call (CA12 H2)
       if (!seg || !method) return;
-    } else if (!o) {
+    } else if (!o && !(seg && model && method)) {  // CA13 L1: a route naming model+method is graded by route
       add(sev, "js-raw-orm-request", n, `${what}() to ${dyn ? "a runtime URL that may be" : ""} the ORM endpoint ${route} with a body built at runtime: model/method undecidable, flagged.`);
       if (dyn) add("high", "js-sensitive-model", n, `${what}() may reach the ORM (${route}) with an unprovable model/method: treated as a privileged write.`);
       return;

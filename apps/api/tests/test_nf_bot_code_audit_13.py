@@ -193,3 +193,21 @@ def test_m3_transitive_alias_high():
 ])
 def test_m3_local_alias_silent(setv, use):
     assert not _sev(_qa(setv, use), "unsafe-expression")
+
+
+# ---------------------------------------------------------------- L1 template const / XHR new URL / unparseable body graded by route
+@pytest.mark.parametrize("src", [
+    "function f(){ const m='res.users'; fetch(`/web/dataset/call_kw/${m}/write`,{method:'POST',body:JSON.stringify({params:{args:[[1],{}]}})}); }",
+    "const m='res.users'; fetch(`/web/dataset/call_kw/${m}/write`,{method:'POST',body:JSON.stringify({})});",
+    "const x=new XMLHttpRequest(); x.open('POST', new URL('/web/dataset/call_kw/res.users/write', location.origin)); x.send('{}');",
+    "navigator.sendBeacon('/web/dataset/call_kw/res.users/write','{}');",
+    "navigator.sendBeacon('/web/dataset/call_kw/res.users/unlink', new Blob(['{}']));",
+    "fetch('/json/1/res.users/create',{method:'POST',body:'{}'});",
+    "function f(b){ fetch('/json/2/res.users/write',{method:'POST',body:b}); }",
+])
+def test_l1_route_named_sensitive_high(src):
+    assert "high" in _sev(_js(src), "js-sensitive-model")
+
+
+def test_l1_route_named_benign_model_silent():
+    assert "high" not in _sev(_js("navigator.sendBeacon('/web/dataset/call_kw/res.partner/read','{}');"), "js-sensitive-model")
