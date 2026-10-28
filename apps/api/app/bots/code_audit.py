@@ -1599,20 +1599,400 @@ def _domain_names(tree: ast.AST) -> dict:
     return names
 
 
-def _mass_search_mod(x: ast.AST, names: dict | None = None) -> bool:
-    """search() whose domain provably matches every record of the model: none, empty,
-    or a tautology (CODE-AUDIT-9 H4) — unbounded unless constrained by a real condition."""
-    if not (isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute)):
+# Recordset boundedness (CODE-AUDIT-11 root-cause inversion): a write/unlink/archive sink is
+# safe only when its recordset is PROVABLY bounded. Every search is unbounded until its domain
+# carries a selective leaf (or a small literal limit outside a batch loop); derived sets
+# (filtered / mapped / ids / browse / _search / search_read / comprehensions) inherit.
+_FULL_SELECTIONS = {
+    "account.move": {"state": {"draft", "posted", "cancel"}},
+    "sale.order": {"state": {"draft", "sent", "sale", "cancel", "done"}},
+    "purchase.order": {"state": {"draft", "sent", "to approve", "purchase", "done", "cancel"}},
+    "stock.picking": {"state": {"draft", "waiting", "confirmed", "assigned", "done", "cancel"}},
+}
+_SMALL_LIMIT = 1000
+_RS_PASS = frozenset({"with_context", "sudo", "with_user", "with_company", "with_env", "with_prefetch",
+                      "exists", "sorted", "filtered", "filtered_domain", "mapped", "grouped", "concat",
+                      "union", "__or__", "__add__", "browse"})
+_RS_SEARCH = frozenset({"search", "search_fetch", "_search", "search_read", "web_search_read", "read_group",
+                        "_read_group", "search_count"})
+MASS_SINKS = frozenset({"unlink", "write", "_write", "action_archive", "action_unarchive", "toggle_active",
+                        "update", "sudo_write"})
+
+
+def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], str | None] | None = None) -> str:
+    """B = selective (narrows to specific records), T = matches all, F = matches none,
+    U = matches an unprovable / non-selective set (negations, ranges over literals, '%')."""
+    t = _leaf_truth(leaf)
+    if t in ("T", "F"):
+        return t
+    (lk, left), (ok, op), (rk, right) = (_lit(e) for e in leaf)
+    if not (ok and isinstance(op, str)):
+        return "U"
+    op = op.strip().lower()
+    if not (lk and isinstance(left, str)):  # runtime field name: only an equality on a runtime value selects
+        return "B" if not rk and op in ("=", "==", "in", "child_of", "parent_of") and not (
+            rs_unbounded is not None and rs_unbounded(leaf[2])) else "U"
+    fld = left.split(".")[0]
+    rnode = leaf[2]
+    if not rk:  # runtime value: selective unless it is itself an unbounded set / range
+        for sub in ast.walk(rnode):
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) and sub.func.id == "range":
+                return "U"
+        if rs_unbounded is not None and rs_unbounded(rnode):
+            return "U"
+        return "U" if op in ("!=", "<>", "not in", "not like", "not ilike", "=?") else "B"
+    if op in ("like", "ilike", "=like", "=ilike"):
+        return "T" if isinstance(right, str) and not right.replace("%", "").replace("_", "") else "B"
+    if fld == "active" and op in ("=", "==", "in"):
+        return "U"  # archived-or-not is a filter over (nearly) every record, not a selection
+    if op in ("=", "==", "child_of", "parent_of"):
+        return "B"
+    if op == "in":
+        vals = right if isinstance(right, list) else [right]
+        full = _FULL_SELECTIONS.get(model, {}).get(fld)
+        if full and {v for v in vals if isinstance(v, str)} >= full:
+            return "T"
+        return "B"
+    return "U"
+
+
+def _domain_bound(dom: ast.AST | None, names: dict, model: str = "", depth: int = 0,
+                  rs_unbounded: Callable[[ast.AST], str | None] | None = None) -> str:
+    """B/F = provably bounded; T/U = matches every / an unprovable set. Unknown is U (deny)."""
+    if dom is None:
+        return "T"
+    if depth > 8:
+        return "U"
+    if isinstance(dom, ast.Name):
+        if dom.id not in names:
+            return "U"
+        selfref = lambda v: any(isinstance(q, ast.Name) and q.id == dom.id for q in ast.walk(v))  # noqa: E731
+        sub = {**names, dom.id: [v for v in names[dom.id] if not selfref(v)]}  # x = f(x): the previous x
+        vals = {_domain_bound(v, sub, model, depth + 1, rs_unbounded) for v in names[dom.id]}
+        for v in names[dom.id]:  # x &= <selective> / x += [<selective leaf>] narrows whatever x was
+            if isinstance(v, ast.BinOp) and isinstance(v.op, (ast.Add, ast.BitAnd)) and isinstance(v.left, ast.Name) \
+                    and v.left.id == dom.id and _domain_bound(v.right, sub, model, depth + 1, rs_unbounded) in ("B", "F"):
+                return "B"
+        return "B" if vals <= {"B"} else ("F" if vals == {"F"} else ("T" if "T" in vals else "U"))
+    if isinstance(dom, ast.Call):
+        fn = _dotted(dom.func) if isinstance(dom.func, (ast.Name, ast.Attribute)) else ""
+        last = fn.rsplit(".", 1)[-1]
+        if last in ("AND", "OR") and dom.args and isinstance(dom.args[0], (ast.List, ast.Tuple)):
+            parts = [_domain_bound(e, names, model, depth + 1, rs_unbounded) for e in dom.args[0].elts]
+            return _and(parts) if last == "AND" else _or(parts)
+        if last in ("AND", "OR") and dom.args and isinstance(dom.args[0], ast.Name) and dom.args[0].id in names:
+            elts: list[ast.AST] = []  # a list built by literal + .append(): its elements
+            for v in names[dom.args[0].id]:
+                if isinstance(v, (ast.List, ast.Tuple)):
+                    elts += v.elts
+                elif isinstance(v, ast.BinOp) and isinstance(v.left, ast.Name) and v.left.id == dom.args[0].id and isinstance(v.right, ast.List):
+                    elts += v.right.elts
+                else:
+                    return "U"
+            parts = [_domain_bound(e, names, model, depth + 1, rs_unbounded) for e in elts]
+            return _and(parts) if last == "AND" else _or(parts)
+        if last in ("Domain", "list", "tuple") and len(dom.args) == 1:
+            return _domain_bound(dom.args[0], names, model, depth + 1, rs_unbounded)
+        if last == "Domain" and len(dom.args) == 3:  # Domain('field', 'op', value): one leaf
+            return _leaf_bound(list(dom.args), model, rs_unbounded)
+        if isinstance(dom.func, ast.Name) and dom.func.id in names:
+            return _domain_bound(ast.Name(id=dom.func.id), names, model, depth + 1, rs_unbounded)
+        if isinstance(dom.func, ast.Attribute) and isinstance(dom.func.value, ast.Name) and dom.func.value.id in ("self", "cls") and dom.func.attr in names:
+            return _domain_bound(ast.Name(id=dom.func.attr), names, model, depth + 1, rs_unbounded)
+        return "U"
+    if isinstance(dom, ast.Attribute) and dom.attr in ("TRUE", "TRUE_DOMAIN", "TRUE_LEAF"):
+        return "T"
+    if isinstance(dom, ast.Attribute) and dom.attr in ("FALSE", "FALSE_DOMAIN", "FALSE_LEAF"):
+        return "F"
+    if isinstance(dom, ast.IfExp):
+        return _or([_domain_bound(dom.body, names, model, depth + 1, rs_unbounded),
+                    _domain_bound(dom.orelse, names, model, depth + 1, rs_unbounded)])
+    if isinstance(dom, ast.BinOp) and isinstance(dom.op, ast.BitOr):
+        return _or([_domain_bound(dom.left, names, model, depth + 1, rs_unbounded),
+                    _domain_bound(dom.right, names, model, depth + 1, rs_unbounded)])
+    if isinstance(dom, ast.BinOp) and isinstance(dom.op, (ast.Add, ast.BitAnd)):
+        return _and([_domain_bound(dom.left, names, model, depth + 1, rs_unbounded),
+                     _domain_bound(dom.right, names, model, depth + 1, rs_unbounded)])
+    if not isinstance(dom, (ast.List, ast.Tuple)):
+        return "U"
+    terms: list = []
+    for e in dom.elts:
+        if isinstance(e, ast.Constant) and e.value in ("&", "|", "!"):
+            terms.append(e.value)
+        elif isinstance(e, (ast.List, ast.Tuple)) and len(e.elts) == 3:
+            terms.append((_leaf_bound(list(e.elts), model, rs_unbounded), list(e.elts)))
+        elif isinstance(e, ast.Starred):
+            terms.append(_domain_bound(e.value, names, model, depth + 1, rs_unbounded))
+        elif isinstance(e, ast.IfExp) and all(isinstance(b, (ast.List, ast.Tuple)) and len(b.elts) == 3 for b in (e.body, e.orelse)):
+            terms.append(_or([_leaf_bound(list(e.body.elts), model, rs_unbounded), _leaf_bound(list(e.orelse.elts), model, rs_unbounded)]))
+        elif isinstance(e, (ast.Call, ast.Name)):  # a nested Domain(...) / sub-domain
+            terms.append(_domain_bound(e, names, model, depth + 1, rs_unbounded))
+        else:
+            return "U"
+    pos = 0
+
+    def take() -> str:
+        nonlocal pos
+        if pos >= len(terms):
+            raise ValueError
+        t = terms[pos]
+        pos += 1
+        if isinstance(t, tuple):
+            return t[0]
+        if t == "!":
+            v = take()
+            return {"T": "F", "F": "T"}.get(v, "U")  # '!' of a selective leaf selects the rest
+        if t in ("&", "|"):
+            if t == "|" and pos + 1 < len(terms) and _complementary(terms[pos], terms[pos + 1]):
+                pos += 2
+                return "T"  # ('active','=',True) | ('active','=',False): every record
+            a, b = take(), take()
+            return _and([a, b]) if t == "&" else _or([a, b])
+        return t
+
+    out: list[str] = []
+    try:
+        while pos < len(terms):
+            out.append(take())
+    except ValueError:
+        return "U"
+    return _and(out) if out else "T"
+
+
+_NEG_OP = {"=": "!=", "!=": "=", "in": "not in", "not in": "in", "like": "not like", "not like": "like",
+           "ilike": "not ilike", "not ilike": "ilike", "<": ">=", ">=": "<", ">": "<=", "<=": ">"}
+
+
+def _complementary(a: Any, b: Any) -> bool:
+    """Two leaves whose OR is every record: same field, negated operators / both booleans."""
+    if not (isinstance(a, tuple) and isinstance(b, tuple)):
         return False
-    if x.func.attr not in ("search", "with_context", "sudo", "with_user", "browse", "search_fetch"):
+    (lk1, f1), (ok1, o1), (rk1, v1) = (_lit(e) for e in a[1])
+    (lk2, f2), (ok2, o2), (rk2, v2) = (_lit(e) for e in b[1])
+    if not (lk1 and lk2 and ok1 and ok2 and isinstance(o1, str) and isinstance(o2, str) and f1 == f2):
         return False
-    if x.func.attr not in ("search", "search_fetch"):
-        return _mass_search_mod(x.func.value, names)
-    lim = next((k.value for k in x.keywords if k.arg == "limit"), None)
-    if lim is not None and not (isinstance(lim, ast.Constant) and lim.value in (None, 0, False)):
-        return False  # a batch (limit=N) is bounded: stock mail cron search_fetch([], limit=batch_size)
-    dom = x.args[0] if x.args else next((k.value for k in x.keywords if k.arg == "domain"), None)
-    return _domain_truth(dom, names) == "T"
+    o1, o2 = o1.strip().lower(), o2.strip().lower()
+    if o1 == o2 == "=" and rk1 and rk2 and {v1, v2} == {True, False}:
+        return True
+    if _NEG_OP.get(o1) == o2:
+        return ast.dump(a[1][2]) == ast.dump(b[1][2])
+    return False
+
+
+def _and(parts: list[str]) -> str:
+    if "F" in parts:
+        return "F"
+    if "B" in parts:
+        return "B"
+    return "T" if all(p == "T" for p in parts) else "U"
+
+
+def _or(parts: list[str]) -> str:
+    if "T" in parts:
+        return "T"
+    if parts and all(p == "F" for p in parts):
+        return "F"
+    return "B" if all(p in ("B", "F") for p in parts) else "U"
+
+
+def _model_of(x: ast.AST) -> str:
+    """'res.partner' for env['res.partner'] at the root of a call chain."""
+    while True:
+        if isinstance(x, ast.Subscript):
+            s = _fold_str(x.slice)
+            if s is not None:
+                return s
+            x = x.value
+        elif isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute):
+            x = x.func.value
+        elif isinstance(x, ast.Attribute):
+            x = x.value
+        else:
+            return ""
+
+
+def _small_int(n: ast.AST | None, names: dict) -> bool:
+    if isinstance(n, ast.Name) and n.id in names and len(names[n.id]) == 1:
+        n = names[n.id][0]
+    return (isinstance(n, ast.Constant) and isinstance(n.value, int) and not isinstance(n.value, bool)
+            and 0 < n.value <= _SMALL_LIMIT)
+
+
+class _Bounds:
+    """Per-function recordset/domain provenance. A name resolves to the assignments that reach
+    the use: preceding ones not dominated by a later assignment at the same or outer indent,
+    plus the iterable of an enclosing loop. A literal limit inside a while loop batches over
+    everything."""
+
+    def __init__(self, tree: ast.AST):
+        self.fn_returns: dict[str, list[ast.AST]] = {}
+        for n in ast.walk(tree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                rets = [r.value for r in ast.walk(n) if isinstance(r, ast.Return) and r.value is not None]
+                rets += [y.value for y in ast.walk(n) if isinstance(y, ast.Yield) and y.value is not None]
+                if rets:
+                    self.fn_returns.setdefault(n.name, []).extend(rets)
+            elif isinstance(n, ast.Assign) and isinstance(n.value, ast.Lambda):
+                for t in n.targets:
+                    if isinstance(t, ast.Name):
+                        self.fn_returns.setdefault(t.id, []).append(n.value.body)
+        self.scopes: list[tuple[int, int, dict]] = []
+        self.whiles: list[tuple[int, int]] = []
+        self.module: dict[str, list[tuple[int, int, int, ast.AST]]] = {}
+        self.attrs: dict[str, list[tuple[int, int, int, ast.AST]]] = {}
+        self._collect(tree, self.module)
+        self.rs = self.module
+        self.line = 10**9
+
+    def _put(self, rs: dict, key: str, stmt: ast.AST, value: ast.AST, end: int = 0) -> None:
+        rs.setdefault(key, []).append((stmt.lineno, stmt.col_offset, end, value))
+
+    def _collect(self, node: ast.AST, rs: dict) -> None:
+        for n in ast.iter_child_nodes(node):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                local: dict = {}
+                self.scopes.append((n.lineno, n.end_lineno or n.lineno, local))
+                self._collect(n, local)
+                continue
+            if isinstance(n, ast.Assign):
+                for t in n.targets:
+                    for s in ast.walk(t):
+                        if isinstance(s, ast.Name):
+                            self._put(rs, s.id, n, n.value)
+                        elif isinstance(s, ast.Attribute) and isinstance(s.value, ast.Name) and s.value.id == "self":
+                            self._put(self.attrs, s.attr, n, n.value)
+            elif isinstance(n, ast.AugAssign) and isinstance(n.target, ast.Name):
+                self._put(rs, n.target.id, n, ast.BinOp(left=n.target, op=n.op, right=n.value), end=-1)
+            elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.value is not None:
+                self._put(rs, n.target.id, n, n.value)
+            elif isinstance(n, ast.NamedExpr):
+                self._put(rs, n.target.id, n, n.value)
+            elif isinstance(n, (ast.For, ast.AsyncFor)):
+                for s in ast.walk(n.target):
+                    if isinstance(s, ast.Name):
+                        self._put(rs, s.id, n, n.iter, end=n.end_lineno or n.lineno)
+            elif isinstance(n, ast.comprehension):
+                for s in ast.walk(n.target):
+                    if isinstance(s, ast.Name):
+                        self._put(rs, s.id, n.iter, n.iter, end=10**9)
+            elif isinstance(n, ast.Expr) and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Attribute) \
+                    and n.value.func.attr in ("extend", "append", "add", "insert") and isinstance(n.value.func.value, ast.Name) and n.value.args:
+                tgt = n.value.func.value
+                self._put(rs, tgt.id, n, ast.BinOp(left=ast.Name(id=tgt.id), op=ast.Add(),
+                                                   right=ast.List(elts=[n.value.args[-1]])), end=-1)
+            if isinstance(n, ast.While):
+                self.whiles.append((n.lineno, n.end_lineno or n.lineno))
+            self._collect(n, rs)
+
+    def at(self, ln: int) -> "_Bounds":
+        best = None
+        for a, b, d in self.scopes:
+            if a <= ln <= b and (best is None or b - a < best[1] - best[0]):
+                best = (a, b, d)
+        view = object.__new__(_Bounds)
+        view.__dict__.update(self.__dict__)
+        view.rs = best[2] if best is not None else self.module
+        view.line = ln
+        return view
+
+    def reaching(self, entries: list[tuple[int, int, int, ast.AST]]) -> list[ast.AST]:
+        ln = self.line
+        loop = [e for e in entries if e[2] > 0 and e[0] <= ln <= e[2]]
+        pre = [e for e in entries if e[0] < ln and not (e[2] > 0 and not e[0] <= ln <= e[2])] or [e for e in entries if e[2] <= 0]
+        live = [e for e in pre if e[2] < 0 or not any(o[0] > e[0] and o[1] <= e[1] and o[2] >= 0 for o in pre)]
+        return [e[3] for e in loop + live] or [e[3] for e in entries]
+
+    def names(self) -> dict:
+        """Domain-name view for _domain_bound: reaching values of locals, then helper returns."""
+        out = {k: v for k, v in self.fn_returns.items()}
+        for k, v in self.module.items():
+            out[k] = [e[3] for e in v]
+        for k, v in self.rs.items():
+            out[k] = self.reaching(v)
+        return out
+
+    def unbounded(self, x: ast.AST | None, depth: int = 0, seen: frozenset = frozenset(), data_ok: bool = False) -> str | None:
+        """Why x may be every record (None when provably bounded or not a recordset). With
+        data_ok, rows from search_read/read_group are plain data (dict.update, not ORM)."""
+        if x is None or depth > 12:
+            return None
+        rec = lambda y: self.unbounded(y, depth + 1, seen, data_ok)  # noqa: E731
+        if isinstance(x, ast.Name):
+            if x.id in seen:
+                return None
+            ent = self.rs.get(x.id) or (self.module.get(x.id) if self.rs is not self.module else None)
+            for v in self.reaching(ent) if ent else ():
+                r = self.unbounded(v, depth + 1, seen | {x.id}, data_ok)
+                if r:
+                    return r
+            return None
+        if isinstance(x, ast.Attribute):
+            if isinstance(x.value, ast.Name) and x.value.id == "self" and x.attr in self.attrs and "self." + x.attr not in seen:
+                return next((r for e in self.attrs[x.attr] if (r := self.unbounded(e[3], depth + 1, seen | {"self." + x.attr}, data_ok))), None)
+            return rec(x.value)  # .ids / relation of an unbounded set
+        if isinstance(x, ast.Subscript):
+            sl = x.slice
+            if isinstance(sl, ast.Slice):
+                if sl.upper is not None and _small_int(sl.upper, {}) and sl.lower is None:
+                    return None
+                return rec(x.value)
+            if isinstance(sl, ast.Constant) and isinstance(sl.value, int):
+                return None  # one record
+            return rec(x.value)
+        if isinstance(x, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            return next((r for g in x.generators if (r := rec(g.iter))), None)
+        if isinstance(x, ast.BoolOp):
+            return next((r for v in x.values if (r := rec(v))), None)
+        if isinstance(x, ast.IfExp):
+            return rec(x.body) or rec(x.orelse)
+        if isinstance(x, ast.BinOp):
+            return rec(x.left) or rec(x.right)
+        if isinstance(x, (ast.Await, ast.Starred)):
+            return rec(x.value)
+        if isinstance(x, (ast.List, ast.Tuple, ast.Set)):
+            return next((r for e in x.elts if (r := rec(e))), None)
+        if not isinstance(x, ast.Call):
+            return None
+        f = x.func
+        if isinstance(f, ast.Name):
+            if f.id in ("list", "set", "tuple", "sorted", "iter", "frozenset", "next") and x.args:
+                return rec(x.args[0])
+            if f.id in self.fn_returns and f.id not in seen:  # same-module helper / lambda: its returns
+                return next((r for v in self.fn_returns[f.id] if (r := self.at(v.lineno).unbounded(v, depth + 1, seen | {f.id}, data_ok))), None)
+            return None
+        if not isinstance(f, ast.Attribute):
+            return None
+        a = f.attr
+        if a in _RS_SEARCH:
+            if data_ok and a in ("search_read", "web_search_read", "read_group", "search_count"):
+                return None
+            model = _model_of(f.value)
+            dom = x.args[0] if x.args else next((k.value for k in x.keywords if k.arg in ("domain", "args")), None)
+            lim = next((k.value for k in x.keywords if k.arg == "limit"), None)
+            if lim is None and a in ("search", "search_fetch", "_search", "search_read") and len(x.args) >= (3 if a in ("search", "_search") else 4):
+                lim = x.args[2] if a in ("search", "_search") else x.args[3]
+            nm = self.names()
+            batch = any(p < x.lineno <= q for p, q in self.whiles)
+            if lim is not None and _small_int(lim, nm) and not batch:
+                return None
+            d = _domain_bound(dom, nm, model, rs_unbounded=rec)
+            if d in ("B", "F"):
+                return None
+            why = {"T": "matches every record", "U": "is not provably selective"}[d]
+            if lim is not None and not _small_int(lim, nm):
+                why += "; its limit is not a small literal"
+            elif lim is not None:
+                why += "; a literal limit inside a while loop batches over everything"
+            return f"{a}() over {model or 'a model'} whose domain {why}"
+        if a in _RS_PASS:
+            if a == "browse":
+                return next((r for v in x.args if (r := self.unbounded(v, depth + 1, seen))), None)
+            return rec(f.value) or next((r for v in x.args if not isinstance(v, ast.Lambda) and (r := rec(v))), None)
+        if a in self.fn_returns and a not in seen and (
+            (isinstance(f.value, ast.Name) and f.value.id in ("self", "cls")) or isinstance(f.value, (ast.Subscript, ast.Name))
+        ):  # self.helper() / env['m'].helper() / Cls.helper()
+            return next((r for v in self.fn_returns[a] if (r := self.at(v.lineno).unbounded(v, depth + 1, seen | {a}, data_ok))), None)
+        return None
 
 
 _UNBOUNDED_DML = re.compile(
@@ -1643,40 +2023,42 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) 
     where = "Stored server code" if server else "Hook/migration code"
     _dn = _domain_names(tree)
 
-    def _mass_search(x: ast.AST) -> bool:  # noqa: F811 - module domain names bound in
-        return _mass_search_mod(x, _dn)
-
-    mass_vars = {
-        t.id
+    bounds = _Bounds(tree)
+    sink_alias = {  # m = getattr(rs, 'unl'+'ink') / m = rs.unlink
+        t.id: (n.value.args[0], _fold_str(n.value.args[1]))
         for n in ast.walk(tree)
-        if isinstance(n, ast.Assign) and _mass_search(n.value)
-        for t in n.targets
-        if isinstance(t, ast.Name)
-    }
-    mass_vars |= {
-        t.id
-        for n in ast.walk(tree)
-        if isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension))
-        and (_mass_search(n.iter) or (isinstance(n.iter, ast.Name) and n.iter.id in mass_vars))
-        for t in ast.walk(n.target)
-        if isinstance(t, ast.Name)
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call) and isinstance(n.value.func, ast.Name)
+        and n.value.func.id == "getattr" and len(n.value.args) >= 2 and _fold_str(n.value.args[1]) in MASS_SINKS
+        for t in n.targets if isinstance(t, ast.Name)
     }
     for n in ast.walk(tree):
-        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)):
+        if not isinstance(n, ast.Call):
+            continue
+        if isinstance(n.func, ast.Name) and n.func.id in sink_alias:
+            recv0, attr0 = sink_alias[n.func.id]
+            bv = bounds.at(n.lineno)
+            why = bv.unbounded(n.args[0]) if n.args else bv.unbounded(recv0)
+            if why:
+                c.add(HIGH, "server-mass-change" if server else "mass-change", path, n.lineno,
+                      f"{attr0}() through getattr on a recordset that is not provably bounded: {why}.",
+                      "Act on records proven to be specific (self / ids checked for access / a selective domain).")
+            continue
+        if not isinstance(n.func, ast.Attribute):
             continue
         recv, attr = n.func.value, n.func.attr
         h = hook(n.lineno)
-        if attr in ("unlink", "write", "action_archive", "toggle_active") and (
-            _mass_search(recv) or (isinstance(recv, ast.Name) and recv.id in mass_vars)
-        ):
+        why = None
+        if attr in MASS_SINKS and not (attr == "update" and not isinstance(recv, ast.Call)):  # dict.update
+            why = bounds.at(n.lineno).unbounded(recv, data_ok=True)
+        if why:
             c.add(
-                HIGH if h else MEDIUM,
+                HIGH,
                 "server-mass-change" if server else "mass-change",
                 path,
                 n.lineno,
-                f"{where if h else 'Code'} runs {attr}() on every record of a model"
-                " (search([]) or a loop over it).",
-                "Restrict the domain to the records the action is about (records / record).",
+                f"{where if h else 'Code'} runs {attr}() on a recordset that is not provably bounded: {why}.",
+                "Act on records proven to be specific (self / ids checked for access / a selective domain"
+                " with a small literal limit).",
             )
         if attr in ("execute", "execute_values", "execute_batch") and n.args:
             q = _sql_text(n.args[0]) or ast.unparse(n.args[0])
@@ -1940,6 +2322,21 @@ def _env_record_model(n: ast.AST) -> str:
 _CORE_PATCH_ROOTS = ("odoo.http", "odoo.service", "odoo.addons.base.models.ir_http", "odoo.modules", "odoo.sql_db", "odoo.api", "odoo.models", "odoo.fields", "odoo.tools", "odoo.addons")
 _ASYNC_SPAWN = frozenset({"create_subprocess_shell", "create_subprocess_exec", "subprocess_shell", "subprocess_exec"})
 _CORE_DML = re.compile(r"^\s*(?:UPDATE|DELETE\s+FROM|DELETE|TRUNCATE(?:\s+TABLE)?|DROP\s+TABLE|ALTER\s+TABLE|INSERT\s+INTO)\b", re.I)
+# Anywhere in normalised SQL (CTE bodies, after comments): a write verb straight onto a core table.
+_CORE_DML_ON = re.compile(
+    r"\b(?:UPDATE(?:\s+ONLY)?|DELETE\s+FROM(?:\s+ONLY)?|TRUNCATE(?:\s+TABLE)?(?:\s+ONLY)?|DROP\s+TABLE(?:\s+IF\s+EXISTS)?|"
+    r"ALTER\s+TABLE(?:\s+IF\s+EXISTS)?(?:\s+ONLY)?|INSERT\s+INTO|MERGE\s+INTO|COPY)\s+(?:\w+\.)?"
+    r"(?:res_users\w*|res_groups\w*|res_company\w*|ir_\w+|auth_\w+|res_partner\w*)\b", re.I)
+
+
+def _sql_norm(q: str) -> str:
+    """SQL as the server parses it: comments removed, identifier quotes and schema dropped,
+    whitespace collapsed (UPDATE/**/res_users, "res_users", public.res_users)."""
+    q = re.sub(r"/\*.*?(?:\*/|$)", " ", q, flags=re.S)
+    q = re.sub(r"--[^\n]*", " ", q)
+    q = q.replace('"', "")
+    q = re.sub(r"\bpublic\.", "", q, flags=re.I)
+    return re.sub(r"\s+", " ", q)
 
 
 def _odoo_imports(tree: ast.AST) -> dict[str, str]:
@@ -2269,7 +2666,8 @@ def _core_patches(c: _Ctx, path: str, tree: ast.AST) -> None:
                   "Never run shell commands from a module.")  # fmt: skip
         if attr in ("execute", "executemany", "copy_expert", "copy_from", "copy_to") and n.args:
             q = _sql_folded(n.args[0], sql_vars)
-            if q and _CORE_DML.search(q) and _CORE_TABLES.search(q):
+            q = _sql_norm(q) if q else q
+            if q and ((_CORE_DML.search(q) and _CORE_TABLES.search(q)) or _CORE_DML_ON.search(q)):
                 c.add(HIGH, "core-table-dml", path, n.lineno,
                       f"Literal SQL changes a core table ({q.strip()[:60]!r}) bypassing the ORM and access rules.",
                       "Never write core tables with SQL; use the ORM on your own models.")  # fmt: skip
@@ -2368,6 +2766,27 @@ def _sql_folded(q: ast.AST, names: dict[str, ast.AST], depth: int = 0) -> str | 
     s = _fold_str(q)
     if s is not None:
         return s
+    if isinstance(q, ast.JoinedStr):  # f'UPDATE {t} ...' with t a local constant
+        out = ""
+        for v in q.values:
+            if isinstance(v, ast.Constant):
+                out += str(v.value)
+            elif isinstance(v, ast.FormattedValue):
+                p = _sql_folded(v.value, names, depth + 1)
+                out += p if p is not None else "?"
+        return out
+    if isinstance(q, ast.BinOp) and isinstance(q.op, ast.Add):
+        a, b = _sql_folded(q.left, names, depth + 1), _sql_folded(q.right, names, depth + 1)
+        return None if a is None and b is None else (a or "?") + (b or "?")
+    if isinstance(q, ast.BinOp) and isinstance(q.op, ast.Mod):  # 'UPDATE %s SET ..' % t
+        a = _sql_folded(q.left, names, depth + 1)
+        if a is None:
+            return None
+        args = q.right.elts if isinstance(q.right, ast.Tuple) else [q.right]
+        for x in args:
+            p = _sql_folded(x, names, depth + 1)
+            a = a.replace("%s", p if p is not None else "?", 1)
+        return a
     if not isinstance(q, ast.Call):
         return None
     fn = _dotted(q.func).split(".")[-1]
@@ -2442,13 +2861,21 @@ _SECRET_PASS = frozenset({
     "dict", "str", "list", "tuple", "format", "join", "dumps", "url_encode", "urlencode",
     "encode", "decode", "b64encode", "copy", "update", "jsonify",
     "make_response", "make_json_response", "render", "Response",
+    "append", "extend", "add", "insert", "setdefault",
 })  # fmt: skip
 _SECRET_READERS = ("mapped", "read", "search_read", "read_group", "export_data", "get_param", "webRead", "web_read")
 
 
 def _callee_name(x: ast.Call) -> str:
+    """Helper reached by name: f(), self.f(), super().f(), Cls.f() (staticmethod) and
+    env['m'].f() (a model method of this module)."""
     if isinstance(x.func, ast.Attribute) and _chain(x.func.value).split(".")[-1] in ("self", "cls", "super()") or (
         isinstance(x.func, ast.Attribute) and isinstance(x.func.value, ast.Call) and getattr(x.func.value.func, "id", "") == "super"
+    ):
+        return x.func.attr
+    if isinstance(x.func, ast.Attribute) and (
+        (isinstance(x.func.value, ast.Name) and x.func.value.id[:1].isupper())
+        or any(isinstance(z, ast.Subscript) and _chain(z.value).endswith("env") for z in ast.walk(x.func.value))
     ):
         return x.func.attr
     return x.func.id if isinstance(x.func, ast.Name) else ""
@@ -2506,9 +2933,12 @@ def _secret_flow(f: ast.AST, summ: dict[str, tuple[str, frozenset[int]]]):
                 return True
         return False
 
-    for st in ast.walk(f):
-        if isinstance(st, ast.Assign) and rec_like(st.value):
-            rec_vars |= {t.id for t in st.targets if isinstance(t, ast.Name)}
+    for _ in range(2):
+        for st in ast.walk(f):
+            if isinstance(st, ast.Assign) and rec_like(st.value):
+                rec_vars |= {t.id for t in st.targets if isinstance(t, ast.Name)}
+            elif isinstance(st, (ast.For, ast.AsyncFor, ast.comprehension)) and rec_like(st.iter):
+                rec_vars |= {t.id for t in ast.walk(st.target) if isinstance(t, ast.Name)}
     if params:  # a helper's record parameter (g(rec): return rec[...]) is a record when callers pass one
         rec_vars |= set(params)
 
@@ -2519,14 +2949,20 @@ def _secret_flow(f: ast.AST, summ: dict[str, tuple[str, frozenset[int]]]):
             # H1: rec['password'] / rec[fld] / browse(..)['x'] / rows[0]['password']
             if isinstance(y, ast.Subscript) and not _chain(y.value).endswith("env") and (k := fold(y.slice)) and _SECRET_ATTR.match(k) and rec_like(y.value):
                 return k
+            if isinstance(y, ast.Attribute) and y.attr in ("__dict__", "_cache") and rec_like(y.value):
+                return y.attr
             if isinstance(y, ast.Call):
                 fn = y.func
                 # H2: getattr(rec, 'pass' + 'word'), operator.attrgetter('password')(rec), rec.get('password')
-                if isinstance(fn, ast.Name) and fn.id == "getattr" and len(y.args) >= 2 and (k := fold(y.args[1])) and _SECRET_ATTR.match(k):
-                    return k
+                if isinstance(fn, ast.Name) and fn.id == "getattr" and len(y.args) >= 2:
+                    k = fold(y.args[1])
+                    if k is not None and _SECRET_ATTR.match(k):
+                        return k
+                    if k is None and rec_like(y.args[0]):  # a field name that cannot be proven non-secret
+                        return "getattr(<runtime field name>)"
                 if isinstance(fn, ast.Call) and _dotted(fn.func).endswith(("attrgetter", "itemgetter")) and any((k := fold(a)) and _SECRET_ATTR.match(k) for a in fn.args):
                     return "attrgetter"
-                if isinstance(fn, ast.Attribute) and fn.attr in ("get", "mapped", "_read_format") and y.args and (k := fold(y.args[0])) and _SECRET_ATTR.match(k.split(".")[-1]) and rec_like(fn.value):
+                if isinstance(fn, ast.Attribute) and fn.attr in ("get", "mapped", "_read_format", "__getitem__", "__getattribute__", "__getattr__") and y.args and (k := fold(y.args[0])) and _SECRET_ATTR.match(k.split(".")[-1]) and rec_like(fn.value):
                     return k
                 if isinstance(fn, ast.Attribute) and fn.attr in ("read", "search_read", "web_read", "_read_format", "export_data", "search_fetch") and any(
                     isinstance(z, (ast.List, ast.Tuple)) and any((k := fold(el)) and _SECRET_ATTR.match(k.split(".")[-1]) for el in z.elts) for a in [*y.args, *[kk.value for kk in y.keywords]] for z in ast.walk(a)
@@ -2554,6 +2990,10 @@ def _secret_flow(f: ast.AST, summ: dict[str, tuple[str, frozenset[int]]]):
 
     for _ in range(4):
         for st in ast.walk(f):
+            if isinstance(st, ast.Call) and isinstance(st.func, ast.Attribute) and isinstance(st.func.value, ast.Name) \
+                    and st.func.attr in ("append", "extend", "add", "insert", "update", "setdefault"):
+                if w := next((w for a0 in st.args if (w := secret_read(a0))), ""):  # out.append(rec['password'])
+                    tainted[st.func.value.id] = w
             if isinstance(st, ast.Assign):
                 w = secret_read(st.value)
                 pf = param_flow(st.value)
@@ -2589,6 +3029,13 @@ def _secret_summaries(c: _Ctx) -> dict[str, tuple[str, frozenset[int]]]:
             except (SyntaxError, ValueError, RecursionError, MemoryError):
                 continue
             funcs += [n for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+            for n in ast.walk(t):  # g = lambda r: r.password is a helper too
+                if isinstance(n, ast.Assign) and isinstance(n.value, ast.Lambda):
+                    for tg in n.targets:
+                        if isinstance(tg, ast.Name):
+                            fd = ast.FunctionDef(name=tg.id, args=n.value.args, body=[ast.Return(value=n.value.body, lineno=n.lineno, col_offset=0)],
+                                                 decorator_list=[], returns=None, type_params=[], lineno=n.lineno, col_offset=0)
+                            funcs.append(fd)
     summ: dict[str, tuple[str, frozenset[int]]] = {}
     for _ in range(MAX_FLOW_ROUNDS):
         changed = False

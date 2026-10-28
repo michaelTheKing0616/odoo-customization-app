@@ -1,0 +1,175 @@
+"""CODE-AUDIT-11: REVIEW-CODE-AUDIT-8 (12H/5M/2L) closed by root-cause inversion: a sink is safe
+only when its recordset / field / URL / SQL is provably bounded. Each finding: the review probe,
+>=3 variants and a benign stock-like shape."""
+import pytest
+
+from tests.test_nf_bot_code_audit_5 import codes
+
+PH = "from odoo import models, fields, api, http\nfrom odoo.http import request\nfrom odoo.osv import expression\nimport json\n"
+MH = "class A(models.Model):\n    _name = 'a.a'\n    _description = 'a'\n\n    def f(self, ids=None):\n"
+
+
+def _m(body, pre=""):
+    return {"models/a.py": PH + pre + MH + "".join("        " + ln + "\n" for ln in body.split("\n"))}
+
+
+def _sev(files, code):
+    return {s for c, s in codes(files) if c == code}
+
+
+P = "self.env['res.partner']"
+
+
+# ---------------------------------------------------------------- H4 limit= does not bound
+@pytest.mark.parametrize("body", [
+    f"{P}.search([], limit=10**9).unlink()",  # review probe
+    f"n = None\n{P}.search([], limit=n).unlink()",
+    f"{P}.search([], limit={P}.search_count([])).unlink()",
+    f"{P}.search([], 0, 10**9).unlink()",
+    f"while True:\n    r = {P}.search([], limit=100)\n    if not r:\n        break\n    r.unlink()",
+])
+def test_h4_dynamic_limit_mass_change(body):
+    assert "high" in _sev(_m(body), "mass-change")
+
+
+# ---------------------------------------------------------------- H5 unprovable domains deny by default
+@pytest.mark.parametrize("body", [
+    f"{P}.search(json.loads('[]')).unlink()",  # review probe
+    f"{P}.search(expression.TRUE_DOMAIN).unlink()",
+    f"{P}.search(['!', ('id', '=', 0)]).unlink()",
+    f"{P}.search(['|', ('active', '=', True), ('active', '=', False)]).unlink()",
+    f"{P}.search([('name', '!=', 'zz-never')]).unlink()",
+    f"{P}.search([('id', '=like', '%')]).unlink()",
+    f"{P}.search([('display_name', 'ilike', '')]).unlink()",
+    "self.env['account.move'].search([('state', 'in', ['draft', 'posted', 'cancel'])]).unlink()",
+    f"{P}.search(['|', ('ref', '=', self.name), ('ref', '!=', self.name)]).unlink()",
+    f"{P}.search(ids).unlink()",  # a parameter domain is unprovable
+])
+def test_h5_unprovable_domain_high(body):
+    assert "high" in _sev(_m(body), "mass-change")
+
+
+# ---------------------------------------------------------------- H6 derived recordsets inherit
+@pytest.mark.parametrize("body", [
+    f"{P}.search([]).filtered(lambda r: True).unlink()",  # review probe
+    f"{P}.browse({P}._search([])).unlink()",
+    f"{P}.browse([r['id'] for r in {P}.search_read([], ['id'])]).unlink()",
+    f"{P}.search([('id', 'in', {P}._search([]))]).unlink()",
+    f"{P}.sudo().search([]).mapped('child_ids').unlink()",
+    f"{P}.search([])._write({{'active': False}})",
+    f"recs = {P}.search([('id', '!=', 0)])\nfor r in recs:\n    r.unlink()",
+    f"m = getattr({P}, 'unl' + 'ink')\nm({P}.search([]))",
+])
+def test_h6_derived_recordset_high(body):
+    assert "high" in _sev(_m(body), "mass-change")
+
+
+# ---------------------------------------------------------------- benign: provably bounded (stock shapes)
+@pytest.mark.parametrize("body", [
+    "self.unlink()",
+    "self.filtered(lambda r: r.state == 'draft').write({'state': 'cancel'})",
+    "self.env['mail.activity'].search([('res_model', '=', self._name), ('res_id', 'in', self.ids)]).unlink()",
+    "domain = [('calendar_id', 'in', self.ids)]\ndomain = expression.AND([domain, [('x', '=', 1)]]) if ids else domain\n"
+    "self.env['resource.calendar.leaves'].search(domain).write({'x': 2})",
+    "m = self.env['discuss.channel.member'].search([('channel_id', '=', self.id), ('partner_id', '=', 1) if ids else ('guest_id', '=', 2)])\nm.unlink()",
+    f"{P}.search([('id', '=', 3)], limit=1).unlink()",
+    "self.env['account.move.line'].browse(ids).unlink()",
+    "vals = {}\nfor r in self.env['x.y'].search_read([], ['a']):\n    vals.update(r)",
+    "d = [('state', '=', 'confirmed'), ('bom_id', '=', self.id)]\nd.append(('product_id', '!=', 5))\nself.env['mrp.production'].search(d).write({'a': 1})",
+])
+def test_bounded_recordsets_silent(body):
+    assert not _sev(_m(body), "mass-change")
+
+
+# ---------------------------------------------------------------- H12 server action / cron
+SA = ("<odoo><record id='s' model='ir.actions.server'><field name='name'>s</field><field name='model_id' ref='base.model_res_partner'/>"
+      "<field name='state'>code</field><field name='code'>{}</field></record></odoo>")
+MANV = "{'name':'x','version':'17.0.1.0.0','depends':['base'],'license':'LGPL-3','data':['views/v.xml']}"
+
+
+@pytest.mark.parametrize("code", [
+    "env['res.partner'].search([], limit=10**9).unlink()",  # review probe
+    "model.search([('name','!=','zz')]).unlink()",
+    "env['res.partner'].search(['!',('id','=',0)]).write({'active': False})",
+    "for r in env['res.partner'].search([('id','&gt;',0)]):\n    r.unlink()",
+])
+def test_h12_server_mass_change_high(code):
+    assert "high" in _sev({"views/v.xml": SA.format(code)}, "server-mass-change") or \
+        "high" in {s for c, s in codes({"views/v.xml": SA.format(code)}, MANV) if c == "server-mass-change"}
+
+
+def test_h12_bounded_server_action_silent():
+    assert not {s for c, s in codes({"views/v.xml": SA.format("records.write({'active': False})")}, MANV) if c == "server-mass-change"}
+
+
+# ---------------------------------------------------------------- H1/H2/H3 secret reads on public routes
+RT = "class C(http.Controller):\n    @http.route('/p', auth='public')\n    def p(self, i=0, **kw):\n"
+SU = "request.env['res.users'].sudo().browse(2)"
+
+
+def _r(body, pre=""):
+    return {"models/a.py": PH + pre + RT + "".join("        " + ln + "\n" for ln in body.split("\n"))}
+
+
+@pytest.mark.parametrize("files", [
+    _r(f"return [r['password'] for r in request.env['res.users'].sudo().search([('id', '=', 2)])]"),  # H1 probe
+    _r(f"return str({SU}.__getitem__('password'))"),
+    _r(f"out = []\nfor u in request.env['res.users'].sudo().search([('id', '=', 2)]):\n    out.append(u['api_key_ids'])\nreturn out"),
+    _r(f"return {{u.login: u['totp_secret'] for u in {SU}}}"),
+    _r(f"return {SU}.__dict__"),
+])
+def test_h1_container_secret_read_high(files):
+    assert "high" in _sev(files, "route-secret-read")
+
+
+@pytest.mark.parametrize("files", [
+    _r(f"n = bytes.fromhex('70617373776f7264').decode()\nreturn getattr({SU}, n)"),  # H2 probe
+    _r(f"return getattr({SU}, kw.get('f'))"),
+    _r(f"import base64\nreturn getattr({SU}, base64.b64decode('cGFzc3dvcmQ=').decode())"),
+    _r(f"return getattr({SU}, 'drowssap'[::-1])"),
+])
+def test_h2_runtime_field_name_high(files):
+    assert "high" in _sev(files, "route-secret-read")
+
+
+@pytest.mark.parametrize("files", [
+    _r(f"return g({SU})", pre="g = lambda r: r.password\n"),  # H3 probes
+    _r(f"return C2.g({SU})", pre="class C2:\n    @staticmethod\n    def g(r):\n        return r.password\n"),
+    _r(f"return request.env['z.z'].g({SU})",
+       pre="class Z(models.AbstractModel):\n    _name = 'z.z'\n    _description = 'z'\n\n    def g(self, r):\n        return r.password\n"),
+    _r(f"return C2.g({SU})", pre="class C2:\n    @classmethod\n    def g(cls, r):\n        return {'k': r['api_key_ids']}\n"),
+])
+def test_h3_helper_kinds_high(files):
+    assert "high" in _sev(files, "route-secret-read")
+
+
+@pytest.mark.parametrize("files", [
+    _r("p = request.env['res.partner'].sudo().browse(int(i))\nreturn {'name': p.name, 'city': getattr(p, 'city')}"),
+    _r("return [{'name': u.name} for u in request.env['res.users'].sudo().search([('id', '=', 2)])]"),
+    _r(f"return C2.g({SU})", pre="class C2:\n    @staticmethod\n    def g(r):\n        return r.name\n"),
+    _r("return getattr(request, kw.get('f', 'session')) and 'ok'"),
+])
+def test_secret_benign_silent(files):
+    assert not _sev(files, "route-secret-read")
+
+
+# ---------------------------------------------------------------- H10 SQL normalised before DML check
+@pytest.mark.parametrize("body", [
+    "self.env.cr.execute('/*x*/UPDATE/**/res_users SET active=false')",  # review probe
+    "self.env.cr.execute('WITH a AS (DELETE FROM res_users RETURNING 1) SELECT 1')",
+    "t = 'res_' + 'users'\nself.env.cr.execute(f'UPDATE {t} SET active=false')",
+    "self.env.cr.execute('-- c\\nUPDATE \"public\".\"res_users\" SET active=false')",
+    "t = 'ir_config_parameter'\nself.env.cr.execute('DELETE FROM %s' % t)",
+    "self.env.cr.execute('SELECT 1; INSERT INTO res_groups_users_rel VALUES (1, 2)')",
+])
+def test_h10_core_table_dml_high(body):
+    assert "high" in _sev(_m(body), "core-table-dml")
+
+
+@pytest.mark.parametrize("body", [
+    "self.env.cr.execute('UPDATE a_a SET name = %s WHERE id = %s', ('x', 1))",
+    "self.env.cr.execute('SELECT id FROM res_users WHERE login = %s', ('x',))",
+    "self.env.cr.execute('WITH a AS (SELECT id FROM res_partner) UPDATE a_a SET name = 1')",
+])
+def test_h10_own_table_sql_silent(body):
+    assert not _sev(_m(body), "core-table-dml")

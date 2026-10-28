@@ -125,7 +125,7 @@ PY_C = {
 "h15":M("self.env['res.partner'].search([]).mapped('user_ids').write({'groups_id': [(4, 1)]})"),
 "h15b":M("self.partner_id.user_ids.write({'active': False})"),
 "h15c":M("self.env['res.partner'].search([]).filtered(lambda p: p.x).mapped('user_ids').sudo().unlink()"),
-"h15neg":M("self.env['sale.order'].search([]).mapped('order_line').write({'x': 1})"),
+"h15neg":M("self.env['sale.order'].search([('id', 'in', self.ids)]).mapped('order_line').write({'x': 1})"),
 "h16":"class A(models.Model):\n    _inherit = 'res.partner'\n    pw = fields.Char(related='user_ids.password', store=True)\n",
 "h16b":"class A(models.Model):\n    _inherit = 'res.partner'\n    pw = fields.Char(string='P', related='user_id.oauth_access_token')\n",
 "h16c":"class A(models.Model):\n    _name = 'a.a'\n    k = fields.Char(related='user_id.totp_secret', readonly=True)\n",
