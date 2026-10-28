@@ -5,7 +5,7 @@ Command (from apps/api):
         python scripts/stock_audit_counts.py [out.json]
 
 Prints the exact source tree (path, git commit, odoo/release.py version), then for each rule
-set (version=17, version=19) and each of the 12 modules: HIGH / MEDIUM / *-unaudited counts.
+set (version=17, version=19) and each of the 19 modules: HIGH / MEDIUM / *-unaudited counts.
 Exits non-zero when any module errors or has an *-unaudited finding (the same gate as
 tests/test_nf_bot_code_audit_stock_gate.py, run with INGENIUM_STOCK_AUDIT=1)."""
 import json
@@ -19,7 +19,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.bots import code_audit as ca  # noqa: E402
 
-MODS = ["mail", "sale", "crm", "hr", "website_sale", "mrp", "account", "stock", "web", "portal", "auth_signup", "website"]
+MODS = ["mail", "sale", "crm", "hr", "website_sale", "mrp", "account", "stock", "web", "portal", "auth_signup", "website",
+        # CA12: product (M2/M3 false alarms) + 6 more stock modules
+        "product", "purchase", "project", "point_of_sale", "hr_expense", "event", "survey"]
 
 
 def main() -> int:
