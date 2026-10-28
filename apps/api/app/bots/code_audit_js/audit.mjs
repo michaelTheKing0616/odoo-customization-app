@@ -1107,8 +1107,17 @@ function auditJs(text) {
         const model = lit(a0);
         const m2 = meth === "call" ? lit(n.arguments[1]) : meth;
         if (model === null) {
-          if (ORM_WRITES.has(meth) && runtimeSrc(a0)) add("high", "js-sensitive-model", n, `orm.${meth}() on a model from a global/fetch result: unprovable target (CA14 M2).`);
-          else if (ORM_WRITES.has(meth)) add("info", "js-dynamic-model", n, `orm.${meth}() on a model chosen at runtime: undecidable, flagged.`);
+          // CA15 H4/M3: a runtime model on a destructive ORM-service call is unprovable: HIGH. The documented
+          // controller selection (orm.unlink(this.props.resModel, this.props.resIds) inside a List/Form/Kanban
+          // controller) is MEDIUM; props from any other parent are not provably the user's selection.
+          const destructive = ORM_WRITES.has(meth) || (meth === "call" && (m2 === null || WRITE_METHODS.has(m2) || MASS_JS.test(m2) || /unlink|write|archive|toggle|^action_|^button_|create|copy|set_|merge|reset|cancel|delete/.test(m2)));
+          const srcTxt = text.slice(n.start, n.end);
+          const props = /^\s*this\.props\.resModel\s*$/.test(text.slice(a0.start, a0.end)) && n.arguments[1] && /^\s*this\.props\.resIds\s*$/.test(text.slice(n.arguments[1].start, n.arguments[1].end));
+          const cls = [...text.slice(0, n.start).matchAll(/class\s+(\w+)\s+extends\s+([\w.]+)/g)].pop();
+          const ctl = cls && /(List|Form|Kanban)(Controller|Renderer)$/.test(cls[2]) && /(List|Form|Kanban)(Controller|Renderer)$/.test(cls[1]);
+          if (destructive && props && ctl) add("medium", "js-sensitive-model", n, `orm.${meth}() on this.props.resModel/resIds inside ${cls[1]}: documented controller selection pattern, still unprovable from here.`);
+          else if (destructive) add("high", "js-sensitive-model", n, `orm.${meth}(${meth === "call" ? (m2 || "<runtime method>") : ""}) on a model chosen at runtime (${srcTxt.slice(0, 60)}): unprovable target (CA15 H4).`);
+          else add("info", "js-dynamic-model", n, `orm.${meth}() on a model chosen at runtime: undecidable, flagged.`);
         } else if (SENSITIVE.has(model) && (m2 === null || WRITE_METHODS.has(m2))) {
           add(m2 === null ? "medium" : "high", "js-sensitive-model", n,
               `orm.${meth}(${m2 === null ? "<runtime method>" : m2}) on ${model} from the browser.`);
