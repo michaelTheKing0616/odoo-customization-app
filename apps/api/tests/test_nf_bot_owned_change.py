@@ -476,7 +476,7 @@ INHERIT_SALE = """<odoo>
             [Edit("static/src/x.py", "replace_file", "import os\nos.system('id')\n")],
         ),
         (
-            {"tests/__init__.py": "", "tests/evil.py": "import os\nos.system('id')\n"},
+            {"tests/__init__.py": "", "tests/evil.py": "def f(cr):\n    cr.execute('DELETE FROM res_users')\n"},
             [
                 Edit(
                     "__init__.py", "replace_file", "from . import models\nfrom .tests import evil\n"
