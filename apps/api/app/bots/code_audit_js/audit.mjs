@@ -33,6 +33,7 @@ const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|
 let CONSTS = new Map();
 let COOKIE_VARS = new Set();
 let URL_VARS = new Set(); // locals holding a URL-controlled value
+let JSURL_PROPS = new Set(); // CA11 H9: keys/properties bound to a javascript: URL literal
 let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
 let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
 // ORM HTTP endpoints reached with fetch / XHR / sendBeacon / axios (CA9 H6)
@@ -198,8 +199,27 @@ function decodeEntities(t) {
   return t;
 }
 let DEPTH = 0;
+function litArr(n) {
+  if (!n) return null;
+  if (n.type === "ArrayExpression") { const xs = n.elements.map((e) => lit(e)); return xs.every((x) => x !== null) ? xs : null; }
+  if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && !n.callee.computed) {
+    const m = n.callee.property.name;
+    if (m === "split") { const s0 = lit(n.callee.object), sep = n.arguments.length ? lit(n.arguments[0]) : null; return s0 !== null && sep !== null ? s0.split(sep) : null; }
+    if (m === "reverse" && !n.arguments.length) { const a = litArr(n.callee.object); return a ? [...a].reverse() : null; }
+    if (m === "concat") { const a = litArr(n.callee.object), b = n.arguments.map((x) => litArr(x) ?? (lit(x) !== null ? [lit(x)] : null)); return a && b.every(Boolean) ? a.concat(...b) : null; }
+  }
+  return null;
+}
 function lit(n) {
   if (!n) return null;
+  if (n.type === "MemberExpression" && !n.computed && n.property.name === "href" && n.object.type === "NewExpression") return lit(n.object);
+  // CA11 M2: new URL('/x', 'https://e.v') folds to its absolute href
+  if (n.type === "NewExpression" && n.callee.type === "Identifier" && n.callee.name === "URL" && n.arguments.length) {
+    const a = lit(n.arguments[0]), b = n.arguments.length > 1 ? lit(n.arguments[1]) : null;
+    if (a !== null && (n.arguments.length === 1 || b !== null)) {
+      try { return n.arguments.length > 1 ? new URL(a, b).href : a; } catch { return a; }
+    }
+  }
   if (n.type === "Literal" && typeof n.value === "string") return n.value;
   if (n.type === "Identifier" && CONSTS.has(n.name)) return CONSTS.get(n.name);
   if (n.type === "TemplateLiteral") {
@@ -218,8 +238,8 @@ function lit(n) {
   // ['ev', 'al'].join('') / 'a'.concat('b') / String.fromCharCode(..literals)
   if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && !n.callee.computed) {
     const m = n.callee.property.name;
-    if (m === "join" && n.callee.object.type === "ArrayExpression") {
-      const parts = n.callee.object.elements.map((e) => lit(e));
+    if (m === "join") {
+      const parts = litArr(n.callee.object) || [null];
       const sep = n.arguments.length ? lit(n.arguments[0]) : ",";
       if (sep !== null && parts.every((x) => x !== null)) return parts.join(sep);
     }
@@ -317,6 +337,7 @@ function urlHead(n) {
 }
 // a URL scheme that executes code when navigated / loaded
 function scriptScheme(s) {
+  if (typeof s === "string") s = s.replace(/\\[tnr]/g, "").replace(/[\t\n\r]/g, "");
   return typeof s === "string" && /^[\s\x00-\x20]*(javascript|vbscript|livescript)\s*:|^\s*data:\s*(text\/html|image\/svg|application\/(x-)?javascript|text\/javascript)/i.test(s);
 }
 
@@ -406,6 +427,11 @@ function auditJs(text) {
   COOKIE_VARS = new Set();
   URL_VARS = new Set();
   EMPTY_VARS = new Set();
+  JSURL_PROPS = new Set();
+  walk.full(ast, (n) => {
+    if (n.type === "Property" && n.key && scriptScheme(lit(n.value))) JSURL_PROPS.add(n.key.name || n.key.value);
+    if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression" && !n.left.computed && scriptScheme(lit(n.right))) JSURL_PROPS.add(n.left.property.name);
+  });
   DOM_VARS = new Map();
   const assigned = new Map();
   const patIds = (pt, out = []) => {
@@ -986,7 +1012,9 @@ function auditJs(text) {
       if (v.type === "TemplateLiteral") { const t = v.quasis.map((q) => q.value.cooked || "").join("__owl_interp__"); return /</.test(t) ? t : null; }
       if (v.type === "Identifier" && DOM_VARS.has(v.name)) return tplOf(DOM_VARS.get(v.name)[0], d + 1);
       if (v.type === "BinaryExpression" && v.operator === "+") { const a = tplOf(v.left, d + 1) ?? lit(v.left), b = tplOf(v.right, d + 1) ?? lit(v.right); return a !== null && b !== null && /</.test(a + b) ? a + b : null; }
-      return null;
+      // CA11 M4: any string the folder can compute ([..].join(''), concat, decoders)
+      const f = lit(v);
+      return f !== null && /</.test(f) ? f : null;
     };
     const staticTpl = (n.type === "PropertyDefinition" || n.type === "AssignmentExpression") ?
       (n.type === "PropertyDefinition" ? (!n.computed && n.key && (n.key.name || n.key.value) === "template" ? tplOf(n.value) : null)
@@ -1023,14 +1051,23 @@ function auditJs(text) {
         const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + owlOps(a1 || a2) + "}") + "`" : owlOps(m[3]);
         if (DEPTH < 2) {
           DEPTH++;
-          const saved = [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS];
+          const saved = [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS, JSURL_PROPS];
           let r2;
-          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS] = saved; DEPTH--; }
+          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS, JSURL_PROPS] = saved; DEPTH--; }
           if (!r2.ok) add("medium", "owl-expr-unaudited", n, `${m[1]} expression does not parse: unaudited.`);
           else for (const f of r2.findings) if (f.sev === "high" || f.sev === "medium") add(f.sev, f.code, n, `${m[1]}: ${f.msg}`);
+        } else if (/[`(]|\bxml\b/.test(m[3])) {
+          // CA11 L1: nested inline templates beyond the audit depth fail closed
+          add("medium", "owl-expr-unaudited", n, `${m[1]} nested inline template expression beyond audit depth: unaudited.`);
         }
         if (/^t-att(f)?-(href|src|action|formaction|xlink:href|data)$/.test(m[1])) {
-          const head = m[1].startsWith("t-attf-") ? m[3] : (m[3].match(/^\s*(['"`])((?:(?!\1).)*)\1/s) || [])[2];
+          let head = m[1].startsWith("t-attf-") ? m[3].replace(/\{\{\s*(['"])(.*?)\1\s*\}\}|#\{\s*(['"])(.*?)\3\s*\}/g, (_q, _a, x, _b, y) => x ?? y)
+            : (m[3].match(/^\s*(['"`])((?:(?!\1).)*)\1/s) || [])[2];
+          if (!m[1].startsWith("t-attf-")) {
+            try { const e = acorn.parseExpressionAt(owlOps(m[3]), 0, { ecmaVersion: "latest" }); const f = lit(e); if (f !== null) head = f;
+              const k = e.type === "MemberExpression" && !e.computed ? e.property.name : e.type === "Identifier" ? e.name : null;
+              if (k && JSURL_PROPS.has(k)) head = "javascript:"; } catch { /* unparsable: graded below */ }
+          }
           if (scriptScheme(head)) { add("high", "owl-js-url", n, `${m[1]} is a javascript:/data:text/html URL: runs code on click/load.`); continue; }
         }
         if (m[1] === "t-att-srcdoc" && !/^\s*(['"`])[^'"`]*\1\s*$/.test(m[3])) {

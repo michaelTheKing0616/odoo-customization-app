@@ -310,3 +310,77 @@ def test_l2_form_to_orm_flagged(src):
 def test_l2_benign_form_silent():
     src = "const f = document.createElement('form'); f.action = '/shop/cart/update'; f.submit();"
     assert not _sev(_js(src), "js-raw-orm-request")
+
+
+# ---------------------------------------------------------------- H9 OWL javascript: with tab/entity/concat/state
+def _owl(tpl, pre=""):  # tpl is raw template-literal source
+    return _js("import { Component, xml, useState } from '@odoo/owl';\n" + pre + "class C extends Component {\n  static template = xml`" + tpl + "`;\n}\n")
+
+
+@pytest.mark.parametrize("tpl,pre", [
+    ("""<a t-att-href="'java&Tab;script:alert(1)'">x</a>""", ""),  # review probe
+    ("""<a t-att-href="'java\\tscript:alert(1)'">x</a>""", ""),
+    ("""<a t-att-href="'jav' + 'ascript:alert(1)'">x</a>""", ""),
+    ("""<a t-attf-href="java{{'script'}}:alert(1)">x</a>""", ""),
+    ("""<a t-att-href="state.url">x</a>""", "const S = { url: 'javascript:alert(1)' };\n"),
+    ("""<a t-att-href="'java&#10;script:alert(1)'">x</a>""", ""),
+])
+def test_h9_owl_js_url_high(tpl, pre):
+    assert "high" in _sev(_owl(tpl, pre), "owl-js-url")
+
+
+@pytest.mark.parametrize("tpl", [
+    """<a t-att-href="'/web#id=' + props.id">x</a>""",
+    """<a t-attf-href="/shop/{{props.slug}}">x</a>""",
+    """<a t-att-href="'https://www.odoo.com/' + 'help'">x</a>""",
+])
+def test_h9_benign_owl_url_silent(tpl):
+    assert not _sev(_owl(tpl), "owl-js-url")
+
+
+# ---------------------------------------------------------------- M2 external URL via runtime string ops
+@pytest.mark.parametrize("src", [
+    "fetch('/v.e//:sptth'.split('').reverse().join(''));",  # review probe shape
+    "fetch(new URL('/x', 'https://e.v'));",
+    "fetch(new URL('/x', 'https://e.v').href);",
+    "fetch(['https://', 'e.v/'].concat(['x']).join(''));",
+])
+def test_m2_external_url_folded(src):
+    assert _sev(_js(src), "js-external-request") & {"high", "medium"}
+
+
+def test_m2_benign_local_url():
+    assert not _sev(_js("fetch(new URL('/x', window.location.origin));"), "js-external-request")
+
+
+# ---------------------------------------------------------------- M4 template from computed strings
+@pytest.mark.parametrize("pre,val", [
+    ("", """['<a href="javascript:alert(1)">', 'x</a>'].join('')"""),  # probe
+    ("", """'<a href="java' + ['script', ':alert(1)">x</a>'].join('')"""),
+    ("const T = ['<a href=\"javascript:alert(1)\">', 'x</a>'].join('');\n", "T"),
+])
+def test_m4_join_template_high(pre, val):
+    src = "import { Component } from '@odoo/owl';\n" + pre + f"class C extends Component {{\n  static template = {val};\n}}\n"
+    assert "high" in _sev(_js(src), "owl-js-url")
+
+
+def test_m4_benign_template_name():
+    src = "import { Component } from '@odoo/owl';\nclass C extends Component {\n  static template = ['web', 'Foo'].join('.');\n}\n"
+    assert not _sev(_js(src), "owl-js-url")
+
+
+# ---------------------------------------------------------------- L1 nested inline expressions fail closed
+def _jsesc(t):
+    return t.replace("\\", "\\\\").replace("`", "\\`")
+
+
+def test_l1_nested_depth_fails_closed():
+    l3 = "<i t-att-z=\\x22f(1)\\x22/>"  # quotes appear only once depth-2 source is cooked
+    l2 = "<b t-att-y='xml`" + l3 + "`'/>"
+    tpl = '<a t-att-x="xml`' + _jsesc(l2) + '`">x</a>'
+    tpl = _jsesc(tpl)
+    assert "medium" in _sev(_owl(tpl), "owl-expr-unaudited")
+
+
+def test_l1_flat_expression_silent():
+    assert not _sev(_owl("""<a t-on-click="() => this.go(1)">x</a>"""), "owl-expr-unaudited")
