@@ -384,3 +384,27 @@ def test_l1_nested_depth_fails_closed():
 
 def test_l1_flat_expression_silent():
     assert not _sev(_owl("""<a t-on-click="() => this.go(1)">x</a>"""), "owl-expr-unaudited")
+
+
+# ---------------------------------------------------------------- M1 data-file-unaudited only for real unknowns
+from tests.test_nf_bot_code_audit_10 import PNG, JPG, _rec, _unaud  # noqa: E402
+
+
+@pytest.mark.parametrize("ref,files", [
+    ("x/static/img/table.png", {"static/img/table.png": PNG}),  # review: mrp/static/img/table.png in-module
+    ("x/static/img/a.jpg", {"static/img/a.jpg": JPG}),
+    ("static/img/table.png", {"static/img/table.png": PNG}),
+])
+def test_m1_type_matched_binary_silent(ref, files):
+    assert not _unaud({"data/d.xml": _rec("image_1920", ref), **files})
+
+
+@pytest.mark.parametrize("ref,files", [
+    ("x/static/img/missing.png", {}),
+    ("x/static/img/fake.png", {"static/img/fake.png": b"<html><script>x()</script>"}),
+    ("other_mod/static/img/p.png", {}),
+])
+def test_m1_real_unknown_fires(ref, files):
+    f = {"data/d.xml": _rec("image_1920", ref), **files}
+    from tests.test_nf_bot_code_audit_10 import MANX
+    assert "medium" in _unaud(f) or {s for c, s in codes(f, MANX)} & {"high", "medium"}
