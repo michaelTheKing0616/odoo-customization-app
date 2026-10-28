@@ -265,3 +265,28 @@ def test_m2_python_ctx_ids_high(body):
 def test_m2_python_active_ids_silent(body):
     assert "high" not in _sev(_mu(body), "mass-change")
 
+
+# ---------------------------------------------------------------- M3 XML <function> search on m2o = ref() is bounded
+def _xf(search, fn="write"):
+    return {"data/d.xml": f"<odoo><function model='project.task' name='{fn}'><value model='project.task' search=\"{search}\"/>"
+            "<value eval=\"{'priority': '1'}\"/></function></odoo>"}
+
+
+@pytest.mark.parametrize("search", [
+    "[('project_id','=',ref('project.project_1')),('user_ids','in',ref('base.user_admin'))]",  # review probe shape
+    "[('project_id','=',ref('project.project_1'))]",
+    "[('project_id','=',obj().env.ref('project.project_1').id)]",
+])
+def test_m3_ref_match_bounded(search):
+    assert "high" not in _sev(_xf(search), "xml-function-destructive")
+
+
+@pytest.mark.parametrize("search", [
+    "[('project_id','!=',ref('project.project_1'))]",
+    "[('active','=',True)]",
+    "[]",
+    "[('project_id','=',ref(xid))]",
+])
+def test_m3_unbounded_search_still_high(search):
+    assert "high" in _sev(_xf(search), "xml-function-destructive")
+

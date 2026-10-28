@@ -1717,7 +1717,16 @@ def _module_unique(files: dict) -> set[str]:
 
 
 def _record_id(n: ast.AST) -> bool:
-    """self.id / rec.id: one record's id (not env.uid, env.company.id, self.parent_id.id)."""
+    """self.id / rec.id: one record's id (not env.uid, env.company.id, self.parent_id.id).
+    CA14 M3: ref('mod.xmlid') (XML eval/search) and env.ref('mod.xmlid').id name exactly one record."""
+    def _xmlid_ref(x: ast.AST) -> bool:
+        return (isinstance(x, ast.Call) and len(x.args) == 1 and isinstance(x.args[0], ast.Constant)
+                and isinstance(x.args[0].value, str) and not x.keywords
+                and ((isinstance(x.func, ast.Name) and x.func.id == "ref") or (isinstance(x.func, ast.Attribute) and x.func.attr == "ref")))
+    if _xmlid_ref(n) and isinstance(n.func, ast.Name):
+        return True
+    if isinstance(n, ast.Attribute) and n.attr == "id" and _xmlid_ref(n.value):
+        return True
     return isinstance(n, ast.Attribute) and n.attr == "id" and isinstance(n.value, ast.Name) and n.value.id not in _ENVISH
 _RS_PASS = frozenset({"with_context", "sudo", "with_user", "with_company", "with_env", "with_prefetch",
                       "exists", "sorted", "filtered", "filtered_domain", "mapped", "grouped", "concat",
