@@ -624,19 +624,33 @@ function auditJs(text) {
       return null;
     };
     // CA13 H3: aliases of this / this.<x> (const s = this.state; s.domain = ..) write the same state
+    // CA14 H5: transitive (t = s = this.state), aliases of the domain array itself (d = this.state.domain,
+    // const {domain} = this.state) and computed keys (this.state['domain']) all name the same state
     const ALIAS = new Map();
-    walk.full(ast, (n) => {
-      if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init) {
-        const b = n.init.type === "ThisExpression" ? "this" : mkey(n.init);
-        if (b && /^this(\.props)?(\.\w+)?$/.test(b)) ALIAS.set(n.id.name, b);
-      }
-    });
+    const ALIAS_OK = /^this(\.props)?(\.\w+)?(\.domain)?$/;
     const nk = (x) => {
-      const k = mkey(x);
+      if (x && x.type === "MemberExpression" && x.computed) {
+        const o = nk(x.object), key = lit(x.property);
+        return o && key !== null && /^\w+$/.test(key) ? o + "." + key : null;
+      }
+      const k = x && x.type === "ThisExpression" ? "this" : mkey(x);
       if (!k) return k;
       const [h, ...r] = k.split(".");
       return ALIAS.has(h) ? [ALIAS.get(h), ...r].join(".") : k;
     };
+    for (let pass = 0; pass < 4; pass++) walk.full(ast, (n) => {
+      if (n.type !== "VariableDeclarator" || !n.init) return;
+      const b = nk(n.init);
+      if (!b || !ALIAS_OK.test(b)) return;
+      if (n.id.type === "Identifier") ALIAS.set(n.id.name, b);
+      else if (n.id.type === "ObjectPattern") for (const q of n.id.properties) {
+        if (q.type !== "Property") continue;
+        const key = q.computed ? lit(q.key) : (q.key.name || q.key.value);
+        const v = q.value.type === "AssignmentPattern" ? q.value.left : q.value;
+        if (key !== null && v.type === "Identifier" && ALIAS_OK.test(b + "." + key)) ALIAS.set(v.name, b + "." + key);
+      }
+    });
+    const STATEK = /^this(\.props)?(\.\w+)?$/;
     const UNK = { type: "Identifier", name: "\u0000" };  // in-place / opaque write: unprovable
     const DOMK = /^this\.(?:props\.)?(?:\w+\.)?domain$/;
     walk.ancestor(ast, {
@@ -644,6 +658,13 @@ function auditJs(text) {
         const c = n.callee, fn = fnName(anc);
         if (c.type === "MemberExpression" && !c.computed && /^(push|unshift|splice|pop|shift|fill|sort|reverse|copyWithin)$/.test(c.property.name) &&
             DOMK.test(nk(c.object) || "")) put(nk(c.object), UNK, fn);
+        // CA14 H5: Reflect.set/defineProperty/deleteProperty(this.state, 'domain' | k, v)
+        if (/^Reflect\.(set|defineProperty|deleteProperty)$/.test(mkey(c) || "") && n.arguments[0]) {
+          const t = nk(n.arguments[0]), key = n.arguments[1] ? lit(n.arguments[1]) : null;
+          if (t && DOMK.test(t)) put(t, UNK, fn);
+          else if (t && STATEK.test(t) && (key === null || key === "domain"))
+            put(t + ".domain", key === "domain" && mkey(c) === "Reflect.set" && n.arguments[2] ? n.arguments[2] : UNK, fn);
+        }
         if (/(^|\.)Object\.(assign|defineProperty|defineProperties)$/.test(mkey(c) || "") && n.arguments[0]) {
           const t = nk(n.arguments[0]);
           if (t && DOMK.test(t)) put(t, UNK, fn);  // Object.assign(this.state.domain, [...])
@@ -661,6 +682,8 @@ function auditJs(text) {
         if (n.left.type === "MemberExpression") {  // this.state.domain.length = 0 / this.state.domain[0] = ..
           const ok = nk(n.left.object);
           if (ok && DOMK.test(ok)) { put(ok, UNK, fn); return; }
+          // CA14 H5: this.state[k] = .. with k not provably another key: unprovable domain write
+          if (n.left.computed && !k && ok && STATEK.test(ok)) { put(ok + ".domain", UNK, fn); return; }
         }
         if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) put(k, n.right, fn);
         else if (k && /^this\.(?:\w+)$/.test(k)) {

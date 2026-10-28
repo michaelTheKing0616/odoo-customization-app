@@ -156,3 +156,43 @@ def test_h4_benign_routes_silent():
         assert "high" not in _sev(_js(src), "js-sensitive-model")
     j2 = "const r=await (await fetch('/json/2/res.partner/search',{method:'POST',body:JSON.stringify({domain:[['id','=',1]]})})).json(); fetch('/json/2/res.partner/unlink',{method:'POST',body:JSON.stringify({ids:r})});"
     assert "high" not in _sev(_js(j2), "js-mass-change")
+
+
+# ---------------------------------------------------------------- H5 view-state domain laundering
+_DEL5 = "await this.orm.unlink('res.partner', await this.orm.search('res.partner', {d}));"
+
+
+def _comp5(body, d="this.state.domain"):
+    return ("class C extends Component {\n setup(){ this.state = useState({domain: [['id','=',1]]}); }\n"
+            "onSearch(d){ this.state.domain = d; }\n" + body + "\n async go(){ " + _DEL5.format(d=d) + " }\n}")
+
+
+@pytest.mark.parametrize("body,d", [
+    ("wipe(){ const s = this.state; const t = s; t.domain = []; }", "this.state.domain"),  # probes
+    ("wipe(){ const d = this.state.domain; d.splice(0); }", "this.state.domain"),
+    ("wipe(){ Reflect.set(this.state, 'domain', []); }", "this.state.domain"),
+    ("wipe(){ this.state['domain'] = []; }", "this.state.domain"),
+    ("wipe(){ const k = 'domain'; this.state[k] = []; }", "this.state.domain"),
+    ("wipe(){ const {domain} = this.state; domain.length = 0; }", "this.state.domain"),
+    ("wipe(){ }", "(() => { const d = [...this.state.domain]; d.length = 0; return d; })()"),
+    ("wipe(){ const s = this; const t = s.state; const u = t; u.domain = []; }", "this.state.domain"),  # neighbours
+    ("wipe(){ const {domain: dd} = this.state; dd.push('|', ['id','!=',0]); }", "this.state.domain"),
+    ("wipe(k){ this.state[k] = []; }", "this.state.domain"),
+    ("wipe(k){ Reflect.set(this.state, k, []); }", "this.state.domain"),
+    ("wipe(){ Reflect.set(this.state.domain, 'length', 0); }", "this.state.domain"),
+    ("wipe(){ const s = this.state; s['domain'].splice(0); }", "this.state.domain"),
+    ("wipe(){ Reflect.deleteProperty(this.state, 'domain'); }", "this.state.domain"),
+])
+def test_h5_laundered_state_domain_high(body, d):
+    assert "high" in _sev(_js(_comp5(body, d)), "js-mass-change")
+
+
+@pytest.mark.parametrize("body", [
+    "",  # twins: user selection only / other keys
+    "wipe(){ const s = this.state; s.other = []; }",
+    "wipe(){ this.state['limit'] = 5; }",
+    "wipe(){ Reflect.set(this.state, 'limit', 5); }",
+    "wipe(){ const {domain} = this.state; console.log(domain.length); }",
+])
+def test_h5_benign_twins_silent(body):
+    assert "high" not in _sev(_js(_comp5(body)), "js-mass-change")
