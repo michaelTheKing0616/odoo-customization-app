@@ -160,3 +160,36 @@ def test_m2_json2_routes_sensitive_high(src):
 def test_m2_json2_benign_model_not_sensitive():
     src = "fetch('/json/2/res.partner/search_read',{method:'POST',body:JSON.stringify({domain:[['id','=',1]]})});"
     assert "high" not in _sev(_js(src), "js-sensitive-model")
+
+
+# ---------------------------------------------------------------- M3 QWeb t-set aliases of session/env/context
+def _qa(setv, use):
+    return {"report/r.xml": f"<odoo><template id='r'><t t-set='s' t-value=\"{setv}\"/><t t-set='y' t-value=\"{use}\"/><span t-out='y'/></template></odoo>"}
+
+
+@pytest.mark.parametrize("setv,use", [
+    ("request.session", "s.pop('uid')"),  # review probe
+    ("request.session", "s.clear()"),
+    ("request.session", "s.popitem()"),
+    ("request.session", "s.__delitem__('uid')"),
+    ("request.env.context", "s.pop('lang')"),
+    ("env", "s.context.setdefault('x', 1)"),
+    ("request", "s.session.clear()"),
+])
+def test_m3_session_alias_mutation_high(setv, use):
+    assert "high" in _sev(_qa(setv, use), "unsafe-expression")
+
+
+def test_m3_transitive_alias_high():
+    f = {"report/r.xml": "<odoo><template id='r'><t t-set='a' t-value='request.session'/><t t-set='b' t-value='a'/>"
+         "<t t-set='y' t-value=\"b.pop('uid')\"/></template></odoo>"}
+    assert "high" in _sev(f, "unsafe-expression")
+
+
+@pytest.mark.parametrize("setv,use", [
+    ("[1, 2]", "s.pop()"),
+    ("{'a': 1}", "s.popitem()"),
+    ("request.session.get('x', [])[:]", "rows.pop()"),
+])
+def test_m3_local_alias_silent(setv, use):
+    assert not _sev(_qa(setv, use), "unsafe-expression")

@@ -4401,9 +4401,10 @@ _EXPR_SHARED = frozenset({"request", "session", "httprequest", "env", "context",
                           "self", "user", "company", "website", "odoo", "http", "ir", "config", "tools"})
 
 
-def _expr_shared(n: ast.AST) -> bool:
-    """Does a receiver reach session/env/registry state (vs. a list/dict value of the render)?"""
-    return any((isinstance(x, ast.Name) and x.id in _EXPR_SHARED) or (isinstance(x, ast.Attribute) and x.attr in _EXPR_SHARED)
+def _expr_shared(n: ast.AST, tainted: frozenset[str] = frozenset()) -> bool:
+    """Does a receiver reach session/env/registry state (vs. a list/dict value of the render)?
+    tainted: QWeb t-set names bound to such state (CA13 M3: <t t-set="s" t-value="request.session"/>)."""
+    return any((isinstance(x, ast.Name) and (x.id in _EXPR_SHARED or x.id in tainted)) or (isinstance(x, ast.Attribute) and x.attr in _EXPR_SHARED)
                or isinstance(x, ast.Call) for x in ast.walk(n))
 
 
@@ -4427,8 +4428,38 @@ _CFG_SECURITY = re.compile(
 )
 
 
+def _qweb_aliases(c: _Ctx, el: Any) -> frozenset[str]:
+    """CA13 M3: t-set names that alias session/env/context (transitively), per document."""
+    try:
+        root = el.getroottree().getroot()
+    except (AttributeError, ValueError):
+        return frozenset()
+    cache = c.__dict__.setdefault("_qweb_alias_cache", {})
+    key = id(root)
+    if key in cache and cache[key][0] is root:
+        return cache[key][1]
+    sets = []
+    for e in root.iter():
+        if not isinstance(e.tag, str) or not e.get("t-set"):
+            continue
+        v = e.get("t-value") or e.get("value") or (e.text or "")
+        try:
+            sets.append((e.get("t-set").strip(), ast.parse(v.strip(), mode="eval")))
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            sets.append((e.get("t-set").strip(), None))  # unparseable value: unprovable, taint
+    out: set[str] = set()
+    for _ in range(len(sets) + 1):
+        new = {n for n, t in sets if t is None or _expr_shared(t, frozenset(out))}
+        if new <= out:
+            break
+        out |= new
+    cache[key] = (root, frozenset(out))
+    return frozenset(out)
+
+
 def _audit_expr(
-    c: _Ctx, path: str, line: int, text: str, where: str, template: bool = False
+    c: _Ctx, path: str, line: int, text: str, where: str, template: bool = False,
+    tainted: frozenset[str] = frozenset(),
 ) -> None:
     """A stored/load-time Python expression (safe_eval domain, context, eval=, QWeb t-*,
     {{ }} inline template): writes, sudo, cursor/registry access, dunders and dynamic
@@ -4476,8 +4507,11 @@ def _audit_expr(
                 # controller; it cannot be steered to write/elevate from the template.
                 unknown.append(f"{fn.value.id}[{_const(fn.slice)!r}]()")
                 continue
-            if nm in _EXPR_CONTAINER_MUT and isinstance(fn, ast.Attribute) and not _expr_shared(fn.value):
+            if nm in _EXPR_CONTAINER_MUT and isinstance(fn, ast.Attribute) and not _expr_shared(fn.value, tainted):
                 continue  # CA12 M2: list/dict pop() on a render-local value; recordsets have no pop()
+            if nm in _EXPR_CONTAINER_MUT and isinstance(fn, ast.Attribute):
+                high.append(f"{nm}()")  # CA13 M3: mutates session/env/context (directly or via a t-set alias)
+                continue
             if nm in _EXPR_BAD_CALLS or nm in _EXPR_WRITE or not nm:
                 high.append(f"{nm or ast.unparse(fn)[:30]}()")
             elif nm not in _EXPR_SAFE_CALLS:
@@ -4557,12 +4591,12 @@ def _audit_template_tree(c: _Ctx, path: str, line: int, els: Any, where: str) ->
             if al in _TPL_EXPR_ATTRS or al.startswith(("t-att-", "t-attf-")):
                 if al.startswith("t-attf-"):
                     for m in _INLINE_EXPR.finditer(v or ""):
-                        _audit_expr(c, path, ln, m.group(1) or m.group(2), where, True)
+                        _audit_expr(c, path, ln, m.group(1) or m.group(2), where, True, _qweb_aliases(c, e))
                 elif al == "t-foreach" or al != "t-set":
-                    _audit_expr(c, path, ln, v, f"{where} {a}", True)
+                    _audit_expr(c, path, ln, v, f"{where} {a}", True, _qweb_aliases(c, e))
         for t in (e.text, e.tail):
             for m in _INLINE_EXPR.finditer(t or ""):
-                _audit_expr(c, path, ln, m.group(1) or m.group(2), f"{where} {{{{ }}}}", True)
+                _audit_expr(c, path, ln, m.group(1) or m.group(2), f"{where} {{{{ }}}}", True, _qweb_aliases(c, e))
 
 
 _OWL_LITERAL = re.compile(r"""\s*(?:'[^'\\]*'|"[^"\\]*"|`[^`$\\]*`|-?\d+(?:\.\d+)?)\s*""")
@@ -4625,7 +4659,7 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     if tag != "field":
         for a, v in el.attrib.items():
             if a in _TPL_EXPR_ATTRS[:-1] or a.startswith("t-att-"):
-                _audit_expr(c, path, xl.el(el, a), v, f"QWeb {a}", True)
+                _audit_expr(c, path, xl.el(el, a), v, f"QWeb {a}", True, _qweb_aliases(c, el))
                 if a in ("t-out", "t-esc") and re.search(r"\brequest\.(?:params|httprequest)", v):
                     c.add(
                         LOW,
@@ -4637,7 +4671,7 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
                     )
             elif a.startswith("t-attf-"):
                 for m in _INLINE_EXPR.finditer(v or ""):
-                    _audit_expr(c, path, xl.el(el, a), m.group(1) or m.group(2), f"QWeb {a}", True)
+                    _audit_expr(c, path, xl.el(el, a), m.group(1) or m.group(2), f"QWeb {a}", True, _qweb_aliases(c, el))
         return
     parent = el.getparent()
     model = parent.get("model") if parent is not None else ""
