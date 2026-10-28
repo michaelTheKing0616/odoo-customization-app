@@ -209,3 +209,34 @@ def test_h11_unknown_function_medium(body):
 def test_h11_benign_function(body):
     f = _x(body)
     assert not _sev(f, "xml-function-destructive") and not _sev(f, "xml-function-unknown")
+
+
+# ---------------------------------------------------------------- M3 public-route IDOR on personal data / streams
+def _pr(body):
+    return {"controllers/c.py": PH + "class C(http.Controller):\n    @http.route('/x/<i>', auth='public')\n    def x(self, i):\n"
+            + "".join("        " + ln + "\n" for ln in body.split("\n"))}
+
+
+@pytest.mark.parametrize("body", [
+    "return request.env['ir.binary']._get_stream_from(request.env['ir.attachment'].sudo().browse(int(i))).get_response()",  # probe
+    "return request.env['mail.message'].sudo().browse(int(i)).body",
+    "return str(request.env['res.partner'].sudo().browse(int(i)).read())",
+    "p = request.env['res.partner'].sudo().browse(int(i))\nreturn p.email",
+    "r = request.env['x.doc'].sudo().browse(int(i))\nreturn request.env['ir.binary']._record_to_stream(r, 'file').get_response()",
+])
+def test_m3_record_idor(body):
+    assert _sev(_pr(body), "route-record-idor") | _sev(_pr(body), "route-attachment-idor")
+
+
+@pytest.mark.parametrize("body", [
+    "p = request.env['res.partner'].sudo().browse(int(i))\nif not p.exists():\n    return ''\nreturn 'ok'",
+    "m = request.env['mail.message'].sudo().browse(int(i))\nm._document_check_access('read')\nreturn m.body",
+    "return request.env['product.template'].sudo().browse(int(i)).name",
+])
+def test_m3_benign_silent(body):
+    assert not _sev(_pr(body), "route-record-idor")
+
+
+def test_m3_session_ownership_check_silent():
+    b = "o = request.env['sale.order'].sudo().browse(int(i))\nassert o.id == request.session.get('sale_last_order_id')\nreturn o.name"
+    assert not _sev(_pr(b), "route-record-idor")

@@ -3082,6 +3082,46 @@ def _attachment_idor(f: ast.AST) -> int:
     return 0
 
 
+_IDOR_MODELS = frozenset({"ir.attachment", "mail.message", "mail.mail", "res.partner", "res.users", "hr.employee", "account.move", "sale.order", "res.users.apikeys"})
+_STREAM_FNS = frozenset({"_get_stream_from", "_record_to_stream", "_get_image_stream_from", "_binary_record_content", "binary_content"})
+_REC_META = frozenset({"id", "ids", "exists", "sudo", "with_context", "with_user", "ensure_one", "_name", "browse"})
+
+
+def _record_idor(f: ast.AST) -> int:
+    """Line where a public route reads a sudo record of a personal-data model (or streams any
+    sudo record through ir.binary) whose id the caller chose, with no access check."""
+    if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return 0
+    src = {a.arg for a in ast.walk(f.args) if isinstance(a, ast.arg) and a.arg not in ("self", "cls")}
+    if any((isinstance(n, ast.Name) and n.id in _ATT_GUARDS) or (isinstance(n, ast.Attribute) and n.attr in _ATT_GUARDS) for n in ast.walk(f)):
+        return 0
+    # ownership check: the record is compared with the caller's session / user / partner
+    if any(isinstance(n, ast.Compare) and any(isinstance(z, ast.Attribute) and z.attr in ("session", "user", "uid", "partner_id", "commercial_partner_id") for z in ast.walk(n)) for n in ast.walk(f)):
+        return 0
+
+    def user_id(x: ast.AST) -> bool:
+        return any((isinstance(z, ast.Name) and z.id in src) or (isinstance(z, ast.Attribute) and z.attr in ("params", "jsonrequest", "httprequest", "get_json_data")) for z in ast.walk(x))
+
+    def picked(x: ast.AST, models: frozenset | None) -> bool:
+        txt = ast.dump(x)
+        if "attr='sudo'" not in txt or (models is not None and not any(f"'{m}'" in txt for m in models)):
+            return False
+        return any(isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr in ("browse", "search") and user_id(z) for z in ast.walk(x))
+
+    pd = {t.id for st in ast.walk(f) if isinstance(st, ast.Assign) and picked(st.value, _IDOR_MODELS) for t in st.targets if isinstance(t, ast.Name)}
+    anyv = {t.id for st in ast.walk(f) if isinstance(st, ast.Assign) and picked(st.value, None) for t in st.targets if isinstance(t, ast.Name)}
+    is_pd = lambda x: (isinstance(x, ast.Name) and x.id in pd) or (not isinstance(x, ast.Name) and picked(x, _IDOR_MODELS))  # noqa: E731
+    is_any = lambda x: (isinstance(x, ast.Name) and x.id in anyv) or (not isinstance(x, ast.Name) and picked(x, None))  # noqa: E731
+    for n in ast.walk(f):
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in _STREAM_FNS and any(is_any(a) for a in n.args):
+            return n.lineno
+        if isinstance(n, ast.Attribute) and n.attr not in _REC_META and is_pd(n.value):
+            return n.lineno
+        if isinstance(n, ast.Subscript) and is_pd(n.value):
+            return n.lineno
+    return 0
+
+
 def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> None:
     """REVIEW-CODE-AUDIT-6 root causes: rule/access core overrides (H10), security-core
     create/write overrides that inject privilege vals (H11), secret reads in controllers
@@ -3221,6 +3261,11 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                       f"auth='{auth}' route {f.name}() returns ir.attachment content for a caller-supplied id under sudo"
                       " with no access-token / ownership check: any visitor can download any attachment.",
                       "Drop sudo(), or verify access_token / res_model+res_id ownership (portal _document_check_access) first.")  # fmt: skip
+            elif line2 := _record_idor(f):
+                c.add(MEDIUM, "route-record-idor", path, line2,
+                      f"auth='{auth}' route {f.name}() reads a sudo record (personal data / binary stream) for a caller-supplied id"
+                      " with no access-token / ownership check.",
+                      "Drop sudo(), or check access_token / ownership (_document_check_access) before reading.")  # fmt: skip
 
 
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
