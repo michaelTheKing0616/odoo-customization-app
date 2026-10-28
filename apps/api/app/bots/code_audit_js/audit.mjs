@@ -921,6 +921,11 @@ function auditJs(text) {
     const get = (x, k) => x && x.type === "ObjectExpression" ? (x.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
     const seg = normUrl(route0).match(/\/(?:web\/dataset\/call_kw|web\/dataset\/call_button|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
     let model = seg ? seg[1] : null, method = seg ? (seg[2] || null) : null, args = null;
+    // CA15 L2: fail closed on non-canonical ORM paths (case, ";x" params): not routable today, but flagged MEDIUM
+    if (seg && [seg[1], seg[2]].some((x) => x && !x.includes(RT) && !/^[a-z0-9_.]+$/.test(x))) {
+      add("medium", "js-raw-orm-request", n, `${what}() to a non-canonical ORM path ${route}: segment not a canonical model/method, flagged (robustness review).`);
+      return;
+    }
     if (model && model.includes(RT)) model = null;
     if (method && method.includes(RT)) method = null;
     const prm = get(o, "params") || o;
