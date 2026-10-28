@@ -4948,6 +4948,57 @@ def _expr_shared(n: ast.AST, tainted: frozenset[str] = frozenset()) -> bool:
 
 
 _INLINE_EXPR = re.compile(r"\{\{(.+?)\}\}|\$\{(.+?)\}", re.S)
+_STATE_NAMES = frozenset({"request", "session", "env", "context", "registry", "pool", "cr", "_cr", "httprequest", "_context"})
+_STATE_ATTRS = frozenset({"session", "env", "context", "_context", "registry", "pool", "cr", "_cr", "httprequest"})
+_STATE_CALLS = frozenset({"with_context", "with_user", "with_env", "with_company", "sudo", "values", "items", "keys",
+                          "copy", "setdefault", "Object", "iter", "next", "reversed", "list", "tuple", "set", "frozenset"})
+
+
+def _expr_is_state(n: ast.AST | None, tainted: frozenset[str] = frozenset(), depth: int = 0) -> bool:
+    """CA15 M1: does the expression EVALUATE TO session/env/context/registry/cr state (or a container
+    holding it / an alias of it)? A call result, record attribute, comparison, format string or literal
+    is a plain value and is not state; an unprovable dynamic access (getattr with a runtime name) is."""
+    if n is None or depth > 20:
+        return False
+    rec = lambda y: _expr_is_state(y, tainted, depth + 1)  # noqa: E731
+    if isinstance(n, ast.Expression):
+        return rec(n.body)
+    if isinstance(n, ast.Name):
+        return n.id in _STATE_NAMES or n.id in tainted
+    if isinstance(n, ast.Attribute):
+        return n.attr in _STATE_ATTRS
+    if isinstance(n, (ast.List, ast.Tuple, ast.Set)):
+        return any(rec(e) for e in n.elts)
+    if isinstance(n, ast.Dict):
+        return any(rec(v) for v in n.values) or any(k is None and rec(v) for k, v in zip(n.keys, n.values))
+    if isinstance(n, (ast.Starred, ast.Await)):
+        return rec(n.value)
+    if isinstance(n, (ast.IfExp,)):
+        return rec(n.body) or rec(n.orelse)
+    if isinstance(n, ast.BoolOp):
+        return any(rec(v) for v in n.values)
+    if isinstance(n, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        return rec(n.elt) or any(rec(g.iter) and isinstance(n.elt, ast.Name) for g in n.generators)
+    if isinstance(n, ast.DictComp):
+        return rec(n.value)
+    if isinstance(n, ast.Lambda):
+        return rec(n.body)
+    if isinstance(n, ast.NamedExpr):
+        return rec(n.value)
+    if isinstance(n, ast.Call):
+        fn = n.func
+        if isinstance(fn, ast.Lambda) or rec(fn) and not isinstance(fn, ast.Attribute):
+            return True  # (lambda: request.session)() / env(...) returns env
+        nm = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", "")
+        if nm == "getattr" and n.args and rec(n.args[0]):
+            return _fold_str(n.args[1]) is None if len(n.args) > 1 else True
+        if nm in _STATE_CALLS:
+            recv = fn.value if isinstance(fn, ast.Attribute) else (n.args[0] if n.args else None)
+            return rec(recv)
+        return False
+    return False
+
+
 _TPL_EXPR_ATTRS = (
     "t-out",
     "t-esc",
@@ -4989,14 +5040,16 @@ def _qweb_aliases(c: _Ctx, el: Any) -> frozenset[str]:
             sets += [(nm, fe), (nm + "_value", fe)]
         if not isinstance(e.tag, str) or not e.get("t-set"):
             continue
-        v = e.get("t-value") or e.get("value") or (e.text or "")
+        v = e.get("t-value") if e.get("t-value") is not None else e.get("value")
+        if v is None:
+            continue  # CA15 M1: body markup / t-valuef format string: rendered text, never state
         try:
             sets.append((e.get("t-set").strip(), ast.parse(v.strip(), mode="eval")))
         except (SyntaxError, ValueError, RecursionError, MemoryError):
             sets.append((e.get("t-set").strip(), None))  # unparseable value: unprovable, taint
     out: set[str] = set()
     for _ in range(len(sets) + 1):
-        new = {n for n, t in sets if t is None or _expr_shared(t, frozenset(out))}
+        new = {n for n, t in sets if t is None or _expr_is_state(t, frozenset(out))}
         if new <= out:
             break
         out |= new
@@ -5004,10 +5057,46 @@ def _qweb_aliases(c: _Ctx, el: Any) -> frozenset[str]:
     return frozenset(out)
 
 
+def _qweb_resolve_tcall(c: _Ctx, e: Any, target: str | None) -> Any:
+    """CA15 M1: a literal t-call target among this document's templates (id, module.id or t-name);
+    None when dynamic ({{ }}) or not found (caller keeps HIGH)."""
+    t = (target or "").strip()
+    if not t or "{" in t or "$" in t:
+        return None
+    try:
+        root = e.getroottree().getroot()
+    except (AttributeError, ValueError):
+        return None
+    mod = getattr(c, "module", None) or ""
+    short = t.split(".", 1)[1] if "." in t and (not mod or t.split(".", 1)[0] == mod) else t
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        if (el.tag == "template" and el.get("id") in (t, short) and "." not in (el.get("id") or "")) or el.get("t-name") == t \
+                or (el.tag == "template" and el.get("id") == t):
+            return el
+    return None
+
+
 def _qweb_tcall_alias(c: _Ctx, path: str, ln: int, e: Any, where: str) -> None:
     """CA14 M1: session/env/context handed into a t-call body: the callee's use is unprovable here."""
     v = (e.get("t-set") or "").strip()
-    if v and v in _qweb_aliases(c, e) and any(isinstance(p.tag, str) and p.get("t-call") for p in e.iterancestors()):
+    call = next((p for p in e.iterancestors() if isinstance(p.tag, str) and p.get("t-call")), None)
+    if v and call is not None and v in _qweb_aliases(c, e):
+        callee = _qweb_resolve_tcall(c, e, call.get("t-call"))
+        if callee is not None:
+            # CA15 M1: literal target resolved: audit the callee with the bound state parameter tainted
+            bound = frozenset({v}) | _qweb_aliases(c, callee)
+            for ce in callee.iter():
+                if not isinstance(ce.tag, str):
+                    continue
+                for a, cv in ce.attrib.items():
+                    if a in _TPL_EXPR_ATTRS[:-1] or a.startswith("t-att-"):
+                        _audit_expr(c, path, ln, cv, f"{where} -> t-call {call.get('t-call')!r} {a}", True, bound)
+                    elif a.startswith("t-attf-"):
+                        for m in _INLINE_EXPR.finditer(cv or ""):
+                            _audit_expr(c, path, ln, m.group(1) or m.group(2), f"{where} -> t-call {a}", True, bound)
+            return
         c.add(HIGH, "unsafe-expression", path, ln,
               f"{where}: t-call body binds {v!r} to session/env state; the called template can mutate it.",
               "Pass plain record/literal values into t-call bodies, not session/env objects.")
@@ -5038,6 +5127,12 @@ def _audit_expr(
         )
         return
     high, unknown = [], []
+    if template:  # CA15 M2: comprehension targets inherit state taint from their iterable
+        for _ in range(3):
+            for g in (g for z in ast.walk(tree) if isinstance(z, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+                      for g in z.generators):
+                if _expr_is_state(g.iter, tainted) or _expr_shared(g.iter, tainted) and not isinstance(g.iter, ast.Call):
+                    tainted = tainted | {z.id for z in ast.walk(g.target) if isinstance(z, ast.Name)}
     for n in ast.walk(tree):
         if isinstance(n, ast.Attribute) and (n.attr.startswith("__") or n.attr in _EXPR_ESCAPE):
             high.append(f".{n.attr}")
