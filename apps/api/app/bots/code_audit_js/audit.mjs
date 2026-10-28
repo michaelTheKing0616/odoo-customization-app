@@ -661,33 +661,69 @@ function auditJs(text) {
     const ALIAS = new Map();
     const ALIAS_OK = /^this(\.props)?(\.\w+)?(\.domain)?$/;
     const nk = (x) => {
-      if (x && x.type === "MemberExpression" && x.computed) {
-        const o = nk(x.object), key = lit(x.property);
-        return o && key !== null && /^\w+$/.test(key) ? o + "." + key : null;
+      if (x && x.type === "MemberExpression" && (x.computed || x.object.type !== "ThisExpression" && !mkey(x))) {
+        const o = nk(x.object), key = x.computed ? (x.property.type === "Literal" && typeof x.property.value === "number" ? String(x.property.value) : lit(x.property)) : x.property.name;
+        if (!(o && key !== null && key !== undefined && /^\w+$/.test(String(key)))) return null;
+        const parts = (o + "." + key).split(".");
+        for (let i = parts.length; i >= 1; i--) {
+          const h = parts.slice(0, i).join(".");
+          if (ALIAS.has(h)) return [ALIAS.get(h), ...parts.slice(i)].join(".");
+        }
+        return parts.join(".");
       }
+      // CA15 H3: Object(x) is x itself; (a, x) is x
+      if (x && x.type === "CallExpression" && x.callee.type === "Identifier" && x.callee.name === "Object" && x.arguments.length === 1) return nk(x.arguments[0]);
+      if (x && x.type === "SequenceExpression") return nk(x.expressions[x.expressions.length - 1]);
       const k = x && x.type === "ThisExpression" ? "this" : mkey(x);
       if (!k) return k;
-      const [h, ...r] = k.split(".");
-      return ALIAS.has(h) ? [ALIAS.get(h), ...r].join(".") : k;
+      const parts = k.split(".");
+      for (let i = parts.length; i >= 1; i--) {  // CA15 H3: holder members (o.s / h.0) alias too: longest prefix
+        const h = parts.slice(0, i).join(".");
+        if (ALIAS.has(h)) return [ALIAS.get(h), ...parts.slice(i)].join(".");
+      }
+      return k;
+    };
+    // CA15 H3: nested destructuring ({state: {domain: dd}} = this), object-literal members ({s: this.state})
+    // and array holders ([this.state]) are aliases of the same state / domain
+    const bindPat = (pat, b) => {
+      if (!pat || !b) return;
+      if (pat.type === "AssignmentPattern") return bindPat(pat.left, b);
+      if (pat.type === "Identifier") { if (ALIAS_OK.test(b)) ALIAS.set(pat.name, b); return; }
+      if (pat.type === "ObjectPattern") for (const q of pat.properties) {
+        if (q.type !== "Property") continue;
+        const key = q.computed ? lit(q.key) : (q.key.name || q.key.value);
+        if (key !== null) bindPat(q.value, b + "." + key);
+      }
+    };
+    const holder = (name, init) => {
+      if (init.type === "ObjectExpression") for (const q of init.properties) {
+        if (q.type !== "Property" || q.computed && lit(q.key) === null) continue;
+        const b = nk(q.value), key = q.computed ? lit(q.key) : (q.key.name || q.key.value);
+        if (b && ALIAS_OK.test(b)) ALIAS.set(name + "." + key, b);
+      }
+      if (init.type === "ArrayExpression") init.elements.forEach((e, i) => { const b = e && nk(e); if (b && ALIAS_OK.test(b)) ALIAS.set(name + "." + i, b); });
     };
     for (let pass = 0; pass < 4; pass++) walk.full(ast, (n) => {
       if (n.type !== "VariableDeclarator" || !n.init) return;
+      if (n.id.type === "Identifier" && /^(ObjectExpression|ArrayExpression)$/.test(n.init.type)) holder(n.id.name, n.init);
       const b = nk(n.init);
       if (!b || !ALIAS_OK.test(b)) return;
       if (n.id.type === "Identifier") ALIAS.set(n.id.name, b);
-      else if (n.id.type === "ObjectPattern") for (const q of n.id.properties) {
-        if (q.type !== "Property") continue;
-        const key = q.computed ? lit(q.key) : (q.key.name || q.key.value);
-        const v = q.value.type === "AssignmentPattern" ? q.value.left : q.value;
-        if (key !== null && v.type === "Identifier" && ALIAS_OK.test(b + "." + key)) ALIAS.set(v.name, b + "." + key);
-      }
+      else if (n.id.type === "ObjectPattern") bindPat(n.id, b);
     });
     const STATEK = /^this(\.props)?(\.\w+)?$/;
     const UNK = { type: "Identifier", name: "\u0000" };  // in-place / opaque write: unprovable
     const DOMK = /^this\.(?:props\.)?(?:\w+\.)?domain$/;
+    const ESC = [];
+    const PURE = /^(Reflect\.\w+|Object\.(assign|defineProperty|defineProperties)|console\.\w+|JSON\.stringify|Object\.(keys|values|entries|freeze|isFrozen)|Array\.isArray|structuredClone|String|Boolean|Number|useState|reactive|toRaw|markRaw)$|(^|\.)(orm|rpc)\.|(^|\.)(search\w*|read\w*|call|webSearchRead|webRead|searchCount|readGroup|includes|indexOf|has|log|debug|warn|error|trigger|notify)$/;
     walk.ancestor(ast, {
       CallExpression(n, _s, anc) {
         const c = n.callee, fn = fnName(anc);
+        // CA15 H3: state handed to any function / method / IIFE escapes: its domain is no longer provable
+        if (!PURE.test(mkey(c) || "")) for (const a of n.arguments) {
+          const t = a && a.type !== "SpreadElement" ? nk(a) : null;
+          if (t && t !== "this" && STATEK.test(t)) ESC.push([t, fn]);
+        }
         if (c.type === "MemberExpression" && !c.computed && /^(push|unshift|splice|pop|shift|fill|sort|reverse|copyWithin)$/.test(c.property.name) &&
             DOMK.test(nk(c.object) || "")) put(nk(c.object), UNK, fn);
         // CA14 H5: Reflect.set/defineProperty/deleteProperty(this.state, 'domain' | k, v)
@@ -736,6 +772,7 @@ function auditJs(text) {
         if (n.kind === "set" && n.key && n.key.name === "domain") put("this.domain", { type: "Identifier", name: n.value.params[0] ? "\u0000" : "\u0000" }, null);
       },
     });
+    for (const [t, fn] of ESC) if (STATE_DOM.has(t + ".domain")) put(t + ".domain", UNK, fn);
   }
   URL_OBJS = new Map(); URL_MUTS = new Map();
   const putMut = (nm, prop, v) => { if (!URL_MUTS.has(nm)) URL_MUTS.set(nm, []); URL_MUTS.get(nm).push([prop, v]); };
