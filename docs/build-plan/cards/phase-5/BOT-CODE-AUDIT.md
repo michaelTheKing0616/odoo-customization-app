@@ -220,3 +220,50 @@ Stock results (HIGH/MEDIUM, unaudited = 0 in every module). The only change from
 | website | 331/260 | 321/258 |
 
 Audit suites: forward and reverse order both gave 1194 passed and 24 skipped (the stock gate is opt-in). gate_live: 2 passed.
+
+## CODE-AUDIT-11: provably-bounded inversion (REVIEW-CODE-AUDIT-8: 12 HIGH, 5 MEDIUM, 2 LOW, all closed)
+
+Rule: a sink is safe only when its input is provably bounded. Unprovable means flagged.
+
+- Recordsets (Python, server actions, `<function>`, JS): write/unlink/_write/archive/toggle_active/update and sudo-write sinks are HIGH `mass-change` / `server-mass-change` / `xml-function-destructive` / `js-mass-change` unless the recordset is provably selective. Unknown domains, runtime limits, negations, ranges over literals, `%`/empty like, full selections, `json.loads`/`JSON.parse`, `TRUE_DOMAIN` and derived recordsets (filtered/mapped/browse of `_search`) are unbounded. Flow is per-function and flow-sensitive. JS ids taint flows through `.then`, object properties, push/spread and for-of. A JS domain held in view state (`this.domain`) is the user's own selection and counts as bounded. (H4–H7, H12)
+- Secrets on public routes: comprehension/loop targets, `__getitem__`, runtime getattr names, and helper returns from lambdas, staticmethods and model methods are HIGH `route-secret-read`. (H1–H3)
+- `fetch(new Request(...))` and path-form call_kw URLs are graded like orm calls. HTML forms and `formAction` aimed at ORM endpoints give MEDIUM `js-raw-orm-request`. (H8, L2)
+- URL schemes are checked the way browsers parse them: TAB/LF/CR are stripped after entity decoding. Concatenation, `t-attf` literals and state-held `javascript:` literals are folded. The string folder covers split/reverse/join and `new URL(path, base)`, and computed `static template` strings. (H9, M2, M4)
+- SQL is checked after removing comments, quotes and schema, with CTE bodies scanned and f-string/`%`/`+` table names folded through constants. (H10)
+- `<function>`: a destructive method gives HIGH unless the ids are provably bounded. A method that neither the module nor its on-disk dependency closure defines gives MEDIUM `xml-function-unknown`. (H11)
+- Public-route IDOR: a sudo read of a personal-data record (mail.message, res.partner, res.users, ...) or an ir.binary stream for a caller-chosen id gives MEDIUM `route-record-idor`. An access token, `_document_check_access`, or a session/user comparison suppresses it. (M3)
+- M1: a type-matched in-module binary gives no finding. Only real unknowns fire (CA10 fix A; regression tests added).
+- L1: nested inline OWL expressions beyond the audit depth give `owl-expr-unaudited` (fail closed).
+- Tests: `tests/test_nf_bot_code_audit_11.py` covers each probe, at least 3 variants, and benign twins. Twins changed to match the spec: test_7 h15neg (bounded domain) and test_3 H2-function-ok (the module defines the method).
+
+M5: how the stock counts are measured
+- Source tree: `/Users/temitopeolaitanmichael/ODOO_CUSTOMIZATION_TUTORIALS/odoo/addons`, git `bbe85efc259fd864d99fbfcf6d523ee8e91ea074`, clean, odoo/release.py 19.0. v17 and v19 are the audit rule sets (`version=`) applied to this one tree.
+- Command (from apps/api): `STOCK_ODOO_ADDONS=<path above> PYTHONPATH=.:../../packages/module-generator/src python scripts/stock_audit_counts.py out.json`
+- Opt-in pytest gate: `INGENIUM_STOCK_AUDIT=1 STOCK_ODOO_ADDONS=<path> pytest tests/test_nf_bot_code_audit_stock_gate.py`
+- Earlier cards' counts were measured on this tree with `/tmp/ca7/stock.py`. The reviewer's `~/.ingenium_nf/agent_runs/t3/stock` set is a different tree, so its counts differ.
+- Reviewer note: a fresh worktree needs `node.pin.json` and `node_modules` copied into `apps/api/app/bots/code_audit_js/` before the JS helper runs.
+
+Stock results from that command (HIGH/MEDIUM, unaudited = 0 everywhere, GATE OK):
+
+| Module | v17 | v19 |
+|---|---|---|
+| mail | 96/338 | 64/337 |
+| sale | 57/160 | 47/159 |
+| crm | 30/277 | 18/277 |
+| hr | 40/201 | 27/199 |
+| website_sale | 84/145 | 79/142 |
+| mrp | 56/136 | 43/136 |
+| account | 83/343 | 57/343 |
+| stock | 115/177 | 84/177 |
+| web | 189/487 | 187/487 |
+| portal | 9/81 | 9/80 |
+| auth_signup | 8/63 | 7/63 |
+| website | 334/260 | 324/258 |
+
+What changed since CA10: the new HIGHs are genuine whole-model or unprovable operations:
+- `mass-change`: mail discuss_channel_member, mail_push, mail_push_device and res_users; website_sale website; mrp/stock/website `__init__` hooks; stock res_company; website_page_properties.
+- `xml-function-destructive`: the mrp demo writes to `stock.warehouse` over `search([])`.
+
+Two false-alarm root causes were fixed, not allow-listed: web `dynamic_list.js` (view-state domain) and `website_sale` shop_payment_validate (session-ownership comparison).
+
+Audit suites: forward and reverse order both gave 1327 passed and 24 skipped.
