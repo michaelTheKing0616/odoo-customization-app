@@ -289,3 +289,21 @@ mail 110/338 | 78/337; sale 57/160 | 47/159; crm 30/277 | 18/277; hr 40/201 | 27
 Audit suites: forward and reverse order both gave 1390 passed and 38 skipped (the stock gate is opt-in). gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
 bl_08: 4 passed (after 5f21b3a1).
 - Test twin changed (5f21b3a1): in test_nf_bot_owned_change `tests-imported`, the payload is now capped raw DML. After M1, `os.system` in tests/ is already HIGH at baseline, so importing it was no longer a regression.
+
+## CODE-AUDIT-13 (REVIEW-CODE-AUDIT-10: 3H/3M/2L, all closed)
+
+Principle: a sink is safe only if it is provably bounded. Anything unprovable is HIGH.
+
+- H1 (c10ce4cb): an exact match selects only on a unique key. That means id, a core unique key (login, key, model, code, ...), a module-declared `unique(col)`, or a many2one equal to one record's `.id`/`.ids`. company_id, active, type, state, user_id/uid, child_of, unset values and patterns are unbounded, in Python and in server actions. Twins moved to unique keys: test_5 L67/89/251, test_9 benign domain.
+- H2 (7c2f350c): JS string and URL mutation is folded before sink grading: replace, replaceAll, slice, case changes, `url.pathname=`/`href=`, `Object.assign(url, ...)`. A request that may reach the ORM with an unprovable model or method is js-sensitive-model HIGH.
+- H3+L2 (eb405c8e): these writes to a state domain make it unbounded: in-place mutators (splice, push, pop, `length=`, `[i]=`), aliases (`const s=this.state`), and `Object.assign(this.state, ...)`. `this.props.domain` and `this.domain=this.props.domain` now give the same verdict. Props count as unbounded when the module's XML/JS passes a domain prop it builds itself (a new `propsDomain` helper flag). The test_4/test_5 `_run_batch` spies now accept the extra argument.
+- M1 (2ab59691): eval-exec, compile-code and outbound-network keep full severity in tests/.
+- M2 (600f1356): `/json/1` and `/json/2` are ORM routes, and model/method come from their path segments.
+- M3 (7debf654): QWeb t-set aliases of session/env/context are tainted, transitively. pop, popitem, clear, setdefault and `__delitem__` on them are HIGH.
+- L1 (d50b9b66): an unparseable body sent to a route that names model+method is graded by route (sendBeacon `'{}'`, XHR `open(new URL)`, a template literal with a const).
+
+Tests: tests/test_nf_bot_code_audit_13.py has the review probes plus neighbour variants and benign twins.
+Audit suites, forward and reverse: 1467 passed, 38 skipped each.
+Stock run (19 modules, v17 and v19, bbe85efc): GATE OK, unaudited==0.
+gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
+bl_08: 4 passed.
