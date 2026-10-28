@@ -285,7 +285,9 @@ def test_reproducer_flagged(name, run, code, sev):
 
 NEG = [
     ("H1-server-ok", lambda: xml(SRV.format("records.write({'name': 'x'})"))),
-    ("H2-function-ok", lambda: xml("<function model='x.y' name='_init_data'/>")),
+    # CA11 H11: <function> must call a method the module defines (an unknown method is MEDIUM fail-closed)
+    ("H2-function-ok", lambda: audit({"views/v.xml": "<odoo>\n<function model='x.y' name='_init_data'/>\n</odoo>\n",
+                                      "y.py": "from odoo import models\n\n\nclass Y(models.Model):\n    _name = 'x.y'\n    _description = 'y'\n\n    def _init_data(self):\n        return True\n"})),
     ("H2-delete-ok", lambda: xml("<delete model='x.y' id='x.rec'/>")),
     ("H3-ok", lambda: audit({"models/a.py": H + "d = {'a': 1}\nprint(d['a'], len(globals()))\n"})),
     ("H4-ok", lambda: audit({"models/a.py": H + "fs = [len]\nfs[0]('id')\n"})),

@@ -408,3 +408,12 @@ def test_m1_real_unknown_fires(ref, files):
     f = {"data/d.xml": _rec("image_1920", ref), **files}
     from tests.test_nf_bot_code_audit_10 import MANX
     assert "medium" in _unaud(f) or {s for c, s in codes(f, MANX)} & {"high", "medium"}
+
+
+@pytest.mark.parametrize("src,hit", [
+    (f"async function f() {{ const d = []; d.push(['company_id', '=', 1]); await {O}.unlink('a.a', await {O}.search('a.a', d)); }}", False),
+    (f"async function f() {{ const d = []; d.push(['name', '!=', 'zz']); await {O}.unlink('a.a', await {O}.search('a.a', d)); }}", True),
+    (f"async function f() {{ const d = []; d.push('|', ['a', '=', 1], ['b', '!=', 2]); await {O}.unlink('a.a', await {O}.search('a.a', d)); }}", True),
+])
+def test_h7_push_built_domain(src, hit):
+    assert bool(_sev(_js(src), "js-mass-change")) is hit

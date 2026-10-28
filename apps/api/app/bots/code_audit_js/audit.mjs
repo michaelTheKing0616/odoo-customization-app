@@ -33,6 +33,7 @@ const ESCAPERS = /^(escape|htmlEscape|_\.escape|sanitize|sanitizeHtml|stripHtml|
 let CONSTS = new Map();
 let COOKIE_VARS = new Set();
 let URL_VARS = new Set(); // locals holding a URL-controlled value
+let PUSHED = new Map(); // CA11 H7: array domains built by push: name -> [init, ...pushed]
 let JSURL_PROPS = new Set(); // CA11 H9: keys/properties bound to a javascript: URL literal
 let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
 let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
@@ -156,6 +157,13 @@ function domBound(d, depth = 0) {
   // visible selection, run with the user's ACL; literal, decoded or parameter domains are not
   const k = mkey(d);
   if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) return "B";
+  if (d.type === "Identifier" && !DOM_VARS.has(d.name) && PUSHED.has(d.name)) {
+    // [] + push(leaf...): implicit AND, so one selective leaf bounds it; any operator push is unprovable
+    const [init, ...ps] = PUSHED.get(d.name);
+    if (!init || ps.some((x) => x.type === "Literal" || x.type === "SpreadElement")) return "U";
+    const b0 = init.elements.length ? domBound(init, depth + 1) : "U";
+    return b0 === "B" || ps.some((x) => x.type === "ArrayExpression" && x.elements.length === 3 && leafBound(x.elements) === "B") ? "B" : "U";
+  }
   if (d.type === "Identifier") {
     const vs = DOM_VARS.get(d.name);
     return vs && vs.length && vs.every((v) => domBound(v, depth + 1) === "B") ? "B" : "U";
@@ -428,6 +436,17 @@ function auditJs(text) {
   URL_VARS = new Set();
   EMPTY_VARS = new Set();
   JSURL_PROPS = new Set();
+  PUSHED = new Map();
+  walk.full(ast, (n) => {
+    if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init && n.init.type === "ArrayExpression") {
+      if (!PUSHED.has(n.id.name)) PUSHED.set(n.id.name, [n.init]); else PUSHED.set(n.id.name, [null]);
+    }
+  });
+  walk.full(ast, (n) => {
+    if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && n.callee.object.type === "Identifier" &&
+        (n.callee.property.name === "push") && PUSHED.has(n.callee.object.name)) PUSHED.get(n.callee.object.name).push(...n.arguments);
+    if (n.type === "AssignmentExpression" && n.left.type === "Identifier" && PUSHED.has(n.left.name)) PUSHED.set(n.left.name, [null]);
+  });
   walk.full(ast, (n) => {
     if (n.type === "Property" && n.key && scriptScheme(lit(n.value))) JSURL_PROPS.add(n.key.name || n.key.value);
     if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression" && !n.left.computed && scriptScheme(lit(n.right))) JSURL_PROPS.add(n.left.property.name);
@@ -1051,9 +1070,9 @@ function auditJs(text) {
         const expr = m[1].startsWith("t-attf-") ? "`" + m[3].replace(/\{\{(.*?)\}\}|#\{(.*?)\}/g, (_q, a1, a2) => "${" + owlOps(a1 || a2) + "}") + "`" : owlOps(m[3]);
         if (DEPTH < 2) {
           DEPTH++;
-          const saved = [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS, JSURL_PROPS];
+          const saved = [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS, JSURL_PROPS, PUSHED];
           let r2;
-          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS, JSURL_PROPS] = saved; DEPTH--; }
+          try { r2 = auditJs("(" + expr + "\n)"); } finally { [CONSTS, COOKIE_VARS, URL_VARS, EMPTY_VARS, JSURL_PROPS, PUSHED] = saved; DEPTH--; }
           if (!r2.ok) add("medium", "owl-expr-unaudited", n, `${m[1]} expression does not parse: unaudited.`);
           else for (const f of r2.findings) if (f.sev === "high" || f.sev === "medium") add(f.sev, f.code, n, `${m[1]}: ${f.msg}`);
         } else if (/[`(]|\bxml\b/.test(m[3])) {
