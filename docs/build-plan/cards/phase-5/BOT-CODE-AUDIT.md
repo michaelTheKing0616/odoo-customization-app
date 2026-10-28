@@ -267,3 +267,5 @@ What changed since CA10: the new HIGHs are genuine whole-model or unprovable ope
 Two false-alarm root causes were fixed, not allow-listed: web `dynamic_list.js` (view-state domain) and `website_sale` shop_payment_validate (session-ownership comparison).
 
 Audit suites: forward and reverse order both gave 1327 passed and 24 skipped.
+
+Gates (CODE-AUDIT-11): gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1) 2 passed; bl_08 4 passed.
