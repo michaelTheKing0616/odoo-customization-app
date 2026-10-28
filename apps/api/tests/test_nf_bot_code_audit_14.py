@@ -54,6 +54,35 @@ def test_h1_non_secret_constant_silent(body):
     assert "high" not in _sev(_ctl(body), "route-secret-read")
 
 
+# ---------------------------------------------------------------- H2 raw SQL from routes / feeding mass changes
+@pytest.mark.parametrize("body,auth", [
+    ("request.env.cr.execute('select password from res_users')\nreturn str(request.env.cr.fetchall())", "none"),  # probe
+    ("request.env.cr.execute('select login, password from res_users')\nreturn str(request.env.cr.fetchall())", "public"),
+    ("request.env.cr.execute('SELECT value FROM ir_config_parameter')\nreturn 'x'", "user"),
+    ("request.env.cr.execute('select key from res_users_apikeys')\nreturn 'x'", "public"),
+    ("request.env.cr.execute('select name from res_partner')\nreturn str(request.env.cr.fetchall())", "public"),
+    ("request.env.cr.execute('select name from res_partner')\nr = request.env.cr.dictfetchall()\nreturn str(r)", "none"),
+])
+def test_h2_route_sql_high(body, auth):
+    assert "high" in _sev(_ctl(body, auth), "route-sql-secret")
+
+
+@pytest.mark.parametrize("body", [
+    "self.env.cr.execute('select id from res_partner')\nself.env['res.partner'].browse([r[0] for r in self.env.cr.fetchall()]).unlink()",  # probe
+    "self.env.cr.execute('select id from res_partner')\nids = [r[0] for r in self.env.cr.fetchall()]\nself.env['res.partner'].browse(ids).write({'active': False})",
+    "self._cr.execute('select id from res_partner where active')\nrows = self._cr.dictfetchall()\nself.env['res.partner'].browse([r['id'] for r in rows]).unlink()",
+])
+def test_h2_sql_ids_mass_change(body):
+    assert "high" in _sev(_m(body), "mass-change")
+
+
+def test_h2_bounded_sql_silent():
+    body = "self.env.cr.execute('select id from res_partner where id = %s', [self.id])\nself.env['res.partner'].browse([r[0] for r in self.env.cr.fetchall()]).unlink()"
+    assert "high" not in _sev(_m(body), "mass-change")
+    pub = "request.env.cr.execute('select name from res_partner limit 5')\nreturn str(request.env.cr.fetchall())"
+    assert "high" not in _sev(_ctl(pub), "route-sql-secret")
+
+
 def test_h1_named_key_logged_high_but_sent_to_its_api_ok():
     pre = "import logging, requests\n_logger = logging.getLogger(__name__)\n"
     k = "k = self.env['ir.config_parameter'].sudo().get_param('x.api_key')\n"

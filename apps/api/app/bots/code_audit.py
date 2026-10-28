@@ -3559,6 +3559,82 @@ def _secret_sources(c: _Ctx, path: str, tree: ast.AST) -> None:
                     break
 
 
+# CA14 H2: constant raw SQL graded by what it reads and where its rows go
+_SQL_SENSITIVE_TABLE = re.compile(
+    r"^(res_users(_apikeys\w*|_identitycheck|_settings)?|ir_config_parameter|auth_\w+|ir_mail_server|"
+    r"fetchmail_server|payment_provider|payment_token|iap_account|res_users_log|ir_attachment|bus_presence)$"
+)
+_SQL_TABLES = re.compile(r"\b(?:from|join|update|into)\s+(?:only\s+)?\"?(\w+)\"?", re.I)
+_SQL_BOUNDED = re.compile(r"\blimit\s+\d+\b|\bwhere\s+(?:\w+\.)?\"?id\"?\s*(?:=\s*%s|=\s*\d+|in\s*%s|=\s*any\s*\(\s*%s\s*\))", re.I)
+_FETCH = ("fetchall", "fetchone", "fetchmany", "dictfetchall", "dictfetchone", "dictfetchmany")
+
+
+def _sql_flows(c: _Ctx, path: str, tree: ast.AST) -> None:
+    """CA14 H2: a constant query on a sensitive table in a route, raw rows returned from a
+    public route, or fetched ids driving browse().write/unlink: HIGH unless provably bounded."""
+    for f in (x for x in ast.walk(tree) if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        consts = _str_consts(f)
+        auth = _route_auth(f)
+        public = auth in ("public", "none", "dynamic")
+        qs: list[tuple[int, str | None]] = []
+        for n in ast.walk(f):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in _SQL_CALLS and len(n.args) > _SQL_CALLS[n.func.attr]:
+                if not re.search(r"(^|\.)_?cr$|cursor", _dotted(n.func.value) or ""):
+                    continue
+                q = n.args[_SQL_CALLS[n.func.attr]]
+                v = _fold_str(q)
+                if v is None and isinstance(q, ast.Name):
+                    v = consts.get(q.id)
+                if v is None and isinstance(q, ast.Call) and _dotted(q.func).endswith("SQL") and q.args:
+                    v = _fold_str(q.args[0])
+                qs.append((n.lineno, v))
+        if not qs:
+            continue
+        tables = {t.lower() for _, v in qs if v for t in _SQL_TABLES.findall(v)}
+        bounded = all(v is not None and _SQL_BOUNDED.search(v) for _, v in qs)
+        sens = sorted(t for t in tables if _SQL_SENSITIVE_TABLE.match(t))
+        unknown = any(v is None for _, v in qs)
+        if auth and (sens or (unknown and public)):
+            c.add(HIGH, "route-sql-secret", path, qs[0][0],
+                  f"auth='{auth}' route {f.name}() runs raw SQL on "
+                  + (f"{', '.join(sens)} (credential/secret tables)." if sens else "an unprovable query."),
+                  "Never query credential/config tables from a controller; use the ORM with access rights.")  # fmt: skip
+        tainted: set[str] = set()
+
+        def rows(e: ast.AST) -> bool:
+            return any(
+                (isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr in _FETCH)
+                or (isinstance(z, ast.Name) and z.id in tainted)
+                for z in ast.walk(e)
+            )
+
+        for _ in range(3):
+            for st in ast.walk(f):
+                if isinstance(st, ast.Assign) and rows(st.value):
+                    tainted |= {z.id for t in st.targets for z in ast.walk(t) if isinstance(z, ast.Name)}
+                elif isinstance(st, (ast.For, ast.comprehension)) and rows(st.iter):
+                    tainted |= {z.id for z in ast.walk(st.target) if isinstance(z, ast.Name)}
+        if public and not bounded:
+            for st in ast.walk(f):
+                if isinstance(st, ast.Return) and st.value is not None and rows(st.value):
+                    c.add(HIGH, "route-sql-secret", path, st.lineno,
+                          f"auth='{auth}' route {f.name}() returns raw SQL rows from an unbounded query"
+                          f" ({', '.join(sorted(tables)) or 'unknown tables'}).",
+                          "Return ORM records the visitor may read, with a fixed limit, never raw rows.")  # fmt: skip
+                    break
+        if bounded:
+            continue
+        for st in ast.walk(f):
+            if isinstance(st, ast.Call) and isinstance(st.func, ast.Attribute) and st.func.attr in ("unlink", "write", "action_archive", "toggle_active", "sudo_unlink"):
+                for z in ast.walk(st.func.value):
+                    if isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr == "browse" and z.args and rows(z.args[0]):
+                        c.add(HIGH, "mass-change", path, st.lineno,
+                              f"{f.name}() {st.func.attr}()s every record a raw query without WHERE id/LIMIT returns"
+                              f" ({', '.join(sorted(tables)) or 'unknown tables'}).",
+                              "Bound the query (WHERE id = ANY(%s) on a caller selection, LIMIT) or use a bounded ORM domain.")  # fmt: skip
+                        break
+
+
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
     try:
         # bytes: the parser honours a PEP 263 coding cookie and a BOM, like Python itself
@@ -3658,6 +3734,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
     aliases = _aliases(tree)
     res = flow.Resolver(tree, _ALIAS_ROOTS)
     _secret_sources(c, path, tree)  # CA14 H1
+    _sql_flows(c, path, tree)  # CA14 H2
     malias = flow.method_aliases(tree)
     local_sql, sql_safe = _local_sql(tree)
     tar = any(v.split(".")[0] == "tarfile" for v in res.alias.values())
