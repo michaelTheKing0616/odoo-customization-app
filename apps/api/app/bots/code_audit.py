@@ -6297,7 +6297,14 @@ _VENDORED: dict[str, str] | None = None
 def _vendored(text: str) -> str | None:
     """CA14 L2: name of a known vendored transport library whose exact bytes were reviewed
     (code_audit_vendored.json, sha256 of the UTF-8 file). Any edit changes the hash, so a
-    modified copy keeps every HIGH; only js-sensitive-model on the exact copy is downgraded."""
+    modified copy keeps every HIGH; only js-sensitive-model on the exact copy is downgraded.
+
+    CA15 L1 (robustness review, documented limit): only odoo-19.0@bbe85efc bytes are pinned.
+    Copies from Odoo 17/18/20, CRLF-converted or appended copies hash differently and stay
+    HIGH (fail closed: noisy, never a false negative). js-raw-orm-request on the exact copy is
+    deliberately not downgraded. A test library such as hoot/mock/network.js shipped in a
+    production bundle is never allow-listed. To add a version, pin its exact sha256 in
+    code_audit_vendored.json after review."""
     global _VENDORED
     if _VENDORED is None:
         _VENDORED = json.loads((Path(__file__).with_name("code_audit_vendored.json")).read_text())
