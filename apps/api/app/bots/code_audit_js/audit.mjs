@@ -127,6 +127,66 @@ function domTruth(d, depth = 0) {
   try { while (pos < terms.length) out = AND(out, take()); } catch { return "C"; }
   return out;
 }
+// CA11 H7: a domain is bounded (B) only when provably selective; anything unprovable (U) is
+// treated as every record (negations, ranges over literals, '%' patterns, JSON.parse, params).
+const MASS_JS = /^(unlink|write|_write|action_archive|action_unarchive|toggle_active)$/;
+function leafBound(el) {
+  const t = leafTruth(el);
+  if (t === "T") return "U";
+  if (t === "F") return "B";
+  const [L, O, R] = el.map(jsVal);
+  if (!O.ok || typeof O.v !== "string") return "U";
+  const op = O.v.trim().toLowerCase();
+  if (L.ok && L.v === "active") return "U";
+  if (/like$/.test(op) && !op.startsWith("not")) {
+    if (!R.ok) return "B";
+    return String(R.v ?? "").replace(/[%_]/g, "") ? "B" : "U";
+  }
+  if (/^(=|==|in|child_of|parent_of|any)$/.test(op)) return "B";
+  return "U";
+}
+function domBound(d, depth = 0) {
+  const t = domTruth(d);
+  if (t === "T") return "U";
+  if (t === "F") return "B";
+  if (!d || depth > 8) return "U";
+  if (d.type === "AwaitExpression") return domBound(d.argument, depth + 1);
+  // a domain held in view/component state (this.domain, this.props.domain) is the user's own
+  // visible selection, run with the user's ACL; literal, decoded or parameter domains are not
+  const k = mkey(d);
+  if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) return "B";
+  if (d.type === "Identifier") {
+    const vs = DOM_VARS.get(d.name);
+    return vs && vs.length && vs.every((v) => domBound(v, depth + 1) === "B") ? "B" : "U";
+  }
+  if (d.type !== "ArrayExpression") return "U";
+  const terms = [];
+  for (const e of d.elements) {
+    if (!e) return "U";
+    if (e.type === "Literal" && ["&", "|", "!"].includes(e.value)) terms.push(e.value);
+    else if (e.type === "ArrayExpression" && e.elements.length === 3) terms.push(leafBound(e.elements));
+    else if (e.type === "SpreadElement") terms.push(domBound(e.argument, depth + 1));
+    else return "U";
+  }
+  let pos = 0;
+  const take = () => {
+    if (pos >= terms.length) throw new Error("dom");
+    const x = terms[pos++];
+    if (x === "!") { take(); return "U"; }
+    if (x === "&" || x === "|") { const a = take(), b = take(); return x === "&" ? (a === "B" || b === "B" ? "B" : "U") : (a === "B" && b === "B" ? "B" : "U"); }
+    return x;
+  };
+  let out = "U";
+  try { while (pos < terms.length) { const v = take(); if (v === "B") out = "B"; } } catch { return "U"; }
+  return out;
+}
+function mkey(n) {
+  if (!n) return null;
+  if (n.type === "Identifier") return n.name;
+  if (n.type === "ThisExpression") return "this";
+  if (n.type === "MemberExpression" && !n.computed && n.property.type === "Identifier") { const o = mkey(n.object); return o ? o + "." + n.property.name : null; }
+  return null;
+}
 function decodeEntities(t) {
   // quotes stay encoded: they delimit the attribute values the checks split on
   const named = { amp: "&", lt: "<", gt: ">", colon: ":", tab: "\t", newline: "\n", sol: "/", lpar: "(", rpar: ")", period: ".", nbsp: " " };
@@ -407,6 +467,20 @@ function auditJs(text) {
       if (!URL_VARS.has(id) && readsUrl(v)) { URL_VARS.add(id); changed = true; }
       if (!EMPTY_VARS.has(id) && emptySearch(v)) { EMPTY_VARS.add(id); changed = true; }
     });
+    // CA11 H7: unbounded ids flow through .then params, object properties, push/unshift and for-of
+    walk.full(ast, (n) => {
+      const mark = (k) => { if (k && !EMPTY_VARS.has(k)) { EMPTY_VARS.add(k); changed = true; } };
+      if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && /^(then|finally)$/.test(n.callee.property.name || "") && emptySearch(n.callee.object)) {
+        const f = n.arguments[0];
+        if (f && /Function/.test(f.type)) for (const p of f.params) patIds(p).forEach(mark);
+      }
+      if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression" && emptySearch(n.right)) mark(mkey(n.left));
+      if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && /^(push|unshift|splice|concat)$/.test(n.callee.property.name || "") &&
+          n.arguments.some((a) => emptySearch(a))) mark(mkey(n.callee.object));
+      if ((n.type === "ForOfStatement" || n.type === "ForInStatement") && emptySearch(n.right)) {
+        patIds(n.left.type === "VariableDeclaration" ? n.left.declarations[0].id : n.left).forEach(mark);
+      }
+    });
   }
   // aliases: const e = eval; const { write } = document; const w = window; let f = fetch
   const alias = new Map();
@@ -494,7 +568,7 @@ function auditJs(text) {
       return;
     }
     const first = args && args.type === "ArrayExpression" ? args.elements[0] : null;
-    if (/^(unlink|write|action_archive|toggle_active)$/.test(method || "") && first && emptySearch(first)) {
+    if (MASS_JS.test(method || "") && first && emptySearch(first)) {
       add("high", "js-mass-change", n, `${what}() ${method} over every record (ids from an unbounded search) through ${route}.`);
     }
     if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method))) {
@@ -697,7 +771,7 @@ function auditJs(text) {
         }
       }
       // H15: mass change from the client - write/unlink over ids from an empty-domain search
-      if (onOrm && (meth === "unlink" || meth === "write" || (meth === "call" && /^(unlink|write)$/.test(lit(n.arguments[1]) || "")))) {
+      if (onOrm && (MASS_JS.test(meth) || (meth === "call" && MASS_JS.test(lit(n.arguments[1]) || "")))) {
         const idsArg = meth === "call" ? n.arguments[2] : n.arguments[1];
         if (idsArg && emptySearch(idsArg)) add("high", "js-mass-change", n,
           `orm.${meth}() over every record (ids from an empty-domain search) from the browser.`);
@@ -715,7 +789,7 @@ function auditJs(text) {
               if (k === "method") method = lit(prop.value);
             }
           }
-          if (/^(unlink|write)$/.test(method || "") && p && p.type === "ObjectExpression") {
+          if (MASS_JS.test(method || "") && p && p.type === "ObjectExpression") {
             const ap = p.properties.find((q) => q.key && (q.key.name || q.key.value) === "args");
             const first = ap && ap.value.type === "ArrayExpression" ? ap.value.elements[0] : null;
             if (first && emptySearch(first)) add("high", "js-mass-change", n,
@@ -1233,7 +1307,8 @@ function emptySearch(node) {
   (function walk(x, d) {
     if (!x || typeof x !== "object" || found || d > 12) return;
     if (x.type === "Identifier" && EMPTY_VARS.has(x.name)) { found = true; return; }
-    const isEmpty = (a) => domTruth(a) === "T";
+    if (x.type === "MemberExpression" && EMPTY_VARS.has(mkey(x))) { found = true; return; }
+    const isEmpty = (a) => domBound(a) !== "B";
     const SEARCHES = /^(search|searchRead|search_read|webSearchRead|web_search_read)$/;
     if (x.type === "CallExpression" && x.callee) {
       const c0 = x.callee;

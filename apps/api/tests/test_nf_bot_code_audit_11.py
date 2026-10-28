@@ -240,3 +240,40 @@ def test_m3_benign_silent(body):
 def test_m3_session_ownership_check_silent():
     b = "o = request.env['sale.order'].sudo().browse(int(i))\nassert o.id == request.session.get('sale_last_order_id')\nreturn o.name"
     assert not _sev(_pr(b), "route-record-idor")
+
+
+# ---------------------------------------------------------------- H7 JS mass change: unbounded ids by default
+def _js(src):
+    return {"static/src/a.js": "/** @odoo-module */\n" + src}
+
+
+O = "this.orm"
+
+
+@pytest.mark.parametrize("src", [
+    f"async function f() {{ const ids = await {O}.search('res.partner', JSON.parse('[]')); await {O}.unlink('res.partner', ids); }}",  # probe
+    f"function f() {{ {O}.call('res.partner', 'search', [[]]).then(ids => {O}.unlink('res.partner', ids)); }}",
+    f"async function f() {{ const o = {{}}; o.ids = await {O}.search('res.partner', []); await {O}.unlink('res.partner', o.ids); }}",
+    f"async function f() {{ const a = []; a.push(...await {O}.search('res.partner', [])); await {O}.unlink('res.partner', a); }}",
+    f"async function f() {{ const ids = await {O}.search('res.partner', []); for (const i of ids) await {O}.unlink('res.partner', [i]); }}",
+    f"async function f() {{ const ids = await {O}.search('res.partner', []); await {O}.call('res.partner', 'action_archive', [ids]); }}",
+    f"function f() {{ {O}.webSearchRead('res.partner', [], {{}}).then(r => {O}.unlink('res.partner', r.records.map(x => x.id))); }}",
+    f"async function f() {{ const ids = await {O}.search('res.partner', [['name', '!=', 'zz']]); await {O}.unlink('res.partner', ids); }}",
+])
+def test_h7_js_mass_change_high(src):
+    assert "high" in _sev(_js(src), "js-mass-change")
+
+
+@pytest.mark.parametrize("src", [
+    f"async function f(id) {{ const ids = await {O}.search('a.a', [['id', '=', id]]); await {O}.unlink('a.a', ids); }}",
+    f"async function f(rec) {{ await {O}.write('a.a', [rec.resId], {{name: 'x'}}); }}",
+    f"async function f(p) {{ const ids = await {O}.search('a.a', [['parent_id', '=', p], ['state', '!=', 'done']]); await {O}.unlink('a.a', ids); }}",
+    f"async function f() {{ const r = await {O}.searchRead('a.a', [], ['name']); return r; }}",
+])
+def test_h7_js_bounded_silent(src):
+    assert not _sev(_js(src), "js-mass-change")
+
+
+def test_h7_view_state_domain_silent():
+    src = f"class L {{ async del() {{ const ids = await {O}.search(this.resModel, this.domain, {{limit: 80}}); await {O}.unlink(this.resModel, ids); }} }}"
+    assert not _sev(_js(src), "js-mass-change")
