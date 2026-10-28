@@ -1615,6 +1615,45 @@ _FULL_SELECTIONS = {
     "stock.picking": {"state": {"draft", "waiting", "confirmed", "assigned", "done", "cancel"}},
 }
 _SMALL_LIMIT = 1000
+# CA13 H1: an exact match selects (bounds) only on a provably unique key: id, a core unique key, or a
+# field the audited module declares unique (_sql_constraints / models.Constraint / models.UniqueIndex)
+_CORE_UNIQUE = {
+    "res.users": {"login"}, "ir.config_parameter": {"key"}, "ir.model": {"model"}, "ir.module.module": {"name"},
+    "res.lang": {"code"}, "res.country": {"code"}, "res.currency": {"name"}, "ir.model.data": {"name"},
+}
+_MODULE_UNIQUE: set[str] = set()  # set per audit by _module_unique()
+# many2one fields that never select a few records even when compared to a record id
+_LOW_CARD = frozenset({"active", "company_id", "company_ids", "type", "state", "user_id", "user_ids", "create_uid",
+                       "write_uid", "currency_id", "lang", "country_id", "categ_id", "uom_id"})
+_ENVISH = frozenset({"env", "request", "context", "_context", "ctx", "uid", "user", "company", "companies"})
+
+
+def _unique_key(model: str, fld: str) -> bool:
+    return fld == "id" or fld in _CORE_UNIQUE.get(model, ()) or fld in _MODULE_UNIQUE
+
+
+def _record_ids(n: ast.AST) -> bool:
+    """self.ids / rec.ids: the ids of a recordset already in hand."""
+    return isinstance(n, ast.Attribute) and n.attr == "ids" and isinstance(n.value, ast.Name) and n.value.id not in _ENVISH
+
+
+def _module_unique(files: dict) -> set[str]:
+    out: set[str] = set()
+    rx = re.compile(r"unique\s*\(([^)]*)\)", re.I)
+    for f, b in files.items():
+        if not f.endswith(".py"):
+            continue
+        t = b.decode("utf-8", "replace") if isinstance(b, bytes) else str(b)
+        for m in rx.finditer(t):
+            cols = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
+            if len(cols) == 1 and cols[0].isidentifier():  # a composite key alone does not bound
+                out.add(cols[0])
+    return out
+
+
+def _record_id(n: ast.AST) -> bool:
+    """self.id / rec.id: one record's id (not env.uid, env.company.id, self.parent_id.id)."""
+    return isinstance(n, ast.Attribute) and n.attr == "id" and isinstance(n.value, ast.Name) and n.value.id not in _ENVISH
 _RS_PASS = frozenset({"with_context", "sudo", "with_user", "with_company", "with_env", "with_prefetch",
                       "exists", "sorted", "filtered", "filtered_domain", "mapped", "grouped", "concat",
                       "union", "__or__", "__add__", "browse"})
@@ -1635,8 +1674,7 @@ def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], s
         return "U"
     op = op.strip().lower()
     if not (lk and isinstance(left, str)):  # runtime field name: only an equality on a runtime value selects
-        return "B" if not rk and op in ("=", "==", "in", "child_of", "parent_of") and not (
-            rs_unbounded is not None and rs_unbounded(leaf[2])) else "U"
+        return "U"  # CA13 H1: an unknown field cannot be proven a unique key
     fld = left.split(".")[0]
     rnode = leaf[2]
     if not rk:  # runtime value: selective unless it is itself an unbounded set / range
@@ -1647,19 +1685,33 @@ def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], s
             return "U"
         # CA12 H1: only equality-style leaves select; an open range (<, >, <=, >=), negation or a
         # runtime like-pattern is non-selective whatever the RHS (today(), 10**9, context, count)
-        return "B" if op in ("=", "==", "in", "child_of", "parent_of") else "U"
+        # CA13 H1: and only on a unique key, or a many2one equal to one record's id; child_of/parent_of
+        # with a runtime root is a whole subtree
+        if op not in ("=", "==", "in"):
+            return "U"
+        if _unique_key(model, fld):
+            return "B"
+        if fld in _LOW_CARD:
+            return "U"
+        return "B" if (op in ("=", "==") and _record_id(rnode)) or (op == "in" and _record_ids(rnode)) else "U"
     if op in ("like", "ilike", "=like", "=ilike"):
-        return "T" if isinstance(right, str) and not right.replace("%", "").replace("_", "") else "B"
+        if isinstance(right, str) and not right.replace("%", "").replace("_", ""):
+            return "T"
+        # CA13 H1: a pattern selects only an exact (wildcard-free =like) unique key
+        return "B" if op in ("=like", "=ilike") and isinstance(right, str) and "%" not in right and "_" not in right \
+            and _unique_key(model, fld) else "U"
     if fld == "active" and op in ("=", "==", "in"):
         return "U"  # archived-or-not is a filter over (nearly) every record, not a selection
-    if op in ("=", "==", "child_of", "parent_of"):
-        return "B"
-    if op == "in":
+    if op in ("child_of", "parent_of"):
+        return "B" if fld == "id" and op == "parent_of" else "U"  # CA13 H1: a subtree is not bounded
+    if op in ("=", "==", "in"):
         vals = right if isinstance(right, list) else [right]
         full = _FULL_SELECTIONS.get(model, {}).get(fld)
         if full and {v for v in vals if isinstance(v, str)} >= full:
             return "T"
-        return "B"
+        if any(v is False or v is None for v in vals) and fld != "id":
+            return "U"  # field unset: every record without a value
+        return "B" if _unique_key(model, fld) else "U"  # CA13 H1: only unique keys select
     return "U"
 
 
@@ -6775,6 +6827,8 @@ def audit(
     try:
         manifest = _audit_manifest(c)
         c.prod_tests = _prod_tests(files, name, manifest)
+        _MODULE_UNIQUE.clear()
+        _MODULE_UNIQUE.update(_module_unique(files))
         c.text_fields, c.db_helpers = _module_index(files)
         c.flow_pt, c.flow_sinks = _module_flow(files)
         for rel in sorted(heads):

@@ -96,13 +96,15 @@ def test_h4_tautology_domain_mass_change(body, pre):
     assert _sev(_m(body, pre), "mass-change")
 
 
+# CA13 H1: exact matches on non-unique fields (state/name/company_id/user_id) are now mass changes
+# (see test_13); the benign twins use unique keys instead
 @pytest.mark.parametrize("body", [
-    "self.env['res.partner'].search([('state', '=', 'draft')]).unlink()",
+    "self.env['res.partner'].search([('id', '=', 5)]).unlink()",
     "self.env['res.partner'].search([('id', 'in', ids)]).unlink()",
-    "self.env['res.partner'].search(['|', ('id', '=', 0), ('name', '=', 'x')]).unlink()",
-    "domain = []\ndomain.append(('company_id', '=', self.env.company.id))\nself.env['res.partner'].search(domain).unlink()",
+    "self.env['res.partner'].search(['|', ('id', '=', 0), ('id', '=', 3)]).unlink()",
+    "domain = []\ndomain.append(('id', '=', self.id))\nself.env['res.partner'].search(domain).unlink()",
     "self.env['res.partner'].search([('id', '!=', self.id), ('parent_id', '=', self.id)]).write({'active': False})",
-    "self.env['res.partner'].search(expression.AND([[('id', '!=', 0)], [('user_id', '=', self.env.uid)]])).unlink()",
+    "self.env['res.partner'].search(expression.AND([[('id', '!=', 0)], [('id', 'in', self.ids)]])).unlink()",
 ])
 def test_h4_benign_domain_silent(body):
     assert not _sev(_m(body, "from odoo.osv import expression\n"), "mass-change")

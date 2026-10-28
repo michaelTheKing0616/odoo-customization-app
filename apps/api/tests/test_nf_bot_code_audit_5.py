@@ -64,7 +64,7 @@ CASES = [
         {"hooks.py": "def uninstall_hook(env):\n    env['res.partner'].search([]).unlink()\n"},
         ("mass-change", "high"),
         {
-            "hooks.py": "def uninstall_hook(env):\n    env['res.partner'].search([('x_tag','=',1)]).unlink()\n"
+            "hooks.py": "def uninstall_hook(env):\n    env['res.partner'].search([('id','=',1)]).unlink()\n"
         },
         "mass-change",
     ),
@@ -86,7 +86,7 @@ CASES = [
         },
         ("mass-change", "high"),
         {
-            "hooks.py": "def post_init_hook(env):\n    for r in env['res.partner'].search([('x','=',1)]):\n        r.unlink()\n"
+            "hooks.py": "def post_init_hook(env):\n    for r in env['res.partner'].search([('id','=',1)]):\n        r.unlink()\n"
         },
         "mass-change",
     ),
@@ -248,7 +248,7 @@ XML_CASES = [
         ),
         ("server-mass-change", "high"),
         X(
-            "<record id='c' model='ir.cron'><field name='name'>c</field><field name='model_id' ref='base.model_res_partner'/><field name='state'>code</field><field name='code'>for r in model.search([('x','=',1)]): r.unlink()</field></record>"
+            "<record id='c' model='ir.cron'><field name='name'>c</field><field name='model_id' ref='base.model_res_partner'/><field name='state'>code</field><field name='code'>for r in model.search([('id','=',1)]): r.unlink()</field></record>"
         ),
         "server-mass-change",
     ),
