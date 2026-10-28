@@ -313,13 +313,13 @@ def test_m4_exfiltration_high(body):
     "requests.post(self.env.context.get('u'), json={})",
 ])
 def test_m4_runtime_host_medium(body):
-    assert "medium" in _sev(_m(body, _NETPRE), "outbound-network")
+    # CA15 H5 supersedes: a runtime host is unprovable, so HIGH network-exfiltration (was MEDIUM)
+    assert "high" in _sev(_m(body, _NETPRE), "network-exfiltration")
 
 
 @pytest.mark.parametrize("body", [
     "requests.post('https://api.example.com/v1', json={'name': self.name})",
-    "requests.get(self.env['ir.config_parameter'].sudo().get_param('x.endpoint') + '/ping')",
-    "requests.get(f'https://api.example.com/v1/{self.id}')",
+    "requests.get(f'https://api.example.com/v1/{self.id}')",  # CA15 H5: a get_param host is no longer allow-listed
 ])
 def test_m4_benign_twins(body):
     f = _m(body, _NETPRE)

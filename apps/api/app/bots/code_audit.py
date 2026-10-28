@@ -2100,7 +2100,7 @@ class _Bounds:
             if isinstance(sl, ast.Constant) and isinstance(sl.value, int):
                 return None  # one record
             return rec(x.value)
-        if isinstance(x, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+        if isinstance(x, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
             return next((r for g in x.generators if (r := rec(g.iter))), None)
         if isinstance(x, ast.BoolOp):
             return next((r for v in x.values if (r := rec(v))), None)
@@ -2118,6 +2118,9 @@ class _Bounds:
         if isinstance(f, ast.Name):
             if f.id in ("list", "set", "tuple", "sorted", "iter", "frozenset", "next") and x.args:
                 return rec(x.args[0])
+            if f.id in ("map", "filter", "reversed", "enumerate", "zip", "chain") or _dotted(f).endswith("itertools.chain"):
+                # CA15 H6: ids built through map/filter/lambda keep the bound of their source iterable
+                return next((r for v in x.args if not isinstance(v, ast.Lambda) and (r := rec(v))), None)
             if f.id in self.fn_returns and f.id not in seen:  # same-module helper / lambda: its returns
                 return next((r for v in self.fn_returns[f.id] if (r := self.at(v.lineno).unbounded(v, depth + 1, seen | {f.id}, data_ok))), None)
             return None
@@ -2260,6 +2263,24 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) 
                       f"{sk.func.attr}() in a loop on a fresh search() whose domain is not selective: every "
                       "iteration takes another record, so the loop walks the whole model.",
                       "Act on records proven to be specific; never re-search an unbounded domain in a loop.")
+    # CA15 H2: a field assignment (rs.f = v, rs.f += v, setattr(rs, 'f', v), also on a loop target over a
+    # recordset) is a write(): graded by the same recordset-bound rules as write()
+    for n in ast.walk(tree):
+        tgts: list[tuple[ast.AST, str]] = []
+        if isinstance(n, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+            for t in (n.targets if isinstance(n, ast.Assign) else [n.target]):
+                for z in ([t] if not isinstance(t, (ast.Tuple, ast.List)) else t.elts):
+                    if isinstance(z, ast.Attribute) and not z.attr.startswith("__"):
+                        tgts.append((z.value, z.attr))
+        elif isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "setattr" and len(n.args) >= 2:
+            tgts.append((n.args[0], _fold_str(n.args[1]) or "<runtime field>"))
+        for recv, fld in tgts:
+            why = bounds.at(n.lineno).unbounded(recv, data_ok=True)
+            if why and not any(f.code in ("mass-change", "server-mass-change") and f.file == path and f.line == n.lineno for f in c.f):
+                c.add(HIGH, "server-mass-change" if server else "mass-change", path, n.lineno,
+                      f"{where if hook(n.lineno) else 'Code'} assigns field {fld!r} on a recordset that is not provably bounded"
+                      f" (equivalent to write()): {why}.",
+                      "Act on records proven to be specific (self / ids checked for access / a selective domain).")
     sink_alias = {  # m = getattr(rs, 'unl'+'ink') / m = rs.unlink
         t.id: (n.value.args[0], _fold_str(n.value.args[1]))
         for n in ast.walk(tree)
@@ -3572,13 +3593,33 @@ _ORM_BULK = frozenset({"search_read", "read", "fetchall", "fetchone", "dictfetch
                        "_read_group", "web_search_read"})
 
 
+_NET_CTOR = re.compile(
+    r"^(?:requests|httpx)\.(?:\w*[Ss]ession|Client|AsyncClient)$|^(?:requests\.sessions\.)?Session$|^smtplib\.SMTP(?:_SSL)?$|^SMTP(?:_SSL)?$"
+    r"|^(?:http\.client\.)?HTTPS?Connection$|^socket\.(?:socket|create_connection)$|^ftplib\.FTP(?:_TLS)?$|^urllib3\.PoolManager$"
+)
+_NET_METHODS = frozenset({"post", "put", "patch", "get", "delete", "request", "send", "sendall", "sendto", "sendmail",
+                          "send_message", "storbinary", "storlines", "urlopen", "putrequest", "putheader", "endheaders"})
+
+
 def _net_egress(c: _Ctx, path: str, tree: ast.AST) -> None:
-    """CA14 M4: outbound calls. Payload tainted by file content or bulk ORM/SQL reads is exfiltration (HIGH);
-    a host that is not a constant (or a named config key) is unprovable (MEDIUM)."""
+    """CA15 H5 (one sink set): requests/httpx calls and Session/Client objects, http.client, urllib, smtplib,
+    socket, ftplib, and mail.mail/mail.compose records with recipients. If any argument (URL included) is
+    tainted by file content, secret material or ORM/SQL reads, or the destination host is not a literal /
+    allow-listed constant, the call is network-exfiltration HIGH."""
+    cfg_names: set[str] = {al.asname or al.name for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)
+                           and n.module in ("odoo.tools", "odoo.tools.config", "os") for al in n.names if al.name in ("config", "environ")}
+    mod_consts = {t.id for n in getattr(tree, "body", []) if isinstance(n, ast.Assign) and _fold_str(n.value) is not None
+                  for t in n.targets if isinstance(t, ast.Name)}
     for f in (x for x in ast.walk(tree) if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))):
         tainted: dict[str, str] = {}
+        ctors: set[str] = set()
+        consts = _str_consts(f)
+        sm = _SecretModel(f, consts, {nm: "cfg" for nm in cfg_names})
 
-        def src(e: ast.AST) -> str | None:
+        def src(e: ast.AST, url: bool = False) -> str | None:
+            w = sm.src(e, cfg_names)
+            if w and (url or not (w.startswith("ir.config_parameter.get_param('") and not _CORE_SECRET_PARAM.search(w))):
+                return f"secret material ({w})"
             for z in ast.walk(e):
                 if isinstance(z, ast.Name) and z.id in tainted:
                     return tainted[z.id]
@@ -3593,86 +3634,216 @@ def _net_egress(c: _Ctx, path: str, tree: ast.AST) -> None:
 
         for _ in range(3):
             for st in ast.walk(f):
-                if isinstance(st, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and st.value is not None and (w := src(st.value)):
-                    for t in (st.targets if isinstance(st, ast.Assign) else [st.target]):
-                        for z in ast.walk(t):
-                            if isinstance(z, ast.Name):
-                                tainted.setdefault(z.id, w)
+                if isinstance(st, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and st.value is not None:
+                    tg = st.targets if isinstance(st, ast.Assign) else [st.target]
+                    if isinstance(st.value, ast.Call) and (_NET_CTOR.search(_dotted(st.value.func)) or (
+                            isinstance(st.value.func, ast.Name) and st.value.func.id in ctors)):
+                        ctors.update(t.id for t in tg if isinstance(t, ast.Name))
+                    if (w := src(st.value)):
+                        for t in tg:
+                            for z in ast.walk(t):
+                                if isinstance(z, ast.Name):
+                                    tainted.setdefault(z.id, w)
                 if isinstance(st, (ast.With, ast.AsyncWith)):
                     for it in st.items:
-                        if isinstance(it.context_expr, ast.Call) and getattr(it.context_expr.func, "id", "") == "open" and isinstance(it.optional_vars, ast.Name):
-                            tainted.setdefault(it.optional_vars.id, "file content")
-        consts = _str_consts(f)
+                        if isinstance(it.context_expr, ast.Call) and isinstance(it.optional_vars, ast.Name):
+                            if getattr(it.context_expr.func, "id", "") == "open":
+                                tainted.setdefault(it.optional_vars.id, "file content")
+                            if _NET_CTOR.search(_dotted(it.context_expr.func)):
+                                ctors.add(it.optional_vars.id)
+        sm.propagate(f, cfg_names)
+
+        def is_ctor(x: ast.AST) -> bool:
+            return (isinstance(x, ast.Call) and bool(_NET_CTOR.search(_dotted(x.func)))) or (isinstance(x, ast.Name) and x.id in ctors)
+
+        def host_ok(h: ast.AST | None) -> bool:
+            if h is None:
+                return True
+            if isinstance(h, (ast.Tuple, ast.List)) and h.elts:
+                h = h.elts[0]
+            if _fold_str(h) is not None or (isinstance(h, ast.Name) and (h.id in consts or h.id in mod_consts)):
+                return True
+            if isinstance(h, ast.JoinedStr) and h.values and isinstance(h.values[0], ast.Constant) and re.match(r"https?://[\w.-]+/", str(h.values[0].value)):
+                return True
+            if isinstance(h, ast.BinOp) and isinstance(h.op, ast.Add):
+                lf = _fold_str(h.left)
+                return bool(lf and re.match(r"https?://[\w.-]+/", lf))
+            return False
+
         for st in ast.walk(f):
             if not isinstance(st, ast.Call):
                 continue
-            nm = _dotted(st.func)
-            send = bool(_NET_SEND.search(nm)) or (isinstance(st.func, ast.Attribute) and st.func.attr in ("send", "sendall", "request")
-                                                 and any(isinstance(y, ast.Call) and _NET_SEND.search(_dotted(y.func)) for y in ast.walk(st.func.value)))
+            nm = _dotted(st.func) or (ast.unparse(st.func)[:80])
+            fa = st.func.attr if isinstance(st.func, ast.Attribute) else ""
+            # mail records with recipients carrying read data / secrets
+            if fa in ("create", "write") and re.search(r"mail\.(mail|compose\.message)|mail\.mail", ast.unparse(st.func.value)):
+                for d in st.args[:1]:
+                    if isinstance(d, ast.Dict) and any(_fold_str(k) in ("email_to", "recipient_ids", "partner_ids", "email_cc") for k in d.keys if k is not None):
+                        w = next((w for v in d.values if (w := src(v))), None)
+                        if w:
+                            c.add(HIGH, "network-exfiltration", path, st.lineno,
+                                  f"{f.name}() mails {w} to recipients through mail.mail.",
+                                  "Never mail file contents, secrets or bulk record data; send only the fields the recipient needs.")
+                continue
+            send = bool(_NET_SEND.search(nm)) or (fa in _NET_METHODS and (is_ctor(st.func.value) or any(
+                is_ctor(y) for y in ast.walk(st.func.value))))
             if not send:
                 continue
-            payload = st.args[1:] + [k.value for k in st.keywords if k.arg in ("data", "json", "files", "body", "params")]
-            if isinstance(st.func, ast.Attribute) and st.func.attr in ("send", "sendall"):
-                payload = list(st.args)
-            w = next((w for a in payload if (w := src(a))), None)
+            host_kw = next((k.value for k in st.keywords if k.arg in ("url", "host")), None)
+            ctor_call = next((y for y in ast.walk(st.func) if isinstance(y, ast.Call) and _NET_CTOR.search(_dotted(y.func))), None) if fa else None
+            if fa in ("send", "sendall", "sendto", "sendmail", "send_message", "storbinary", "storlines", "putheader", "endheaders"):
+                url_args, host = [], (ctor_call.args[0] if ctor_call is not None and ctor_call.args else None)
+            elif fa == "request" and ctor_call is not None and re.search(r"HTTPS?Connection", _dotted(ctor_call.func)):
+                url_args, host = st.args[1:2], (ctor_call.args[0] if ctor_call.args else None)
+            elif fa == "request" and len(st.args) >= 2:
+                url_args, host = st.args[1:2], st.args[1]
+            else:
+                url_args, host = st.args[:1], (st.args[0] if st.args else host_kw)
+            other = [a for a in st.args if a not in url_args] + [k.value for k in st.keywords]
+            w = next((w for a in url_args if (w := src(a, url=True))), None) or next((w for a in other if (w := src(a))), None)
             if w:
                 c.add(HIGH, "network-exfiltration", path, st.lineno,
                       f"{f.name}() sends {w} to the network ({nm}).",
-                      "Never send file contents or bulk record data out; post only the fields the integration needs.")
+                      "Never send file contents, secrets or bulk record data out; post only the fields the integration needs.")
                 continue
-            host = st.args[0] if st.args else next((k.value for k in st.keywords if k.arg in ("url", "host")), None)
-            if host is None or isinstance(host, (ast.Tuple, ast.List)) and host.elts and _fold_str(host.elts[0]):
-                continue
-            ok = _fold_str(host) is not None or (isinstance(host, ast.Name) and host.id in consts) or any(
-                isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr == "get_param" and z.args
-                and (_fold_str(z.args[0]) or (isinstance(z.args[0], ast.Name) and z.args[0].id in consts)) for z in ast.walk(host)) or (
-                isinstance(host, ast.JoinedStr) and host.values and isinstance(host.values[0], ast.Constant) and re.match(r"https?://[\w.-]+/", str(host.values[0].value)))
-            if not ok:
-                c.add(MEDIUM, "outbound-network", path, st.lineno,
-                      f"{f.name}() calls {nm} on a host computed at runtime: destination unprovable.",
-                      "Use a constant endpoint or a named ir.config_parameter key.")
+            if not host_ok(host):
+                c.add(HIGH, "network-exfiltration", path, st.lineno,
+                      f"{f.name}() calls {nm} on a host computed at runtime: destination unprovable (not a literal or"
+                      " allow-listed constant).",
+                      "Use a constant https endpoint (module-level literal); never let records or parameters choose the host.")
+
+
+_SECRET_KEY_RX = {
+    "cfg": _CFG_KEY_SECRET,
+    "env": _CFG_KEY_SECRET,
+    "session": re.compile(r"sid|token|secret|passw|csrf|session|key|cookie|_dict|__", re.I),
+    "cookies": re.compile(r"session|sid|token|csrf|auth|key", re.I),
+}
+_SECRET_OBJ_WHOLE = frozenset({"items", "values", "keys", "copy", "to_dict", "__dict__", "options", "misc", "get", "pop",
+                               "__getitem__", "setdefault", "popitem", "__getattribute__", "__getattr__"})
+
+
+_LOG_METHODS = frozenset({"info", "warning", "warn", "error", "debug", "critical", "exception", "log", "fatal"})
+_CORE_SECRET_PARAM = re.compile(r"get_param\('(database\.(secret|uuid)|auth_|.*(passw|secret|private))", re.I)
+
+
+class _SecretModel:
+    """CA15 H1: taint model for secret material. Sources: config / os.environ / request.session /
+    session cookies as WHOLE objects or through aliases (import alias, assignment, bound method, .options,
+    str()/dict()/repr()/**spread), getattr with a non-literal or secret name, and any keyed access whose key
+    is not a provably non-secret constant. Taint survives copies/formatting; a call through a tainted
+    callable (x = config.get; x('k')) is tainted."""
+
+    def __init__(self, tree: ast.AST, consts: dict[str, str], cfg_names: dict[str, str]):
+        self.consts, self.cfg = consts, cfg_names
+        self.objs: dict[str, str] = {}
+        self.tainted: dict[str, str] = {}
+
+    def kind(self, z: ast.AST) -> str | None:
+        if isinstance(z, ast.Name):
+            return self.objs.get(z.id) or self.cfg.get(z.id)
+        if isinstance(z, ast.Call) and getattr(z.func, "id", "") in ("Object", "dict", "copy", "deepcopy") and z.args:
+            return self.kind(z.args[0])
+        if isinstance(z, ast.Attribute) and z.attr == "options" and self.kind(z.value) == "cfg":
+            return "cfg"
+        d = _dotted(z) if isinstance(z, ast.Attribute) else ""
+        if d.endswith("tools.config"):
+            return "cfg"
+        if d == "os.environ":
+            return "env"
+        if d.endswith("request.session"):
+            return "session"
+        if d.endswith(("httprequest.cookies", "request.cookies")):
+            return "cookies"
+        return None
+
+    def _key(self, k: ast.AST | None) -> str | None:
+        if k is None:
+            return None
+        v = _fold_str(k)
+        if v is None and isinstance(k, ast.Name):
+            v = self.consts.get(k.id)
+        return v
+
+    def keyed(self, z: ast.AST) -> tuple[str, str | None] | None:
+        """(kind, literal key or None) for obj.get(k)/obj[k]/getattr(obj, k)/obj.attr on a secret object."""
+        if isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr in ("get", "pop", "__getitem__", "setdefault") \
+                and (k := self.kind(z.func.value)):
+            return k, self._key(z.args[0] if z.args else None)
+        if isinstance(z, ast.Subscript) and (k := self.kind(z.value)):
+            return k, self._key(z.slice)
+        if isinstance(z, ast.Call) and getattr(z.func, "id", "") == "getattr" and len(z.args) >= 2 and (k := self.kind(z.args[0])):
+            return k, self._key(z.args[1])
+        if isinstance(z, ast.Attribute) and z.attr not in _SECRET_OBJ_WHOLE and (k := self.kind(z.value)) in ("session", "cookies"):
+            return k, z.attr
+        return None
+
+    def src(self, e: ast.AST, consts_cfg: set[str]) -> str | None:
+        stack = [e]
+        while stack:
+            z = stack.pop()
+            kk = self.keyed(z)
+            if kk is not None:
+                k, key = kk
+                if key is not None and not _SECRET_KEY_RX[k].search(key):
+                    continue  # provably non-secret constant key: safe, do not descend
+                return f"{k}[{key!r}]" if key else f"{k}[<unprovable key>]"
+            w = _secret_source(z, self.consts, consts_cfg)
+            if w:
+                return w
+            if (k := self.kind(z)) is not None:
+                return f"whole {k} object"
+            if isinstance(z, ast.Name) and z.id in self.tainted:
+                return self.tainted[z.id]
+            if isinstance(z, ast.Call):
+                if isinstance(z.func, ast.Name) and z.func.id in self.tainted:
+                    return self.tainted[z.func.id]
+                nm = z.func.attr if isinstance(z.func, ast.Attribute) else getattr(z.func, "id", "")
+                if nm not in _SECRET_CARRY:
+                    continue
+            stack.extend(ast.iter_child_nodes(z))
+        return None
+
+    def propagate(self, f: ast.AST, consts_cfg: set[str]) -> None:
+        for _ in range(3):
+            for st in ast.walk(f):
+                if not (isinstance(st, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and st.value is not None):
+                    continue
+                tgts = st.targets if isinstance(st, ast.Assign) else [st.target]
+                if len(tgts) == 1 and isinstance(tgts[0], ast.Name) and (k := self.kind(st.value)):
+                    self.objs.setdefault(tgts[0].id, k)
+                    continue
+                if (w := self.src(st.value, consts_cfg)):
+                    for t in tgts:
+                        for z in ast.walk(t):
+                            if isinstance(z, ast.Name):
+                                self.tainted.setdefault(z.id, w)
 
 
 def _secret_sources(c: _Ctx, path: str, tree: ast.AST) -> None:
     """CA14 H1: secret material (config, env, unprovable get_param keys, session ids) read in a
     route, or sent out by mail/network/log from any code, is HIGH."""
     cfg_names: set[str] = set()
+    cfg_kind: dict[str, str] = {}
+    loggers: set[str] = {"_logger", "logger", "_log", "log", "LOG", "LOGGER"}
     for n in ast.walk(tree):
         if isinstance(n, ast.ImportFrom) and n.module in ("odoo.tools", "odoo.tools.config", "os"):
             for al in n.names:
                 if al.name in ("config", "environ"):
                     cfg_names.add(al.asname or al.name)
+                    cfg_kind[al.asname or al.name] = "env" if al.name == "environ" else "cfg"
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call) and _dotted(n.value.func).endswith("getLogger"):
+            loggers.update(t.id for t in n.targets if isinstance(t, ast.Name))
     seen = {(f.file, f.line) for f in c.f if f.code in ("route-secret-read", "secret-exfiltration")}
     for f in (x for x in ast.walk(tree) if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))):
         consts = _str_consts(f)
         auth = _route_auth(f)
-        tainted: dict[str, str] = {}
+        sm = _SecretModel(f, consts, cfg_kind)
+        sm.propagate(f, cfg_names)
 
         def src_of(e: ast.AST) -> str | None:
             # taint survives copies/formatting; an opaque call (requests.get(.., key)) consumes it
-            stack = [e]
-            while stack:
-                z = stack.pop()
-                w = _secret_source(z, consts, cfg_names)
-                if w:
-                    return w
-                if isinstance(z, ast.Name) and z.id in tainted:
-                    return tainted[z.id]
-                if isinstance(z, ast.Call):
-                    nm = z.func.attr if isinstance(z.func, ast.Attribute) else getattr(z.func, "id", "")
-                    if nm not in _SECRET_CARRY:
-                        continue
-                stack.extend(ast.iter_child_nodes(z))
-            return None
-
-        for _ in range(3):
-            for st in ast.walk(f):
-                if isinstance(st, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and st.value is not None and (w := src_of(st.value)):
-                    tgts = st.targets if isinstance(st, ast.Assign) else [st.target]
-                    for t in tgts:
-                        for z in ast.walk(t):
-                            if isinstance(z, ast.Name):
-                                tainted.setdefault(z.id, w)
+            return sm.src(e, cfg_names)
         if auth:
             public = auth in ("public", "none", "dynamic")
             hit = None
@@ -3696,13 +3867,18 @@ def _secret_sources(c: _Ctx, path: str, tree: ast.AST) -> None:
                 continue
             nm = _dotted(st.func)
             create_mail = isinstance(st.func, ast.Attribute) and st.func.attr in ("create", "write") and "mail.mail" in ast.unparse(st.func.value)
-            net = nm.startswith(_NET_ROOTS) or bool(_SECRET_SINK_CALLS.search(nm) and re.search(r"(^|\.)(_logger|logger|logging|requests|httpx|session|conn|sock|smtp|s)\.", nm + "."))
+            log = isinstance(st.func, ast.Attribute) and st.func.attr in _LOG_METHODS and (
+                (isinstance(st.func.value, ast.Name) and st.func.value.id in loggers)
+                or (isinstance(st.func.value, ast.Call) and _dotted(st.func.value.func).endswith("getLogger"))
+                or _dotted(st.func.value) in ("logging", "_logger", "logger"))
+            net = log or nm.startswith(_NET_ROOTS) or bool(_SECRET_SINK_CALLS.search(nm) and re.search(r"(^|\.)(_logger|logger|logging|requests|httpx|session|conn|sock|smtp|s)\.", nm + "."))
             mail = bool(re.search(r"(^|\.)(send_mail|message_post|message_notify|send_email|build_email)$", nm))
             if not (create_mail or net or mail):
                 continue
             for a0 in [*st.args, *[k.value for k in st.keywords]]:
                 w = src_of(a0)
-                if w and net and not (create_mail or mail or re.match(r"(_logger|logger|logging)\.", nm)) and w.startswith("ir.config_parameter.get_param('"):
+                if w and net and not (log or create_mail or mail or re.match(r"(_logger|logger|logging)\.", nm)) and w.startswith("ir.config_parameter.get_param('") \
+                        and not _CORE_SECRET_PARAM.search(w):
                     w = None  # a module's own named integration key sent to its API: by design, not exfiltration
                 if w and (path, st.lineno) not in seen:
                     seen.add((path, st.lineno))
@@ -5031,6 +5207,71 @@ def _owl_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
 _OWL_JS_ATTR = re.compile(r"t-on-[\w.-]+|t-att-[\w-]+|t-attf-[\w-]+|t-att|t-props|t-call-context")
 
 
+_TPL_SECRET_KEY = re.compile(r"secret|passw|token|api_?key|uuid|auth|totp|oauth|private|session", re.I)
+
+
+def _qweb_secret_label(sm: "_SecretModel", text: str) -> str | None:
+    try:
+        t = ast.parse((text or "").strip(), mode="eval")
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return None
+    w = sm.src(t, set())
+    if w and w.startswith("ir.config_parameter.get_param(") and not _TPL_SECRET_KEY.search(w):
+        return None  # a named non-secret parameter (web.base.url, cookie bar...): public by design
+    return w
+
+
+def _qweb_secret_model(c: _Ctx, el: Any) -> "_SecretModel":
+    """CA15 H1: per document, t-set / t-foreach names carrying secret material (session id/token,
+    whole session/cookies, secret config parameters)."""
+    try:
+        root = el.getroottree().getroot()
+    except (AttributeError, ValueError):
+        return _SecretModel(None, {}, {})
+    cache = c.__dict__.setdefault("_qweb_secret_cache", {})
+    if id(root) in cache and cache[id(root)][0] is root:
+        return cache[id(root)][1]
+    sm = _SecretModel(None, {}, {})
+    for _ in range(3):
+        for e in root.iter():
+            if not isinstance(e.tag, str):
+                continue
+            nm, v = (e.get("t-set") or "").strip(), e.get("t-value")
+            if e.get("t-foreach") and e.get("t-as"):
+                nm, v = e.get("t-as").strip(), e.get("t-foreach")
+            if not nm or v is None:
+                continue
+            try:
+                t = ast.parse(v.strip(), mode="eval")
+            except (SyntaxError, ValueError, RecursionError, MemoryError):
+                continue
+            if (k := sm.kind(t)) or (isinstance(t, (ast.List, ast.Tuple, ast.Set)) and (k := next((sm.kind(x) for x in t.elts if sm.kind(x)), None))):
+                sm.objs.setdefault(nm, k)
+            elif (w := _qweb_secret_label(sm, v)):
+                sm.tainted.setdefault(nm, w)
+    cache[id(root)] = (root, sm)
+    return sm
+
+
+def _qweb_secret_output(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
+    """CA15 H1: secret material reaching template output (t-out/t-esc/t-raw/t-att-*/t-attf-*) is HIGH."""
+    sm = None
+    for a, v in el.attrib.items():
+        if a in ("t-out", "t-esc", "t-raw", "t-att") or a.startswith("t-att-"):
+            exprs = [v]
+        elif a.startswith("t-attf-"):
+            exprs = [m.group(1) or m.group(2) for m in _INLINE_EXPR.finditer(v or "")]
+        else:
+            continue
+        sm = sm or _qweb_secret_model(c, el)
+        for x in exprs:
+            if (w := _qweb_secret_label(sm, x)):
+                c.add(HIGH, "template-secret-output", path, xl.el(el, a),
+                      f"QWeb {a} renders secret material ({w}) into the page.",
+                      "Never print session ids/tokens, server config or secret parameters in a template.")
+                break
+
+
 def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
     """domain/context/domain_force/filter_domain (safe_eval), eval= (load time),
     {{ }} inline templates, body_html QWeb, config parameter records."""
@@ -5039,6 +5280,7 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         _owl_expressions(c, path, xl, el)  # OWL: JavaScript expressions, not safe_eval
         return
     if tag != "field":
+        _qweb_secret_output(c, path, xl, el)
         if el.get("t-set"):
             _qweb_tcall_alias(c, path, xl.el(el, "t-set"), el, "QWeb t-set")
         for a, v in el.attrib.items():
