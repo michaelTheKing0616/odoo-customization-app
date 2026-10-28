@@ -4695,6 +4695,14 @@ def _qweb_aliases(c: _Ctx, el: Any) -> frozenset[str]:
         return cache[key][1]
     sets = []
     for e in root.iter():
+        if isinstance(e.tag, str) and e.get("t-foreach") and e.get("t-as"):
+            # CA14 M1: <t t-foreach="[request.session]" t-as="s"> binds s (and s_value) to the session
+            nm = e.get("t-as").strip()
+            try:
+                fe = ast.parse(e.get("t-foreach").strip(), mode="eval")
+            except (SyntaxError, ValueError, RecursionError, MemoryError):
+                fe = None
+            sets += [(nm, fe), (nm + "_value", fe)]
         if not isinstance(e.tag, str) or not e.get("t-set"):
             continue
         v = e.get("t-value") or e.get("value") or (e.text or "")
@@ -4710,6 +4718,15 @@ def _qweb_aliases(c: _Ctx, el: Any) -> frozenset[str]:
         out |= new
     cache[key] = (root, frozenset(out))
     return frozenset(out)
+
+
+def _qweb_tcall_alias(c: _Ctx, path: str, ln: int, e: Any, where: str) -> None:
+    """CA14 M1: session/env/context handed into a t-call body: the callee's use is unprovable here."""
+    v = (e.get("t-set") or "").strip()
+    if v and v in _qweb_aliases(c, e) and any(isinstance(p.tag, str) and p.get("t-call") for p in e.iterancestors()):
+        c.add(HIGH, "unsafe-expression", path, ln,
+              f"{where}: t-call body binds {v!r} to session/env state; the called template can mutate it.",
+              "Pass plain record/literal values into t-call bodies, not session/env objects.")
 
 
 def _audit_expr(
@@ -4843,6 +4860,8 @@ def _audit_template_tree(c: _Ctx, path: str, line: int, els: Any, where: str) ->
                     f"{where}: {a} renders unescaped HTML in stored content.",
                     "Use t-out with escaped values only.",
                 )
+            if al == "t-set":
+                _qweb_tcall_alias(c, path, ln, e, where)
             if al in _TPL_EXPR_ATTRS or al.startswith(("t-att-", "t-attf-")):
                 if al.startswith("t-attf-"):
                     for m in _INLINE_EXPR.finditer(v or ""):
@@ -4912,6 +4931,8 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         _owl_expressions(c, path, xl, el)  # OWL: JavaScript expressions, not safe_eval
         return
     if tag != "field":
+        if el.get("t-set"):
+            _qweb_tcall_alias(c, path, xl.el(el, "t-set"), el, "QWeb t-set")
         for a, v in el.attrib.items():
             if a in _TPL_EXPR_ATTRS[:-1] or a.startswith("t-att-"):
                 _audit_expr(c, path, xl.el(el, a), v, f"QWeb {a}", True, _qweb_aliases(c, el))

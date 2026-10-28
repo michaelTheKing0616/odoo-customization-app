@@ -196,3 +196,30 @@ def test_h5_laundered_state_domain_high(body, d):
 ])
 def test_h5_benign_twins_silent(body):
     assert "high" not in _sev(_js(_comp5(body)), "js-mass-change")
+
+
+# ---------------------------------------------------------------- M1 QWeb t-foreach / t-call aliases of session
+def _qt(body):
+    return {"report/r.xml": f"<odoo><template id='r'>{body}</template></odoo>"}
+
+
+@pytest.mark.parametrize("body", [
+    "<t t-foreach='[request.session]' t-as='s'><t t-esc='s.clear()'/></t>",  # probes
+    "<t t-call='x.u'><t t-set='s' t-value='request.session'/></t>",
+    "<t t-foreach='[request.session]' t-as='s'><t t-esc=\"s_value.pop('uid')\"/></t>",  # neighbours
+    "<t t-foreach='[request.env.context]' t-as='c'><t t-set='d' t-value='c'/><t t-esc=\"d.pop('lang')\"/></t>",
+    "<t t-foreach='{1: request.session}.values()' t-as='s'><t t-esc='s.popitem()'/></t>",
+    "<t t-call='x.u'><t t-set='e' t-value='request.env'/></t>",
+])
+def test_m1_qweb_session_alias_high(body):
+    assert "high" in _sev(_qt(body), "unsafe-expression")
+
+
+@pytest.mark.parametrize("body", [
+    "<t t-foreach='[1, 2]' t-as='s'><t t-esc='s'/></t>",
+    "<t t-foreach='docs' t-as='o'><t t-esc='o.name'/></t>",
+    "<t t-call='x.u'><t t-set='title' t-value=\"'Hi'\"/></t>",
+    "<t t-call='x.u'><t t-set='nm' t-value='doc.name'/></t>",
+])
+def test_m1_benign_twins_silent(body):
+    assert "high" not in _sev(_qt(body), "unsafe-expression")
