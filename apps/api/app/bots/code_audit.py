@@ -1640,7 +1640,9 @@ def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], s
                 return "U"
         if rs_unbounded is not None and rs_unbounded(rnode):
             return "U"
-        return "U" if op in ("!=", "<>", "not in", "not like", "not ilike", "=?") else "B"
+        # CA12 H1: only equality-style leaves select; an open range (<, >, <=, >=), negation or a
+        # runtime like-pattern is non-selective whatever the RHS (today(), 10**9, context, count)
+        return "B" if op in ("=", "==", "in", "child_of", "parent_of") else "U"
     if op in ("like", "ilike", "=like", "=ilike"):
         return "T" if isinstance(right, str) and not right.replace("%", "").replace("_", "") else "B"
     if fld == "active" and op in ("=", "==", "in"):
