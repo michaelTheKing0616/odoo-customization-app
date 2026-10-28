@@ -269,3 +269,23 @@ Two false-alarm root causes were fixed, not allow-listed: web `dynamic_list.js` 
 Audit suites: forward and reverse order both gave 1327 passed and 24 skipped.
 
 Gates (CODE-AUDIT-11): gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1) 2 passed; bl_08 4 passed.
+
+## CODE-AUDIT-12 (REVIEW-CODE-AUDIT-9: 3H/3M/1L)
+
+- H1 (478adf61): a leaf with a runtime right-hand side selects records only for `=`, `in`, `child_of` and `parent_of`. Open ranges, negations and like-patterns are unbounded whatever the right-hand side is (today(), 10**9, context, count). The same rule applies to server actions. The limit logic is unchanged.
+- H2 (c9ec5f8c): `urlPat` folds `new URL(path, base)`, once-bound URL objects (also after changes to search/hash), `+` and template concatenation, `Request(url)`, `.href`, `toString()` and `String()`.
+  - A call whose route names the model and method is graded even with no body (the review probe now gives js-sensitive-model HIGH).
+  - A runtime URL that could reach call_kw, call_button or /jsonrpc is graded by its body. If the body can't be proven, the result is js-raw-orm-request HIGH. FormData, URLSearchParams and non-JSON bodies are exempt.
+- H3 (04407d74): `this.domain`, `this.state.domain` and `this.props.domain` are judged by what the module assigns to them: assignments, class fields, useState, defaultProps and setters. A domain the module never assigns is treated as the framework's search domain. Only values from the search model, search events or search/filter handlers count as the user's selection. `[]`, tautologies and `JSON.parse` are unbounded.
+- M1 (566d17e1): exec sinks in tests/ (dangerous-call, safe-eval) keep full severity, because tests ship in the module. The r3 cap test now excludes these codes.
+- M2 (c4220029): in QWeb, pop/popitem/setdefault/clear on render-local containers are not writes. They are HIGH only on session, env or registry state. This fixes stock product report lines 153 and 162.
+- M3 (c63ff012): when res.config.settings set_values/execute archives the module's own model on a feature toggle, the finding is LOW settings-archive (admin-only and reversible). Unlink, write, and archiving a foreign model stay HIGH. This fixes stock product res_config_settings.py:43.
+- Stock gate (adf36ffd): product, purchase, project, point_of_sale, hr_expense, event and survey were added (19 modules in total).
+- L1 (f2b3cbdb): a destructive sink in a loop that re-runs an unbounded search() each pass is mass-change HIGH.
+
+Stock run (`scripts/stock_audit_counts.py`, tree bbe85efc, odoo 19.0), HIGH/MEDIUM v17 | v19, unaudited=0 everywhere, GATE OK:
+mail 110/338 | 78/337; sale 57/160 | 47/159; crm 30/277 | 18/277; hr 40/201 | 27/199; website_sale 84/145 | 79/142; mrp 56/136 | 43/136; account 83/343 | 57/343; stock 115/177 | 84/177; web 202/489 | 200/489; portal 9/81 | 9/80; auth_signup 8/63 | 7/63; website 334/259 | 324/257; product 33/138 | 16/138; purchase 51/84 | 42/84; project 72/180 | 46/178; point_of_sale 86/297 | 68/291; hr_expense 26/68 | 18/68; event 22/143 | 10/143; survey 16/160 | 11/160.
+
+Audit suites: forward and reverse order both gave 1390 passed and 38 skipped (the stock gate is opt-in). gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
+bl_08: 4 passed (after 5f21b3a1).
+- Test twin changed (5f21b3a1): in test_nf_bot_owned_change `tests-imported`, the payload is now capped raw DML. After M1, `os.system` in tests/ is already HIGH at baseline, so importing it was no longer a regression.
