@@ -36,6 +36,7 @@ let URL_VARS = new Set(); // locals holding a URL-controlled value
 let PUSHED = new Map(); // CA11 H7: array domains built by push: name -> [init, ...pushed]
 let JSURL_PROPS = new Set(); // CA11 H9: keys/properties bound to a javascript: URL literal
 let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
+let STATE_DOM = new Map(); // CA12 H3: view-state domain key -> what this module assigns to it
 let URL_OBJS = new Map(); // CA12 H2: once-bound new URL(..) whose path is never reassigned (search/hash may be)
 let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
 // ORM HTTP endpoints reached with fetch / XHR / sendBeacon / axios (CA9 H6)
@@ -157,7 +158,13 @@ function domBound(d, depth = 0) {
   // a domain held in view/component state (this.domain, this.props.domain) is the user's own
   // visible selection, run with the user's ACL; literal, decoded or parameter domains are not
   const k = mkey(d);
-  if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) return "B";
+  // CA12 H3: only when nothing in the module assigns it (the framework's search) or every value the module
+  // assigns comes from the search/filter UI (or is itself selective); [] / tautology / JSON.parse(..) is not
+  if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) {
+    const vs = STATE_DOM.get(k);
+    if (!vs) return "B";
+    return depth < 6 && vs.every(([v, fn]) => userSel(v, fn) || (v.type !== "MemberExpression" && domBound(v, depth + 1) === "B")) ? "B" : "U";
+  }
   if (d.type === "Identifier" && !DOM_VARS.has(d.name) && PUSHED.has(d.name)) {
     // [] + push(leaf...): implicit AND, so one selective leaf bounds it; any operator push is unprovable
     const [init, ...ps] = PUSHED.get(d.name);
@@ -189,6 +196,20 @@ function domBound(d, depth = 0) {
   let out = "U";
   try { while (pos < terms.length) { const v = take(); if (v === "B") out = "B"; } } catch { return "U"; }
   return out;
+}
+// a value that is the user's search/filter selection: read from the search model / a search event, or the
+// parameter of a search/filter handler
+const SEARCH_SRC = /searchModel|^search(Domain|Params|State)?$|^(facets?|filters?|detail)$/;
+function userSel(v, fn) {
+  if (!v) return false;
+  if (v.type === "Identifier" && fn && fn.params.some((p) => p.type === "Identifier" && p.name === v.name) &&
+      /^(on)?_?(search|filter|update(Search|Domain)|domainChange)/i.test(fn.name || "")) return true;
+  if (v.type === "MemberExpression" && !v.computed && v.property.name === "domain") {
+    let o = v.object;
+    while (o && o.type === "MemberExpression") { if (!o.computed && SEARCH_SRC.test(o.property.name)) return true; o = o.object; }
+    return !!(o && o.type === "Identifier" && SEARCH_SRC.test(o.name));
+  }
+  return false;
 }
 function mkey(n) {
   if (!n) return null;
@@ -516,6 +537,42 @@ function auditJs(text) {
       if (n.left.computed || !["search", "hash"].includes(n.left.property.name)) pathMut.add(n.left.object.name);
     }
   });
+  STATE_DOM = new Map();
+  {
+    const put = (k, v, fn) => { if (!STATE_DOM.has(k)) STATE_DOM.set(k, []); STATE_DOM.get(k).push([v, fn]); };
+    const objDom = (base, o, fn) => {
+      if (o && o.type === "CallExpression" && o.arguments.length && /(^|\.)(useState|reactive)$/.test(mkey(o.callee) || "")) o = o.arguments[0];
+      if (o && o.type === "ObjectExpression") for (const q of o.properties) if (q.key && (q.key.name || q.key.value) === "domain") put(base + ".domain", q.value, fn);
+    };
+    const fnName = (anc) => {
+      for (let i = anc.length - 1; i >= 0; i--) {
+        const a = anc[i];
+        if (/Function/.test(a.type)) {
+          const par = anc[i - 1];
+          const name = a.id ? a.id.name : par && par.type === "MethodDefinition" ? par.key.name : par && par.type === "Property" ? (par.key.name || par.key.value) : par && par.type === "VariableDeclarator" ? par.id.name : "";
+          return { params: a.params, name, kind: par && par.type === "MethodDefinition" ? par.kind : "" };
+        }
+      }
+      return null;
+    };
+    walk.ancestor(ast, {
+      AssignmentExpression(n, _s, anc) {
+        const k = mkey(n.left), fn = fnName(anc);
+        if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) put(k, n.right, fn);
+        else if (k && /^this\.(?:\w+)$/.test(k)) objDom(k, n.right, fn);
+      },
+      PropertyDefinition(n) {
+        const nm = n.key && (n.key.name || n.key.value);
+        if (!n.value) return;
+        if (nm === "domain" && !n.static) put("this.domain", n.value, null);
+        else if (nm === "defaultProps" && n.static) objDom("this.props", n.value, null);
+        else if (!n.static) objDom("this." + nm, n.value, null);
+      },
+      MethodDefinition(n) {  // set domain(d) {..}: whatever callers pass, unprovable
+        if (n.kind === "set" && n.key && n.key.name === "domain") put("this.domain", { type: "Identifier", name: n.value.params[0] ? "\u0000" : "\u0000" }, null);
+      },
+    });
+  }
   URL_OBJS = new Map();
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init && n.init.type === "NewExpression" &&

@@ -74,3 +74,30 @@ def test_h2_benign_silent(src):
 def test_h2_review_probe_url_object_no_body():
     src = "const u=new URL('/web/dataset/call_kw/res.users/write', location.origin); fetch(u,{method:'POST'});"
     assert "high" in _sev(_js(src), "js-sensitive-model")
+
+
+# ---------------------------------------------------------------- H3 view-state domains judged on their merits
+_DEL = f"async del() {{ const ids = await {O}.search(this.resModel, %s); await {O}.unlink(this.resModel, ids); }}"
+
+
+@pytest.mark.parametrize("cls", [
+    "class L { setup() { this.domain = []; } " + _DEL % "this.domain" + " }",
+    "class L { setup() { this.state = useState({domain: [['id', '!=', 0]]}); } " + _DEL % "this.state.domain" + " }",
+    "class L { setup() { this.domain = JSON.parse(this.props.cfg); } " + _DEL % "this.domain" + " }",
+    "class L { domain = [['active', 'in', [true, false]]]; " + _DEL % "this.domain" + " }",
+    "class L { static defaultProps = {domain: []}; " + _DEL % "this.props.domain" + " }",
+    "class L { setup() { this.state = useState({domain: []}); } load() { this.state.domain = this.props.cfg.domain; } " + _DEL % "this.state.domain" + " }",
+])
+def test_h3_module_assigned_state_domain_high(cls):
+    assert "high" in _sev(_js(cls), "js-mass-change")
+
+
+@pytest.mark.parametrize("cls", [
+    "class L { " + _DEL % "this.domain" + " }",
+    "class L { setup() { this.state = useState({domain: [['id', '=', this.props.resId]]}); } " + _DEL % "this.state.domain" + " }",
+    "class L { onSearch(domain) { this.domain = domain; } " + _DEL % "this.domain" + " }",
+    "class L { setup() { this.domain = this.env.searchModel.domain; } " + _DEL % "this.domain" + " }",
+    "class L { " + _DEL % "this.props.domain" + " }",
+])
+def test_h3_user_selection_silent(cls):
+    assert not _sev(_js(cls), "js-mass-change")
