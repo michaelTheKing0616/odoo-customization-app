@@ -37,7 +37,8 @@ let PUSHED = new Map(); // CA11 H7: array domains built by push: name -> [init, 
 let JSURL_PROPS = new Set(); // CA11 H9: keys/properties bound to a javascript: URL literal
 let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
 let STATE_DOM = new Map(); // CA12 H3: view-state domain key -> what this module assigns to it
-let URL_OBJS = new Map(); // CA12 H2: once-bound new URL(..) whose path is never reassigned (search/hash may be)
+let URL_OBJS = new Map();
+let URL_MUTS = new Map(); // CA13 H2: URL var -> [[prop, value]] writes (u.pathname = .. / Object.assign(u, {..})) // CA12 H2: once-bound new URL(..) whose path is never reassigned (search/hash may be)
 let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
 // ORM HTTP endpoints reached with fetch / XHR / sendBeacon / axios (CA9 H6)
 const ORM_ROUTE = /\/web\/dataset\/(?:call_kw|call_button|call|search_read|resequence)\b|\/jsonrpc\b|\/xmlrpc\b|\/web\/session\/authenticate/;
@@ -273,6 +274,21 @@ function lit(n) {
       const sep = n.arguments.length ? lit(n.arguments[0]) : ",";
       if (sep !== null && parts.every((x) => x !== null)) return parts.join(sep);
     }
+    // CA13 H2: deterministic string transforms on folded strings
+    if (["replace", "replaceAll"].includes(m) && n.arguments.length === 2) {
+      const b0 = lit(n.callee.object), a = lit(n.arguments[0]), r = lit(n.arguments[1]);
+      if (b0 !== null && a !== null && r !== null) return m === "replace" ? b0.replace(a, () => r) : b0.split(a).join(r);
+    }
+    if (["slice", "substring", "substr"].includes(m) && n.arguments.every((x) => x.type === "Literal" && typeof x.value === "number" ||
+        (x.type === "UnaryExpression" && x.operator === "-" && x.argument.type === "Literal"))) {
+      const b0 = lit(n.callee.object);
+      const nums = n.arguments.map((x) => x.type === "Literal" ? x.value : -x.argument.value);
+      if (b0 !== null) return b0[m](...nums);
+    }
+    if (["toLowerCase", "toUpperCase", "trim", "trimStart", "trimEnd", "normalize"].includes(m) && !n.arguments.length) {
+      const b0 = lit(n.callee.object);
+      if (b0 !== null) return b0[m]();
+    }
     if (m === "concat") {
       const parts = [n.callee.object, ...n.arguments].map((e) => lit(e));
       if (parts.every((x) => x !== null)) return parts.join("");
@@ -306,7 +322,7 @@ function urlPat(n, d = 0) {
   const s = lit(n);
   if (s !== null) return s;
   if (n.type === "Identifier" && DOM_VARS.has(n.name)) return urlPat(DOM_VARS.get(n.name)[0], d + 1);
-  if (n.type === "Identifier" && URL_OBJS.has(n.name)) return urlPat(URL_OBJS.get(n.name), d + 1);
+  if (n.type === "Identifier" && URL_OBJS.has(n.name)) { const c = urlCands(n, d); return c[c.length - 1]; }
   if (n.type === "MemberExpression" && !n.computed && ["href", "pathname"].includes(n.property.name)) return urlPat(n.object, d + 1);
   if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && !n.callee.computed && n.callee.property.name === "toString") return urlPat(n.callee.object, d + 1);
   if (n.type === "CallExpression" && n.callee.type === "Identifier" && n.callee.name === "String" && n.arguments.length === 1) return urlPat(n.arguments[0], d + 1);
@@ -325,6 +341,22 @@ function urlPat(n, d = 0) {
     return a === null && b === null ? null : (a ?? RT) + (b ?? RT);
   }
   return null;
+}
+// CA13 H2: every state a URL object passes through (initial, then after each pathname/href/.. write)
+function urlCands(n, d = 0) {
+  if (!n || n.type !== "Identifier" || !URL_OBJS.has(n.name)) return [urlPat(n, d)];
+  let cur = urlPat(URL_OBJS.get(n.name), d + 1) ?? RT;
+  const out = [cur];
+  const origin = (u) => { const m = u.match(/^([a-z][a-z0-9+.-]*:\/\/[^/]*)/i); return m ? m[1] : u.startsWith("/") ? "" : RT; };
+  for (const [prop, v] of URL_MUTS.get(n.name) || []) {
+    if (["search", "hash"].includes(prop)) continue;
+    const val = v ? urlPat(v, d + 1) : null;
+    if (prop === "pathname") cur = origin(cur) + (val === null ? RT : (val.startsWith("/") ? "" : "/") + val);
+    else if (prop === "href") cur = val === null ? RT : /^[a-z][a-z0-9+.-]*:/i.test(val) ? val : origin(cur) + val;
+    else cur = RT + "/" + RT;  // host/origin/protocol/unknown property: anything
+    out.push(cur);
+  }
+  return out;
 }
 // could a URL pattern reach an ORM endpoint (runtime parts may be anything)
 const ORM_PATHS = ["/web/dataset/call_kw/a.a/write", "/web/dataset/call_kw", "/web/dataset/call_button", "/web/dataset/call", "/jsonrpc", "/xmlrpc/2/object"];
@@ -573,10 +605,21 @@ function auditJs(text) {
       },
     });
   }
-  URL_OBJS = new Map();
+  URL_OBJS = new Map(); URL_MUTS = new Map();
+  const putMut = (nm, prop, v) => { if (!URL_MUTS.has(nm)) URL_MUTS.set(nm, []); URL_MUTS.get(nm).push([prop, v]); };
+  walk.full(ast, (n) => {
+    if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression" && n.left.object.type === "Identifier")
+      putMut(n.left.object.name, n.left.computed ? lit(n.left.property) ?? "?" : n.left.property.name, n.operator === "=" ? n.right : null);
+    if (n.type === "CallExpression" && /(^|\.)Object\.(assign|defineProperty|defineProperties)$/.test(mkey(n.callee) || "") &&
+        n.arguments[0] && n.arguments[0].type === "Identifier") {
+      const o = n.arguments[1];
+      if (o && o.type === "ObjectExpression") for (const q of o.properties) putMut(n.arguments[0].name, q.key ? (q.key.name || q.key.value) : "?", q.type === "Property" ? q.value : null);
+      else putMut(n.arguments[0].name, "?", null);
+    }
+  });
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init && n.init.type === "NewExpression" &&
-        n.init.callee.type === "Identifier" && n.init.callee.name === "URL" && assigned.get(n.id.name) === 1 && !pathMut.has(n.id.name)) URL_OBJS.set(n.id.name, n.init);
+        n.init.callee.type === "Identifier" && n.init.callee.name === "URL" && assigned.get(n.id.name) === 1) URL_OBJS.set(n.id.name, n.init);
   });
   walk.full(ast, (n) => {
     if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init && assigned.get(n.id.name) === 1 && !mutated.has(n.id.name)) DOM_VARS.set(n.id.name, [n.init]);
@@ -725,6 +768,7 @@ function auditJs(text) {
       if (!seg || !method) return;
     } else if (!o) {
       add(sev, "js-raw-orm-request", n, `${what}() to ${dyn ? "a runtime URL that may be" : ""} the ORM endpoint ${route} with a body built at runtime: model/method undecidable, flagged.`);
+      if (dyn) add("high", "js-sensitive-model", n, `${what}() may reach the ORM (${route}) with an unprovable model/method: treated as a privileged write.`);
       return;
     }
     const first = args && args.type === "ArrayExpression" ? args.elements[0] : null;
@@ -737,6 +781,7 @@ function auditJs(text) {
       add("medium", "js-sensitive-model", n, `${what}() reads ${model} through ${route} from the browser.`);
     } else if (model === null || method === null) {
       add(sev, "js-raw-orm-request", n, `${what}() to ${route} with a runtime model/method: undecidable, flagged.`);
+      if (dyn || route0.includes(RT)) add("high", "js-sensitive-model", n, `${what}() to ${route}: model/method not provable, treated as a privileged write (CA13 H2).`);
     }
   }
   function resolve(n) {
@@ -987,9 +1032,16 @@ function auditJs(text) {
       else if (last(r) === "send" && n.callee.type === "MemberExpression" && n.callee.object.type === "Identifier" && xhrOrm().has(n.callee.object.name)) {
         rawUrl = xhrOrm().get(n.callee.object.name); rawBody = a0; rawWhat = "XMLHttpRequest.send";
       }
-      const rawRoute = rawUrl && (rawUrl.type ? urlPat(rawUrl) : rawUrl);
+      const cands = rawUrl && rawUrl.type ? urlCands(rawUrl) : [rawUrl];
+      const ormC = cands.find((x) => x && ORM_ROUTE.test(x));
+      const rawRoute = ormC || cands[cands.length - 1];
       if (rawRoute && ORM_ROUTE.test(rawRoute)) gradeOrmBody(n, rawWhat, rawRoute, rawBody);
-      else if (rawUrl && rawBody && mayReachOrm(rawRoute) && !nonJsonBody(rawBody)) {
+      else if (rawUrl && !rawBody && (rawRoute === null || rawRoute.includes(RT)) && mayReachOrm(rawRoute) &&
+               /^(post|put|patch|delete)$/i.test(lit(optProp(n.arguments[1], "method")) || (r === "navigator.sendBeacon" ? "post" : ""))) {
+        // CA13 H2: a mutating request with no provable body to a URL that may be the ORM
+        add("high", "js-sensitive-model", n, `${rawWhat}() ${"POST"} to a URL that may reach the ORM and cannot be proven safe.`);
+      }
+      else if (rawUrl && rawBody && cands.some((x) => mayReachOrm(x)) && !nonJsonBody(rawBody)) {
         // CA12 H2: a runtime URL that may be call_kw/call_button//jsonrpc: graded by the body
         const bo = bodyObj(rawBody);
         const keys = bo ? bo.properties.map((q) => q.key && (q.key.name || q.key.value)) : [];

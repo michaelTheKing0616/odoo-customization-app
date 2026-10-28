@@ -55,3 +55,29 @@ def test_h1_module_declared_unique_silent():
 ])
 def test_h1_server_action_mass(code):
     assert "high" in _sev({"views/v.xml": SA.format(code)}, "server-mass-change")
+
+
+# ---------------------------------------------------------------- H2 JS string / URL mutation folded
+@pytest.mark.parametrize("src", [
+    "fetch('/web/dataset/call_kw/res.XXXX/write'.replace('XXXX','users'),{method:'POST'});",
+    "const u=new URL(location.origin); u.pathname='/web/dataset/call_kw/res.users/write'; fetch(u,{method:'POST'});",
+    "const u=new URL(location.origin); u.href='/web/dataset/call_kw/res.users/unlink'; fetch(u,{method:'POST'});",
+    "fetch('/WEB/DATASET/CALL_KW/RES.USERS/WRITE'.toLowerCase(),{method:'POST'});",
+    "fetch('/web/dataset/call_kw/res.users/write/xx'.slice(0, -3),{method:'POST'});",
+    "fetch('/web/dataset/call_kw/res.U/write'.replaceAll('U','users'),{method:'POST'});",
+    "const u=new URL('/', location.origin); Object.assign(u, {pathname: '/web/dataset/call_kw/res.users/write'}); fetch(u,{method:'POST'});",
+    "function f(p){ const u=new URL(location.origin); u.pathname=p; fetch(u,{method:'POST'}); }",
+    "function f(m){ const u=new URL(location.origin); u.pathname='/web/dataset/call_kw/' + m + '/write'; fetch(u,{method:'POST'}); }",
+    "function f(m){ fetch('/web/dataset/call_kw/' + m + '/write', {method:'POST'}); }",
+])
+def test_h2_mutated_url_sensitive_high(src):
+    assert "high" in _sev(_js(src), "js-sensitive-model")
+
+
+@pytest.mark.parametrize("src", [
+    "const u=new URL(location.origin); u.pathname='/shop/cart'; fetch(u,{method:'POST'});",
+    "fetch('/web/image/XX'.replace('XX','1'));",
+    "const u=new URL('/web/dataset/call_kw/res.partner/read', location.origin); u.search='?a=1'; fetch(u,{method:'POST'});",
+])
+def test_h2_benign_mutation_silent(src):
+    assert "high" not in _sev(_js(src), "js-sensitive-model")
