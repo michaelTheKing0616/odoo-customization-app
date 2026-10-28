@@ -151,3 +151,30 @@ def test_m2_local_container_pop_silent(expr):
 ])
 def test_m2_shared_state_mutation_high(expr):
     assert "high" in _sev(_qw(expr), "unsafe-expression")
+
+
+# ---------------------------------------------------------------- M3 settings toggle archiving the module's own model
+_OWN = "from odoo import models, fields\nclass PL(models.Model):\n    _name = 'x.pl'\n    name = fields.Char()\n"
+_CFG = ("from odoo import models, fields\nclass S(models.TransientModel):\n    _inherit = 'res.config.settings'\n"
+        "    group_pl = fields.Boolean()\n    def set_values(self):\n        super().set_values()\n"
+        "        if not self.group_pl:\n            {}\n")
+
+
+def test_m3_settings_archive_own_model_not_high():
+    files = {"models/pl.py": _OWN, "models/cfg.py": _CFG.format("self.env['x.pl'].sudo().search([]).action_archive()")}
+    assert not _sev(files, "mass-change")
+    assert "low" in _sev(files, "settings-archive")
+
+
+@pytest.mark.parametrize("stmt", [
+    "self.env['res.partner'].sudo().search([]).action_archive()",  # not the module's own model
+    "self.env['x.pl'].sudo().search([]).unlink()",  # irreversible
+    "self.env['x.pl'].sudo().search([]).write({'name': 'x'})",
+])
+def test_m3_settings_other_mass_still_high(stmt):
+    assert "high" in _sev({"models/pl.py": _OWN, "models/cfg.py": _CFG.format(stmt)}, "mass-change")
+
+
+def test_m3_archive_outside_settings_still_high():
+    src = _OWN + "    def go(self):\n        self.env['x.pl'].search([]).action_archive()\n"
+    assert "high" in _sev({"models/pl.py": src}, "mass-change")

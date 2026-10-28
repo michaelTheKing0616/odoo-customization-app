@@ -2021,6 +2021,54 @@ def _hook_lines(path: str, tree: ast.AST) -> Callable[[int], bool]:
     return lambda ln: any(a <= ln <= b for a, b in spans)
 
 
+_REVERSIBLE_SINKS = frozenset({"action_archive", "action_unarchive", "toggle_active"})
+
+
+def _module_models(c: _Ctx) -> frozenset[str]:
+    """Models this module creates (_name not inherited) across all its Python files."""
+    got = getattr(c, "_own_models", None)
+    if got is None:
+        names: set[str] = set()
+        for f, b in c.files.items():
+            if not f.endswith(".py") or f.startswith("tests/") or "/tests/" in f:
+                continue
+            try:
+                t = ast.parse(b)
+            except (SyntaxError, ValueError):
+                continue
+            for cls in ast.walk(t):
+                if not isinstance(cls, ast.ClassDef):
+                    continue
+                at = {st.targets[0].id: st.value for st in cls.body if isinstance(st, ast.Assign)
+                      and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name)}
+                nm, inh = _const(at.get("_name")), at.get("_inherit")
+                inh_l = [_const(inh)] if isinstance(inh, ast.Constant) else [_const(e) for e in getattr(inh, "elts", [])]
+                if isinstance(nm, str) and nm not in inh_l:
+                    names.add(nm)
+        got = c._own_models = frozenset(names)
+    return got
+
+
+def _settings_toggle(c: _Ctx, tree: ast.AST, call: ast.Call, recv: ast.AST) -> bool:
+    """call sits in res.config.settings.set_values/execute and acts on env['<own model>']."""
+    for cls in ast.walk(tree):
+        if not isinstance(cls, ast.ClassDef):
+            continue
+        at = {st.targets[0].id: st.value for st in cls.body if isinstance(st, ast.Assign)
+              and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name)}
+        inh = at.get("_inherit")
+        inh_l = [_const(inh)] if isinstance(inh, ast.Constant) else [_const(e) for e in getattr(inh, "elts", [])]
+        if "res.config.settings" not in inh_l and _const(at.get("_name")) != "res.config.settings":
+            continue
+        for fn in cls.body:
+            if isinstance(fn, ast.FunctionDef) and fn.name in ("set_values", "execute") \
+                    and fn.lineno <= call.lineno <= (fn.end_lineno or fn.lineno):
+                models = {_const(x.slice) for x in ast.walk(recv) if isinstance(x, ast.Subscript)
+                          and isinstance(_const(x.slice), str)}
+                return len(models) == 1 and models <= _module_models(c)
+    return False
+
+
 def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) -> None:
     """Stored server/cron/automation code, hooks and migrations run unattended (as root):
     mass unlink/write over a whole model (also looping over search([])) and write-DML
@@ -2057,6 +2105,13 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) 
         why = None
         if attr in MASS_SINKS and not (attr == "update" and not isinstance(recv, ast.Call)):  # dict.update
             why = bounds.at(n.lineno).unbounded(recv, data_ok=True)
+        if why and not server and attr in _REVERSIBLE_SINKS and _settings_toggle(c, tree, n, recv):
+            # CA12 M3: res.config.settings.set_values archiving the module's own model when the admin turns
+            # the feature off (product: pricelists): admin-only, reversible, the model is the module's own
+            c.add(LOW, "settings-archive", path, n.lineno,
+                  f"Settings {attr}() over every record of this module's own model when the feature is toggled.",
+                  "Fine when it mirrors the toggle; archive only the records the feature created if possible.")
+            why = None
         if why:
             c.add(
                 HIGH,
