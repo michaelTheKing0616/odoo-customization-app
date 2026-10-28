@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import csv
 import fnmatch
+import hashlib
 import io
 import json
 import re
@@ -5920,8 +5921,9 @@ def _audit_web(c: _Ctx) -> None:
         [(key, kind, text) for key, _, _, kind, text in todo],
         props_domain=c.props_domain,
     )
-    for key, file, line0, _, _ in todo:
+    for key, file, line0, _, text in todo:
         r = res.get(key) if isinstance(res, dict) else None
+        vend = _vendored(text) if line0 == 1 else None
         if r is None or not r.get("ok"):
             why = res if isinstance(res, str) else (r or {}).get("error", "no result")
             typed = key in tried and isinstance(res, dict)  # TypeScript/JSX syntax: not loaded
@@ -5938,14 +5940,31 @@ def _audit_web(c: _Ctx) -> None:
         for f in r.get("findings", []):
             sev = f.get("sev") if f.get("sev") in _SEV_RANK else HIGH
             code = str(f.get("code", "web-finding"))
+            msg = str(f.get("msg", ""))
+            if vend and code == "js-sensitive-model" and sev == HIGH:
+                # CA14 L2: byte-identical to a pinned, reviewed vendored transport library
+                sev, msg = MEDIUM, f"Known vendored library ({vend}, sha256 pinned): {msg}"
             c.add(
                 sev,
                 code,
                 file,
                 line0 + max(int(f.get("line") or 1), 1) - 1,
-                str(f.get("msg", ""))[:300],
+                msg[:300],
                 _WEB_FIX.get(code, "Review this code by hand."),
             )
+
+
+_VENDORED: dict[str, str] | None = None
+
+
+def _vendored(text: str) -> str | None:
+    """CA14 L2: name of a known vendored transport library whose exact bytes were reviewed
+    (code_audit_vendored.json, sha256 of the UTF-8 file). Any edit changes the hash, so a
+    modified copy keeps every HIGH; only js-sensitive-model on the exact copy is downgraded."""
+    global _VENDORED
+    if _VENDORED is None:
+        _VENDORED = json.loads((Path(__file__).with_name("code_audit_vendored.json")).read_text())
+    return _VENDORED.get(hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest())
 
 
 _PO_RISK = re.compile(

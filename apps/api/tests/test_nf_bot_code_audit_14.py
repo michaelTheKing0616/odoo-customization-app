@@ -324,3 +324,30 @@ def test_m4_runtime_host_medium(body):
 def test_m4_benign_twins(body):
     f = _m(body, _NETPRE)
     assert not _sev(f, "network-exfiltration") and "medium" not in _sev(f, "outbound-network")
+
+
+# ---------------------------------------------------------------- L2 pinned vendored libs
+_VSRC = "function f(u, b) { const x = new XMLHttpRequest(); x.open('POST', u); x.send(b); }\n"
+
+
+def _vfiles(src):
+    return _js(src)
+
+
+def test_l2_vendored_exact_copy_downgraded(monkeypatch):
+    import hashlib
+    from app.bots import code_audit as ca
+    text = _vfiles(_VSRC)["static/src/a.js"]
+    assert "high" in _sev(_vfiles(_VSRC), "js-sensitive-model")
+    monkeypatch.setattr(ca, "_VENDORED", {hashlib.sha256(text.encode()).hexdigest(): "test-lib"})
+    assert _sev(_vfiles(_VSRC), "js-sensitive-model") == {"medium"}
+    # one changed byte breaks the pin: HIGH again
+    assert "high" in _sev(_vfiles(_VSRC + " "), "js-sensitive-model")
+
+
+def test_l2_pin_file_is_hashes_only():
+    import json
+    from pathlib import Path
+    from app.bots import code_audit as ca
+    d = json.loads(Path(ca.__file__).with_name("code_audit_vendored.json").read_text())
+    assert d and all(len(k) == 64 and int(k, 16) >= 0 for k in d)
