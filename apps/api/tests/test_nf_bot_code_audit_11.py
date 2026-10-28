@@ -173,3 +173,39 @@ def test_h10_core_table_dml_high(body):
 ])
 def test_h10_own_table_sql_silent(body):
     assert not _sev(_m(body), "core-table-dml")
+
+
+# ---------------------------------------------------------------- H11 <function> destructive / unknown
+def _x(body):
+    man = {"name": "x", "version": "17.0.1.0.0", "depends": ["base"], "data": ["data/d.xml"], "license": "LGPL-3"}
+    return {"__manifest__.py": repr(man), "models/a.py": PH + MH + "        return True\n",
+            "data/d.xml": f"<odoo>{body}</odoo>"}
+
+
+@pytest.mark.parametrize("body", [
+    """<function model='res.partner' name='unlink' eval="[obj().env['res.partner'].search([]).ids]"/>""",  # probe
+    """<function model='res.partner' name='write'><value model='res.partner' search='[]'/><value eval="{'active': False}"/></function>""",
+    """<function model='product.product' name='action_archive'><value eval="obj().search([]).ids"/></function>""",
+    """<function model='crm.lead' name='toggle_active' eval="[obj().env['crm.lead'].search([('name','!=','zz')]).ids]"/>""",
+])
+def test_h11_destructive_function_high(body):
+    assert "high" in _sev(_x(body), "xml-function-destructive")
+
+
+@pytest.mark.parametrize("body", [
+    "<function model='res.partner' name='_do_magic' eval='[]'/>",
+    "<function model='a.a' name='zz_unknown'/>",
+    "<function model='product.product' name='_compute_x'/>",
+])
+def test_h11_unknown_function_medium(body):
+    assert "medium" in _sev(_x(body), "xml-function-unknown")
+
+
+@pytest.mark.parametrize("body", [
+    "<function model='a.a' name='f'/>",  # defined in this module (audited)
+    "<function model='res.partner' name='write'><value eval=\"[ref('base.main_partner')]\"/><value eval=\"{'name': 'x'}\"/></function>",
+    "<function model='res.partner' name='search' eval='[[]]'/>",
+])
+def test_h11_benign_function(body):
+    f = _x(body)
+    assert not _sev(f, "xml-function-destructive") and not _sev(f, "xml-function-unknown")

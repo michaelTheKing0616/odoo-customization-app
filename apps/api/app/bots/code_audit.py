@@ -4489,6 +4489,94 @@ def _xml_expressions(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         )
 
 
+_DESTRUCTIVE_FN = re.compile(
+    r"^(?:_?unlink\w*|_?write|action_(?:un)?archive|toggle_active|update|_?purge\w*|_gc_\w*|"
+    r"button_(?:immediate_)?uninstall|module_uninstall|_?drop\w*|_?truncate\w*|_?reset\w*)$"
+)
+
+
+def _function_ids_bounded(el: Any) -> bool:
+    """The first argument provably names specific records: literal ids / ref('xmlid'), a
+    search= domain, or an eval recordset expression that the recordset-bounds analysis proves
+    bounded (same rule as Python sinks). Anything unprovable is unbounded."""
+    vs = list(el.iter("value"))
+    v0 = vs[0] if vs else None
+    if v0 is not None and v0.get("search"):
+        try:
+            d = ast.parse(v0.get("search"), mode="eval").body
+        except (SyntaxError, ValueError):
+            return False
+        return _domain_bound(d, {}, v0.get("model") or "") in ("B", "F")
+    ev = ((v0.get("eval") or "") if v0 is not None else (el.get("eval") or "")).strip()
+    lit = r"[\[\]\(\)\s\d,]*(?:ref\(\s*['\"][\w.]+['\"]\s*\)[\[\]\(\)\s\d,]*)*"
+    if re.fullmatch(lit, ev):
+        return bool(re.search(r"\d|ref\(", ev))
+    try:
+        t = ast.parse("_x = " + ev)
+    except (SyntaxError, ValueError):
+        return False
+    e = t.body[0].value
+    if v0 is None and isinstance(e, (ast.List, ast.Tuple)) and e.elts:
+        e = e.elts[0]  # eval="[ids, vals]": the first positional argument
+    while isinstance(e, ast.Attribute) and e.attr in ("ids", "id"):
+        e = e.value
+    if not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in _RS_SEARCH for n in ast.walk(e)):
+        return False
+    return _Bounds(t).unbounded(e) is None
+
+
+def _dep_defs(c: _Ctx) -> set[str]:
+    """Method names defined by the declared dependency closure, when the installed addons are
+    on disk (directory audit). Without them a dependency's method stays unknown (fail closed)."""
+    dirs = getattr(c, "addons_dirs", []) or []
+    if not dirs:
+        return set()
+
+    def deps(man: bytes) -> list[str]:
+        try:
+            m = ast.literal_eval(man.decode("utf-8", "replace"))
+        except (SyntaxError, ValueError):
+            return []
+        return [str(d) for d in (m.get("depends") or [])] if isinstance(m, dict) else []
+
+    todo, seen, out = deps(c.files.get("__manifest__.py", b"")), set(), set()
+    while todo and len(seen) < 200:
+        d = todo.pop()
+        if d in seen:
+            continue
+        seen.add(d)
+        root = next((r / d for r in dirs if (r / d / "__manifest__.py").is_file()), None)
+        if root is None:
+            continue
+        todo += deps((root / "__manifest__.py").read_bytes())
+        for f in root.rglob("*.py"):
+            if "tests" in f.relative_to(root).parts:
+                continue
+            try:
+                t = ast.parse(f.read_bytes())
+            except (SyntaxError, ValueError, OSError):
+                continue
+            out |= {n.name for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return out
+
+
+def _module_defs(c: _Ctx) -> frozenset[str]:
+    """Method names defined in this module's own (audited) Python."""
+    got = getattr(c, "_defs", None)
+    if got is None:
+        names: set[str] = set()
+        for f, b in c.files.items():
+            if f.endswith(".py"):
+                try:
+                    t = ast.parse(b)
+                except (SyntaxError, ValueError):
+                    continue
+                names |= {n.name for n in ast.walk(t) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        names |= _dep_defs(c)
+        got = c._defs = frozenset(names)
+    return got
+
+
 def _function_on_own_records(c: _Ctx, model: str, fn: str, el: Any) -> bool:
     """M6: a core-model <function> provably limited to this module's own records
     (xmlids it owns / its own ir.module.module row) is MEDIUM, anything else HIGH."""
@@ -4761,6 +4849,14 @@ def _xml_operations(c: _Ctx, path: str, xl: _XLines, el: Any) -> None:
         m, fn = el.get("model") or "", el.get("name") or ""
         sens = m in SENSITIVE_MODELS and fn not in _READ_ONLY_CALLS
         own = sens and _function_on_own_records(c, m, fn, el)
+        if not sens and _DESTRUCTIVE_FN.match(fn) and not _function_ids_bounded(el):
+            c.add(HIGH, "xml-function-destructive", path, xl.el(el, "name"),
+                  f"<function> calls {m}.{fn}() as superuser at every install/update on records it cannot prove bounded.",
+                  "Use <delete>/<record> on xmlids this module owns, or a reviewed migration.")  # fmt: skip
+        elif not sens and fn not in _READ_ONLY_CALLS and not _DESTRUCTIVE_FN.match(fn) and fn not in _module_defs(c):
+            c.add(MEDIUM, "xml-function-unknown", path, xl.el(el, "name" if fn else None),
+                  f"<function> calls {m}.{fn}(), a method this module does not define: its effect cannot be audited.",
+                  "Call a method defined (and audited) in this module, or use data records.")  # fmt: skip
         c.add(
             MEDIUM if own else HIGH if sens else LOW,
             "xml-function-call",
