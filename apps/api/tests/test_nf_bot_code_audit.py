@@ -532,7 +532,7 @@ def test_r3_tests_imported_by_prod_not_capped():
     assert all(
         f.severity == "low"
         for f in capped.findings
-        if f.file.startswith("tests/") and f.code != "test-tamper"  # r7: shape is HIGH
+        if f.file.startswith("tests/") and f.code not in ("test-tamper", "dangerous-call", "safe-eval")  # r7 + CA12 M1: exec sinks keep rank
     )
     for init in (
         "from . import models\nfrom .tests import evil\n",

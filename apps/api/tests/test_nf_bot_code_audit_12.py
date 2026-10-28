@@ -101,3 +101,27 @@ def test_h3_module_assigned_state_domain_high(cls):
 ])
 def test_h3_user_selection_silent(cls):
     assert not _sev(_js(cls), "js-mass-change")
+
+
+# ---------------------------------------------------------------- M1 exec sinks in tests/ keep their rank
+_TH = "from odoo.tests.common import TransactionCase\n"
+
+
+@pytest.mark.parametrize("body", [
+    'import os\nos.system("x")\n',
+    'import subprocess\nsubprocess.run(["id"])\n',
+    'import os\nos.popen("id").read()\n',
+    'import subprocess\nclass T(TransactionCase):\n    def test_a(self):\n        subprocess.check_output("id", shell=True)\n',
+])
+def test_m1_tests_exec_sink_high(body):
+    assert "high" in _sev({"tests/test_x.py": _TH + body}, "dangerous-call")
+
+
+def test_m1_non_test_same_severity():
+    body = 'import os\nos.system("x")\n'
+    assert _sev({"tests/test_x.py": _TH + body}, "dangerous-call") == _sev({"models/x.py": _TH + body}, "dangerous-call")
+
+
+def test_m1_benign_test_silent():
+    body = "class T(TransactionCase):\n    def test_a(self):\n        self.assertTrue(self.env['res.partner'].search([('id', '=', 1)]))\n"
+    assert not _sev({"tests/test_x.py": _TH + body}, "dangerous-call")

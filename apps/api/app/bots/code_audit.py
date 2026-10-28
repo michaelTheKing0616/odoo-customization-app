@@ -557,8 +557,9 @@ class _Ctx:
 
     def add(self, sev, code, file, line, msg, fix):
         tdir = file.startswith("tests/") or "/tests/" in file
-        # test-tamper keeps its rank: test code runs inside the gate and can forge its result
-        if tdir and file not in self.prod_tests and code != "test-tamper":
+        # test-tamper keeps its rank: test code runs inside the gate and can forge its result.
+        # CA12 M1: exec sinks too: tests/ ship in the module and run with --test-enable on the client DB
+        if tdir and file not in self.prod_tests and code not in _TEST_KEEP_RANK:
             if file.startswith("static/"):
                 # j-tests-dir: JS test bundles load in browser test runs, also with
                 # --test-enable on the client's DB: capped at MEDIUM, never silent
@@ -572,6 +573,10 @@ class _Ctx:
         ):
             return
         self.f.append(Finding(sev, code, file, int(line or 0), msg, fix))
+
+
+# codes whose severity test files keep (exec sinks run wherever the test runs; tamper forges the gate)
+_TEST_KEEP_RANK = frozenset({"test-tamper", "dangerous-call", "safe-eval"})
 
 
 # ---------------------------------------------------------------- python
