@@ -174,7 +174,7 @@ def test_m4_runs_private_copy(monkeypatch):
     seen = []
     real = web._run_batch
     monkeypatch.setattr(
-        web, "_run_batch", lambda node, d, b: seen.append((node, d)) or real(node, d, b)
+        web, "_run_batch", lambda node, d, b, *a: seen.append((node, d)) or real(node, d, b, *a)
     )
     res = web.run([("a.js", "js", "x = 1")])
     assert isinstance(res, dict) and res["a.js"]["ok"]

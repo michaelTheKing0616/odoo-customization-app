@@ -81,3 +81,44 @@ def test_h2_mutated_url_sensitive_high(src):
 ])
 def test_h2_benign_mutation_silent(src):
     assert "high" not in _sev(_js(src), "js-sensitive-model")
+
+
+# ---------------------------------------------------------------- H3 + L2 in-place / aliased state domain
+_DEL = "await this.orm.unlink('res.partner', await this.orm.search('res.partner', {d}));"
+
+
+def _comp(body, d="this.state.domain"):
+    return "class C extends Component {\n setup(){ this.state = useState({domain: [['id','=',1]]}); }\n" + body + "\n async go(){ " + _DEL.format(d=d) + " }\n}"
+
+
+@pytest.mark.parametrize("src", [
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ Object.assign(this.state, {domain: []}); }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ const s = this.state; s.domain = []; }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ const s = this; s.state.domain = []; }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ this.state.domain.splice(0); }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ this.state.domain.length = 0; }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ this.state.domain.push('|', ['id','!=',0]); }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(x){ Object.assign(this.state, x); }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ this.state.domain.pop(); }"),
+    _comp("onSearch(d){ this.state.domain = d; } wipe(){ this.state.domain[0] = '|'; }"),
+])
+def test_h3_inplace_state_domain_high(src):
+    assert "high" in _sev(_js(src), "js-mass-change")
+
+
+def test_h3_user_selection_still_bounded():
+    src = _comp("onSearch(d){ this.state.domain = d; }")
+    assert "high" not in _sev(_js(src), "js-mass-change")
+
+
+def test_l2_props_and_this_domain_agree():
+    a = "class C extends Component {\n async go(){ " + _DEL.format(d="this.props.domain") + " }\n}"
+    b = "class C extends Component {\n setup(){ this.domain = this.props.domain; }\n async go(){ " + _DEL.format(d="this.domain") + " }\n}"
+    va, vb = _sev(_js(a), "js-mass-change"), _sev(_js(b), "js-mass-change")
+    assert ("high" in va) == ("high" in vb)
+    xml = '<templates><t t-name="m.P"><C domain="[]"/></t></templates>'
+    for s in (a, b):
+        assert "high" in _sev({**_js(s), "static/src/p.xml": xml}, "js-mass-change")
+    js2 = "this.dialog.add(C, {domain: []});"
+    assert "high" in _sev(_js(a + "\n" + js2), "js-mass-change")
+

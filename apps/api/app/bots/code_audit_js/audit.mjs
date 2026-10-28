@@ -36,6 +36,7 @@ let URL_VARS = new Set(); // locals holding a URL-controlled value
 let PUSHED = new Map(); // CA11 H7: array domains built by push: name -> [init, ...pushed]
 let JSURL_PROPS = new Set(); // CA11 H9: keys/properties bound to a javascript: URL literal
 let EMPTY_VARS = new Set(); // locals holding ids/rows of an empty-domain search (H1/H2)
+let PROPS_BUILT = false; // CA13 H3/L2: module XML/JS passes a module-built domain prop
 let STATE_DOM = new Map(); // CA12 H3: view-state domain key -> what this module assigns to it
 let URL_OBJS = new Map();
 let URL_MUTS = new Map(); // CA13 H2: URL var -> [[prop, value]] writes (u.pathname = .. / Object.assign(u, {..})) // CA12 H2: once-bound new URL(..) whose path is never reassigned (search/hash may be)
@@ -163,8 +164,10 @@ function domBound(d, depth = 0) {
   // assigns comes from the search/filter UI (or is itself selective); [] / tautology / JSON.parse(..) is not
   if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) {
     const vs = STATE_DOM.get(k);
-    if (!vs) return "B";
-    return depth < 6 && vs.every(([v, fn]) => userSel(v, fn) || (v.type !== "MemberExpression" && domBound(v, depth + 1) === "B")) ? "B" : "U";
+    if (!vs) return /^this\.props\./.test(k) && PROPS_BUILT ? "U" : "B";
+    // CA13 L2: this.domain = this.props.domain grades exactly like this.props.domain
+    const stateRef = (v) => v.type === "MemberExpression" && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(mkey(v) || "") && mkey(v) !== k;
+    return depth < 6 && vs.every(([v, fn]) => userSel(v, fn) || ((v.type !== "MemberExpression" || stateRef(v)) && domBound(v, depth + 1) === "B")) ? "B" : "U";
   }
   if (d.type === "Identifier" && !DOM_VARS.has(d.name) && PUSHED.has(d.name)) {
     // [] + push(leaf...): implicit AND, so one selective leaf bounds it; any operator push is unprovable
@@ -587,11 +590,52 @@ function auditJs(text) {
       }
       return null;
     };
+    // CA13 H3: aliases of this / this.<x> (const s = this.state; s.domain = ..) write the same state
+    const ALIAS = new Map();
+    walk.full(ast, (n) => {
+      if (n.type === "VariableDeclarator" && n.id.type === "Identifier" && n.init) {
+        const b = n.init.type === "ThisExpression" ? "this" : mkey(n.init);
+        if (b && /^this(\.props)?(\.\w+)?$/.test(b)) ALIAS.set(n.id.name, b);
+      }
+    });
+    const nk = (x) => {
+      const k = mkey(x);
+      if (!k) return k;
+      const [h, ...r] = k.split(".");
+      return ALIAS.has(h) ? [ALIAS.get(h), ...r].join(".") : k;
+    };
+    const UNK = { type: "Identifier", name: "\u0000" };  // in-place / opaque write: unprovable
+    const DOMK = /^this\.(?:props\.)?(?:\w+\.)?domain$/;
     walk.ancestor(ast, {
+      CallExpression(n, _s, anc) {
+        const c = n.callee, fn = fnName(anc);
+        if (c.type === "MemberExpression" && !c.computed && /^(push|unshift|splice|pop|shift|fill|sort|reverse|copyWithin)$/.test(c.property.name) &&
+            DOMK.test(nk(c.object) || "")) put(nk(c.object), UNK, fn);
+        if (/(^|\.)Object\.(assign|defineProperty|defineProperties)$/.test(mkey(c) || "") && n.arguments[0]) {
+          const t = nk(n.arguments[0]);
+          if (t && DOMK.test(t)) put(t, UNK, fn);  // Object.assign(this.state.domain, [...])
+          else if (t && /^this(\.props)?(\.\w+)?$/.test(t)) {
+            for (const o of n.arguments.slice(1)) {
+              if (o && o.type === "ObjectExpression" && o.properties.every((q) => q.type === "Property")) {
+                for (const q of o.properties) if ((q.key.name || q.key.value) === "domain") put(t + ".domain", q.value, fn);
+              } else put(t + ".domain", UNK, fn);  // spread / runtime object: may carry a domain
+            }
+          }
+        }
+      },
       AssignmentExpression(n, _s, anc) {
-        const k = mkey(n.left), fn = fnName(anc);
+        const k = nk(n.left), fn = fnName(anc);
+        if (n.left.type === "MemberExpression") {  // this.state.domain.length = 0 / this.state.domain[0] = ..
+          const ok = nk(n.left.object);
+          if (ok && DOMK.test(ok)) { put(ok, UNK, fn); return; }
+        }
         if (k && /^this\.(?:props\.)?(?:\w+\.)?domain$/.test(k)) put(k, n.right, fn);
-        else if (k && /^this\.(?:\w+)$/.test(k)) objDom(k, n.right, fn);
+        else if (k && /^this\.(?:\w+)$/.test(k)) {
+          const r0 = n.right.type === "CallExpression" && n.right.arguments.length && /(^|\.)(useState|reactive)$/.test(mkey(n.right.callee) || "") ? n.right.arguments[0] : n.right;
+          if (r0.type === "ObjectExpression" && r0.properties.some((q) => q.type !== "Property")) put(k + ".domain", UNK, fn);  // {...x}: may carry a domain
+          else if (r0.type === "Identifier") put(k + ".domain", UNK, fn);  // this.state = obj: whatever obj holds
+          objDom(k, n.right, fn);
+        }
       },
       PropertyDefinition(n) {
         const nm = n.key && (n.key.name || n.key.value);
@@ -1535,6 +1579,7 @@ process.stdin.setEncoding("utf8");
 process.stdin.on("data", (d) => { raw += d; });
 process.stdin.on("end", () => {
   const req = JSON.parse(raw);
+  PROPS_BUILT = !!req.propsDomain;
   const results = req.files.map((f) => {
     try {
       const r = f.kind === "js" ? auditJs(f.text)

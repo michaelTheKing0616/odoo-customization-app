@@ -840,14 +840,14 @@ def test_h1_private_closure_has_no_outside_library(monkeypatch):
     seen = []
     real = web._run_batch
 
-    def spy(node, d, b):
+    def spy(node, d, b, *a):
         root = web.Path(node).parent.parent
         for o in [root / "bin" / "node", *sorted((root / "lib").iterdir())]:
             out = subprocess.run(["/usr/bin/otool", "-L", str(o)], capture_output=True, text=True)
             for line in out.stdout.splitlines()[1:]:
                 p = line.strip().split(" (", 1)[0]
                 seen.append(p)
-        return real(node, d, b)
+        return real(node, d, b, *a)
 
     monkeypatch.setattr(web, "_run_batch", spy)
     res = web.run([("a.js", "js", "x = 1")])

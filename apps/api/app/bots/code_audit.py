@@ -544,6 +544,7 @@ class _Ctx:
         self.view_fields: list[tuple[str, str, str, int]] = []  # model, field, file, line
         self.module = ""
         self.prod_tests: set[str] = set()  # test-dir files production code imports or loads
+        self.props_domain = False  # CA13 H3: module passes a domain prop it builds itself
         self.text_fields: frozenset[str] = flow.USER_TEXT
         self.db_helpers: dict[str, str] = {}
         self.flow_pt: frozenset[str] = frozenset()  # module-wide passthrough functions
@@ -1635,6 +1636,24 @@ def _unique_key(model: str, fld: str) -> bool:
 def _record_ids(n: ast.AST) -> bool:
     """self.ids / rec.ids: the ids of a recordset already in hand."""
     return isinstance(n, ast.Attribute) and n.attr == "ids" and isinstance(n.value, ast.Name) and n.value.id not in _ENVISH
+
+
+_PROPS_DOM_RX = (
+    re.compile(r"<[A-Z][\w.]*\b[^>]{0,2000}?\s(?:t-att-)?domain\s*="),  # <Comp domain=".."/>
+    re.compile(r"\bprops\s*:\s*\{[^}]{0,2000}?\bdomain\s*:"),  # {Component, props: {domain}}
+    re.compile(r"\.add\(\s*\w+\s*,\s*\{[^}]{0,2000}?\bdomain\s*:"),  # dialog.add(Comp, {domain})
+)
+
+
+def _props_domain(files: dict) -> bool:
+    """CA13 H3: does the module's XML/JS hand a component a domain prop it builds itself?"""
+    for f, b in files.items():
+        if not f.endswith((".xml", ".js")):
+            continue
+        t = b.decode("utf-8", "replace") if isinstance(b, bytes) else str(b)
+        if any(rx.search(t) for rx in _PROPS_DOM_RX):
+            return True
+    return False
 
 
 def _module_unique(files: dict) -> set[str]:
@@ -5478,7 +5497,10 @@ def _audit_web(c: _Ctx) -> None:
             "Cannot parse, unaudited: no parser for this file type.",
             "Ship plain JavaScript/CSS/SCSS/LESS, or review this file by hand.",
         )
-    res = web.run([(key, kind, text) for key, _, _, kind, text in todo])
+    res = web.run(
+        [(key, kind, text) for key, _, _, kind, text in todo],
+        props_domain=c.props_domain,
+    )
     for key, file, line0, _, _ in todo:
         r = res.get(key) if isinstance(res, dict) else None
         if r is None or not r.get("ok"):
@@ -6829,6 +6851,7 @@ def audit(
         c.prod_tests = _prod_tests(files, name, manifest)
         _MODULE_UNIQUE.clear()
         _MODULE_UNIQUE.update(_module_unique(files))
+        c.props_domain = _props_domain(files)
         c.text_fields, c.db_helpers = _module_index(files)
         c.flow_pt, c.flow_sinks = _module_flow(files)
         for rel in sorted(heads):

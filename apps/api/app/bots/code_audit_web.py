@@ -28,7 +28,7 @@ HELPER = HELPER_DIR / "audit.mjs"
 HELPER_ID = "ingenium-code-audit-js/1"
 # sha256 pins: the helper source, its lockfile (exact versions + sha512 integrity of each
 # tarball) and the installed dependency tree (npm ci --ignore-scripts from that lockfile)
-HELPER_SHA256 = "80c6687eb550b7ce8ecbfcb7d48b00172ed9bc7cf94142689721046d2f949995"
+HELPER_SHA256 = "5d3f811c583a3c851aec1b94e9765cb6363faf7aae32c7c763547c2b66436e40"
 LOCK_SHA256 = "0979e699da625fe55eed29479d64824c3a02acd99793ca3f7c02ecea8e6549d5"
 MODULES_SHA256 = "c5adf899c2ee30faa46f5269d41d15bf3dd590b0a1665d87b2459caf7c9dcb96"
 # Node 22+: the stable permission model (fs read limited to the private helper copy, no child
@@ -550,12 +550,14 @@ def decode(body: bytes, kind: str) -> tuple[str, str | None]:
 
 
 def _run_batch(
-    node: str, helper_dir: Path, files: list[tuple[str, str, str]]
+    node: str, helper_dir: Path, files: list[tuple[str, str, str]], props_domain: bool = False
 ) -> dict[str, dict[str, Any]] | str:
     cmd = _cmd(node, helper_dir)
     if cmd is None:
         return "no OS sandbox (sandbox-exec / unshare -rn) to run the parser without network"
-    payload = json.dumps({"files": [{"path": p, "kind": k, "text": t} for p, k, t in files]})
+    payload = json.dumps(
+        {"files": [{"path": p, "kind": k, "text": t} for p, k, t in files], "propsDomain": props_domain}
+    )
     try:
         r = subprocess.run(
             cmd,
@@ -595,9 +597,12 @@ def _batches(files: list[tuple[str, str, str]]) -> list[list[tuple[str, str, str
     return out
 
 
-def run(files: list[tuple[str, str, str]]) -> dict[str, dict[str, Any]] | str:
+def run(
+    files: list[tuple[str, str, str]], props_domain: bool = False
+) -> dict[str, dict[str, Any]] | str:
     """{path: {"ok", "findings" | "error", "line"}} for (path, kind, text) files, or the
-    reason the whole batch could not be audited."""
+    reason the whole batch could not be audited. props_domain: the module passes a
+    domain prop it builds itself (CA13 H3), so props.domain is not the framework's."""
     if not files:
         return {}
     why = helper_problem()
@@ -626,13 +631,13 @@ def run(files: list[tuple[str, str, str]]) -> dict[str, dict[str, Any]] | str:
         out: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(WORKERS) as ex:
             batches = _batches(files)
-            done = list(ex.map(lambda b: _run_batch(node, helper_dir, b), batches))
+            done = list(ex.map(lambda b: _run_batch(node, helper_dir, b, props_domain), batches))
             for b, res in zip(batches, done, strict=True):
                 if isinstance(res, dict):
                     out.update(res)
                     continue
                 # one bad or slow file never leaves the rest unaudited: retry one by one
-                single = list(ex.map(lambda f: _run_batch(node, helper_dir, [f]), b))
+                single = list(ex.map(lambda f: _run_batch(node, helper_dir, [f], props_domain), b))
                 for f, r1 in zip(b, single, strict=True):
                     out[f[0]] = r1[f[0]] if isinstance(r1, dict) else {"ok": False, "error": r1}
         return out
