@@ -88,3 +88,35 @@ def test_h1_named_key_logged_high_but_sent_to_its_api_ok():
     k = "k = self.env['ir.config_parameter'].sudo().get_param('x.api_key')\n"
     assert "high" in _sev(_m(k + "_logger.info('k %s', k)", pre), "secret-exfiltration")
     assert "high" not in _sev(_m(k + "requests.get('https://api.x', params={'key': k})", pre), "secret-exfiltration")
+
+
+# ---------------------------------------------------------------- H3 uniqueness per (model, field); collected id lists
+_UQ = "    _sql_constraints = [('n_uniq', 'unique(name)', 'x'), ('c_uniq', 'unique(code)', 'x')]\n    name = fields.Char()\n    code = fields.Char()\n"
+
+
+def _mu(body):
+    f = _m(body)
+    f["models/a.py"] = f["models/a.py"].replace("    _description = 'a'\n", "    _description = 'a'\n" + _UQ, 1)
+    return f
+
+
+@pytest.mark.parametrize("body", [
+    f"{P}.search([('name', '=', self.name)]).unlink()",  # probe: unique(name) is on a.a, not res.partner
+    f"{P}.search([('code', '=', self.code)]).unlink()",
+    f"{P}.search([('id', 'in', [g['id'] for g in {P}.search_read([], ['id'])])]).unlink()",  # probe
+    f"{P}.search([('id', 'in', list(map(lambda g: g['id'], {P}.search_read([], ['id']))))]).unlink()",
+    f"{P}.search([('id', 'in', [r.id for r in {P}.search([])])]).write({{'active': False}})",
+    f"{P}.search([('id', 'in', {P}.search([]).mapped('id'))]).unlink()",
+    f"{P}.search([('id', 'in', [r['id'] for r in {P}.read_group([], ['id'], ['id'])])]).unlink()",
+])
+def test_h3_mass_change_high(body):
+    assert "high" in _sev(_mu(body), "mass-change")
+
+
+@pytest.mark.parametrize("body", [
+    "self.env['a.a'].search([('name', '=', self.name)]).unlink()",  # unique on its own model
+    f"{P}.search([('id', 'in', [r.id for r in self])]).unlink()",
+    f"{P}.search([('id', 'in', [g['id'] for g in {P}.search_read([('id', '=', 1)], ['id'])])]).unlink()",
+])
+def test_h3_bounded_silent(body):
+    assert "high" not in _sev(_mu(body), "mass-change")

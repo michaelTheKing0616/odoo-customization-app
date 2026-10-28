@@ -1632,7 +1632,30 @@ _ENVISH = frozenset({"env", "request", "context", "_context", "ctx", "uid", "use
 
 
 def _unique_key(model: str, fld: str) -> bool:
-    return fld == "id" or fld in _CORE_UNIQUE.get(model, ()) or fld in _MODULE_UNIQUE
+    # CA14 H3: a module's unique(col) binds (model, col), never the bare column name
+    return fld == "id" or fld in _CORE_UNIQUE.get(model, ()) or f"{model}:{fld}" in _MODULE_UNIQUE
+
+
+_COLLECT_CALLS = frozenset({"search", "search_read", "read", "read_group", "_read_group", "search_fetch",
+                            "web_search_read", "web_read", "fetchall", "dictfetchall", "_search", "name_search"})
+
+
+def _collection_unbounded(n: ast.AST) -> bool:
+    """CA14 H3: an id list built from a search/read/fetch (comprehension, map, mapped, list())
+    is as unbounded as that search unless its own domain is provably selective."""
+    for z in ast.walk(n):
+        if isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr in _COLLECT_CALLS:
+            if z.func.attr in ("read", "web_read") and isinstance(z.func.value, ast.Name) and z.func.value.id not in _ENVISH:
+                continue  # rec.read(): the ids already in hand
+            dom = z.args[0] if z.args else next((k.value for k in z.keywords if k.arg == "domain"), None)
+            if z.func.attr in ("fetchall", "dictfetchall") or dom is None:
+                return True
+            try:
+                if _domain_bound(dom, {}) != "B":
+                    return True
+            except Exception:  # noqa: BLE001 - unprovable domain
+                return True
+    return False
 
 
 def _record_ids(n: ast.AST) -> bool:
@@ -1659,16 +1682,37 @@ def _props_domain(files: dict) -> bool:
 
 
 def _module_unique(files: dict) -> set[str]:
+    """CA14 H3: {"model:col"} for single-column unique constraints, attributed to the model the
+    declaring class defines (_name, else each _inherit)."""
     out: set[str] = set()
     rx = re.compile(r"unique\s*\(([^)]*)\)", re.I)
     for f, b in files.items():
         if not f.endswith(".py"):
             continue
-        t = b.decode("utf-8", "replace") if isinstance(b, bytes) else str(b)
-        for m in rx.finditer(t):
-            cols = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
-            if len(cols) == 1 and cols[0].isidentifier():  # a composite key alone does not bound
-                out.add(cols[0])
+        try:
+            tree = ast.parse(b)
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            continue
+        for cls in (x for x in ast.walk(tree) if isinstance(x, ast.ClassDef)):
+            models_: list[str] = []
+            for st in cls.body:
+                if isinstance(st, ast.Assign) and any(isinstance(t, ast.Name) and t.id in ("_name", "_inherit") for t in st.targets):
+                    v = _const(st.value)
+                    vals = [v] if isinstance(v, str) else [_const(e) for e in getattr(st.value, "elts", [])]
+                    tgt = next(t.id for t in st.targets if isinstance(t, ast.Name))
+                    if tgt == "_name":
+                        models_ = [x for x in vals if isinstance(x, str)]
+                        break
+                    models_ += [x for x in vals if isinstance(x, str)]
+            if not models_:
+                continue
+            for st in cls.body:
+                if not isinstance(st, (ast.Assign, ast.AnnAssign)):
+                    continue
+                for m in rx.finditer(ast.unparse(st)):
+                    cols = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
+                    if len(cols) == 1 and cols[0].isidentifier():  # a composite key alone does not bound
+                        out |= {f"{mo}:{cols[0]}" for mo in models_}
     return out
 
 
@@ -1703,6 +1747,8 @@ def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], s
             if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) and sub.func.id == "range":
                 return "U"
         if rs_unbounded is not None and rs_unbounded(rnode):
+            return "U"
+        if _collection_unbounded(rnode):
             return "U"
         # CA12 H1: only equality-style leaves select; an open range (<, >, <=, >=), negation or a
         # runtime like-pattern is non-selective whatever the RHS (today(), 10**9, context, count)
