@@ -307,3 +307,25 @@ Audit suites, forward and reverse: 1467 passed, 38 skipped each.
 Stock run (19 modules, v17 and v19, bbe85efc): GATE OK, unaudited==0.
 gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
 bl_08: 4 passed.
+
+## CODE-AUDIT-14 (REVIEW-CODE-AUDIT-11: 5H/4M/2L, all closed)
+
+Robustness review principle: a sink is acceptable only when provably bounded; otherwise HIGH.
+
+- H1 (9649f0ae): config values (incl. admin_passwd), os.environ, session.sid and unprovable get_param reads are secret sources; returning them from a route or sending them to mail/log/network is HIGH.
+- H2 (7d3c275d): raw SQL on credential tables in routes, raw SQL rows returned from public routes, and SQL-fetched ids fed into browse().write/unlink are HIGH unless bounded.
+- H3 (d2b61b43): module unique keys bind (model, field); id lists collected from unbounded search/read/fetch are unbounded.
+- H4 (bd0a08f8): JS routes are normalised (percent-decoding, ./.., backslash, new URL(rel, base), pathname rewrite); call_button and JSON-2 search->unlink have parity with call_kw.
+- H5 (caaf4d44): view-state domain aliases resolve transitively (alias of alias, arrays, destructuring/spread, computed keys, Reflect.set).
+- M1 (f782d8be): t-foreach/t-as binds session aliases; session/env bound in a t-call body is HIGH (callee unprovable).
+- M2 (d8a355fa): runtime model on a destructive JS ORM call, and ids from globals/fetch/storage, are HIGH. Python context ids are bounded only via active_id/active_ids (closes L1 as a documented policy).
+- M3 (5c48b64b): a many2one = ref('xmlid') in an XML <function> search is one record, so bounded (removed the false HIGH in stock demo data).
+- M4 (272b2134): outbound payloads tainted by file content or bulk ORM/SQL reads are network-exfiltration HIGH; a runtime host is MEDIUM.
+- L1: closed by M2 (active_id(s) only).
+- L2 (a4bfb01b): js-sensitive-model HIGH on a byte-identical copy of a pinned vendored transport library (app/bots/code_audit_vendored.json, sha256 of the stock web files) is MEDIUM; any edit keeps HIGH.
+
+Tests: tests/test_nf_bot_code_audit_14.py (121 passed).
+Audit suites, forward and reverse: 1588 passed, 38 skipped each.
+Stock run (19 modules, v17 and v19, bbe85efc): GATE OK, unaudited==0. HIGH 2846 -> 3708 vs CA13 (86214fab). v19 by code: unsafe-expression +493 (M1 t-call session/env bodies; e.g. website_sale +119), mass-change +3, route-sql-secret +1, js-sensitive-model -12 (L2), xml-function-destructive -54 (M3).
+gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
+bl_08: 4 passed.
