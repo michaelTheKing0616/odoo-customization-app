@@ -178,3 +178,19 @@ def test_m3_settings_other_mass_still_high(stmt):
 def test_m3_archive_outside_settings_still_high():
     src = _OWN + "    def go(self):\n        self.env['x.pl'].search([]).action_archive()\n"
     assert "high" in _sev({"models/pl.py": src}, "mass-change")
+
+
+# ---------------------------------------------------------------- L1 loop of single unlinks is a mass change
+@pytest.mark.parametrize("body", [
+    f"for i in range(1000000):\n    {P}.search([], limit=1).unlink()",
+    f"while True:\n    r = {P}.search([('id', '>', 0)], limit=1)\n    if not r:\n        break\n    r.unlink()",
+    f"for _ in range(10**6):\n    {P}.search([('active', '=', True)], limit=1).write({{'active': False}})",
+    f"for i in range(5000):\n    {P}.sudo().search([], limit=1, order='id').action_archive()",
+])
+def test_l1_loop_single_unlink_mass(body):
+    assert "high" in _sev(_m(body), "mass-change")
+
+
+def test_l1_bounded_loop_silent():
+    body = f"for pid in self.ids:\n    {P}.search([('id', '=', pid)], limit=1).unlink()"
+    assert not _sev(_m(body), "mass-change")

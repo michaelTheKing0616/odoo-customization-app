@@ -2079,6 +2079,31 @@ def _server_code_grades(c: _Ctx, path: str, tree: ast.AST, server: bool = True) 
     _dn = _domain_names(tree)
 
     bounds = _Bounds(tree)
+    # CA12 L1: a destructive sink inside a loop on a fresh search() over an unbounded domain (limit=1 each
+    # time) walks the whole model one record at a time: a mass change, not only a performance issue
+    for lp in ast.walk(tree):
+        if not isinstance(lp, (ast.For, ast.AsyncFor, ast.While)):
+            continue
+        local: dict[str, ast.Call] = {}
+        for st in ast.walk(lp):
+            if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name) \
+                    and isinstance(st.value, ast.Call):
+                local[st.targets[0].id] = st.value
+        for sk in ast.walk(lp):
+            if not (isinstance(sk, ast.Call) and isinstance(sk.func, ast.Attribute)
+                    and sk.func.attr in MASS_SINKS - {"update"}):
+                continue
+            q = sk.func.value
+            q = local.get(q.id, q) if isinstance(q, ast.Name) else q
+            if not (isinstance(q, ast.Call) and isinstance(q.func, ast.Attribute) and q.func.attr == "search"):
+                continue
+            dom = q.args[0] if q.args else next((k.value for k in q.keywords if k.arg == "domain"), None)
+            if _domain_bound(dom, _dn, _model_of(q.func.value)) in ("T", "U") and \
+                    not any(f.code in ("mass-change", "server-mass-change") and f.file == path and f.line == sk.lineno for f in c.f):
+                c.add(HIGH, "server-mass-change" if server else "mass-change", path, sk.lineno,
+                      f"{sk.func.attr}() in a loop on a fresh search() whose domain is not selective: every "
+                      "iteration takes another record, so the loop walks the whole model.",
+                      "Act on records proven to be specific; never re-search an unbounded domain in a loop.")
     sink_alias = {  # m = getattr(rs, 'unl'+'ink') / m = rs.unlink
         t.id: (n.value.args[0], _fold_str(n.value.args[1]))
         for n in ast.walk(tree)
