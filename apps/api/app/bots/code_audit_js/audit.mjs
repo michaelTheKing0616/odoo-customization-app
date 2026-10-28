@@ -137,6 +137,38 @@ function domTruth(d, depth = 0) {
 // CA11 H7: a domain is bounded (B) only when provably selective; anything unprovable (U) is
 // treated as every record (negations, ranges over literals, '%' patterns, JSON.parse, params).
 const MASS_JS = /^(unlink|write|_write|action_archive|action_unarchive|toggle_active)$/;
+// CA14 M2: ids/model taken from a global, storage, URL, JSON.parse or a fetch/response body are attacker- or
+// runtime-chosen (not the view's selection): unprovable, so destructive use is HIGH
+const RUNTIME_ROOT = /^(window|globalThis|self|top|parent|document|localStorage|sessionStorage|location)$/;
+function runtimeSrc(x, d = 0) {
+  if (!x || d > 6) return false;
+  if (x.type === "AwaitExpression") return runtimeSrc(x.argument, d + 1);
+  if (x.type === "MemberExpression") {
+    let o = x; while (o.type === "MemberExpression") o = o.object;
+    if (o.type === "Identifier" && RUNTIME_ROOT.test(o.name)) return true;
+    return runtimeSrc(o, d + 1);
+  }
+  if (x.type === "CallExpression") {
+    const k = mkey(x.callee) || "";
+    const tail = k.split(".").pop();
+    // the result of an ORM search the module issued is graded by that search's domain (emptySearch), not as foreign input
+    let fx = x; while (fx && fx.type !== "CallExpression" || (fx && fx.callee.type === "MemberExpression" && fx.callee.object)) {
+      if (fx.type === "CallExpression" && /^(fetch|rpc)$/.test(fx.callee.name || "")) break;
+      fx = fx.type === "CallExpression" ? fx.callee.object : fx.type === "AwaitExpression" ? fx.argument : null;
+      if (!fx) break;
+    }
+    if (fx && fx.type === "CallExpression" && /^(fetch|rpc)$/.test(fx.callee.name || "") && /\/(search|search_read|web_search_read|search_fetch)\b/i.test(urlPat(fx.arguments[0]) || "")) return false;
+    if (k === "JSON.parse" || ["fetch", "json", "text", "getItem"].includes(tail) || /searchParams|URLSearchParams/.test(k)) return true;
+    if (x.callee.type === "MemberExpression") return runtimeSrc(x.callee.object, d + 1);
+    return false;
+  }
+  if (x.type === "Identifier") {
+    if (RUNTIME_ROOT.test(x.name)) return true;
+    const vs = DOM_VARS.get(x.name);
+    return !!(vs && vs.some((v) => runtimeSrc(v, d + 1)));
+  }
+  return false;
+}
 function leafBound(el) {
   const t = leafTruth(el);
   if (t === "T") return "U";
@@ -875,6 +907,12 @@ function auditJs(text) {
     if (!first && o && /\/json\/[12]\//i.test(normUrl(route0))) first = get(o, "ids");  // CA14 H4: JSON-2 ids
     if (MASS_JS.test(method || "") && first && emptySearch(first)) {
       add("high", "js-mass-change", n, `${what}() ${method} over every record (ids from an unbounded search) through ${route}.`);
+    } else if (MASS_JS.test(method || "") && first && runtimeSrc(first)) {
+      add("high", "js-mass-change", n, `${what}() ${method} over ids from a global/fetch result through ${route}: unprovable set (CA14 M2).`);
+    }
+    const pm = prm ? get(prm, "model") : null;
+    if (model === null && (method === null || MASS_JS.test(method) || WRITE_METHODS.has(method)) && (!pm || runtimeSrc(pm) || pm.type !== "MemberExpression" || !/^this\./.test(mkey(pm) || ""))) {
+      add("high", "js-sensitive-model", n, `${what}() ${method || "<runtime method>"} on a runtime model through ${route}: unprovable target (CA14 M2).`);
     }
     const button = /\/web\/dataset\/call_button/i.test(normUrl(route0));  // CA14 H4: any button method runs model code
     if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method) || (button && method))) {
@@ -1069,7 +1107,8 @@ function auditJs(text) {
         const model = lit(a0);
         const m2 = meth === "call" ? lit(n.arguments[1]) : meth;
         if (model === null) {
-          if (ORM_WRITES.has(meth)) add("info", "js-dynamic-model", n, `orm.${meth}() on a model chosen at runtime: undecidable, flagged.`);
+          if (ORM_WRITES.has(meth) && runtimeSrc(a0)) add("high", "js-sensitive-model", n, `orm.${meth}() on a model from a global/fetch result: unprovable target (CA14 M2).`);
+          else if (ORM_WRITES.has(meth)) add("info", "js-dynamic-model", n, `orm.${meth}() on a model chosen at runtime: undecidable, flagged.`);
         } else if (SENSITIVE.has(model) && (m2 === null || WRITE_METHODS.has(m2))) {
           add(m2 === null ? "medium" : "high", "js-sensitive-model", n,
               `orm.${meth}(${m2 === null ? "<runtime method>" : m2}) on ${model} from the browser.`);
@@ -1082,6 +1121,8 @@ function auditJs(text) {
         const idsArg = meth === "call" ? n.arguments[2] : n.arguments[1];
         if (idsArg && emptySearch(idsArg)) add("high", "js-mass-change", n,
           `orm.${meth}() over every record (ids from an empty-domain search) from the browser.`);
+        else if (idsArg && runtimeSrc(idsArg)) add("high", "js-mass-change", n,
+          `orm.${meth}() over ids from a global/fetch result from the browser: unprovable set (CA14 M2).`);
       }
       if (["rpc", "jsonrpc", "this.rpc", "rpc.query", "ajax.rpc", "session.rpc"].includes(r) || last(r) === "rpc") {
         const route = lit(a0);
@@ -1101,6 +1142,8 @@ function auditJs(text) {
             const first = ap && ap.value.type === "ArrayExpression" ? ap.value.elements[0] : null;
             if (first && emptySearch(first)) add("high", "js-mass-change", n,
               `rpc() ${method} over every record (ids from an empty-domain search) from the browser.`);
+            else if (first && runtimeSrc(first)) add("high", "js-mass-change", n,
+              `rpc() ${method} over ids from a global/fetch result from the browser: unprovable set (CA14 M2).`);
           }
           if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method))) {
             add(method === null ? "medium" : "high", "js-sensitive-model", n,

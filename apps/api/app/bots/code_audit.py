@@ -1728,6 +1728,29 @@ MASS_SINKS = frozenset({"unlink", "write", "_write", "action_archive", "action_u
                         "update", "sudo_write"})
 
 
+_CTX_SELECTION = frozenset({"active_id", "active_ids"})
+
+
+def _ctx_ids_unprovable(n: ast.AST) -> bool:
+    """CA14 M2/L1: ids read from the context are the caller's selection only under the action keys
+    active_id/active_ids (set by the client from the selected rows); any other or runtime key is unprovable."""
+    for x in ast.walk(n):
+        key = None
+        if isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and x.func.attr in ("get", "pop") and x.args:
+            base = x.func.value
+            key = x.args[0]
+        elif isinstance(x, ast.Subscript):
+            base, key = x.value, x.slice
+        else:
+            continue
+        if not (isinstance(base, ast.Attribute) and base.attr in ("context", "_context")) and not (
+                isinstance(base, ast.Name) and base.id in ("context", "ctx")):
+            continue
+        if not (isinstance(key, ast.Constant) and key.value in _CTX_SELECTION):
+            return True
+    return False
+
+
 def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], str | None] | None = None) -> str:
     """B = selective (narrows to specific records), T = matches all, F = matches none,
     U = matches an unprovable / non-selective set (negations, ranges over literals, '%')."""
@@ -1749,6 +1772,8 @@ def _leaf_bound(leaf: list, model: str = "", rs_unbounded: Callable[[ast.AST], s
         if rs_unbounded is not None and rs_unbounded(rnode):
             return "U"
         if _collection_unbounded(rnode):
+            return "U"
+        if _ctx_ids_unprovable(rnode):
             return "U"
         # CA12 H1: only equality-style leaves select; an open range (<, >, <=, >=), negation or a
         # runtime like-pattern is non-selective whatever the RHS (today(), 10**9, context, count)
@@ -2112,6 +2137,8 @@ class _Bounds:
             return f"{a}() over {model or 'a model'} whose domain {why}"
         if a in _RS_PASS:
             if a == "browse":
+                if any(_ctx_ids_unprovable(v) for v in x.args):
+                    return "browse() over ids from a non-selection context key (unprovable set)"
                 return next((r for v in x.args if (r := self.unbounded(v, depth + 1, seen))), None)
             return rec(f.value) or next((r for v in x.args if not isinstance(v, ast.Lambda) and (r := rec(v))), None)
         if a in self.fn_returns and a not in seen and (

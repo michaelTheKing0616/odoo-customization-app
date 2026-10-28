@@ -223,3 +223,45 @@ def test_m1_qweb_session_alias_high(body):
 ])
 def test_m1_benign_twins_silent(body):
     assert "high" not in _sev(_qt(body), "unsafe-expression")
+
+
+# ---------------------------------------------------------------- M2 runtime model / runtime ids
+@pytest.mark.parametrize("src,rule", [
+    ("fetch('/web/dataset/call_kw',{method:'POST',body:JSON.stringify({params:{model:window.m,method:'unlink',args:[[1]]}})});", "js-sensitive-model"),  # probes
+    ("fetch('/web/dataset/call_kw/res.partner/unlink',{method:'POST',body:JSON.stringify({params:{args:[window.ids]}})});", "js-mass-change"),
+    ("fetch('/json/2/res.partner/unlink',{method:'POST',body:JSON.stringify({ids: window.ids})});", "js-mass-change"),
+    ("class C extends Component { async go(){ await this.orm.unlink('res.partner', JSON.parse(localStorage.getItem('ids'))); } }", "js-mass-change"),  # neighbours
+    ("class C extends Component { async go(){ const r = await (await fetch('/x')).json(); await this.orm.write('res.partner', r, {active:false}); } }", "js-mass-change"),
+    ("class C extends Component { async go(){ await this.orm.unlink(window.model, [1]); } }", "js-sensitive-model"),
+    ("rpc('/web/dataset/call_kw/res.partner/unlink', {model:'res.partner', method:'unlink', args:[window.ids]});", "js-mass-change"),
+])
+def test_m2_runtime_model_or_ids_high(src, rule):
+    assert "high" in _sev(_js(src), rule)
+
+
+@pytest.mark.parametrize("src", [
+    "class C extends Component { async go(){ await this.orm.unlink('res.partner', this.props.resIds); } }",
+    "class C extends Component { async go(){ await this.orm.unlink('res.partner', [1, 2]); } }",
+    "class C extends Component { async go(){ await this.orm.unlink(this.props.resModel, [this.props.resId]); } }",
+])
+def test_m2_selection_twins_silent(src):
+    f = _js(src)
+    assert "high" not in _sev(f, "js-mass-change") and "high" not in _sev(f, "js-sensitive-model")
+
+
+@pytest.mark.parametrize("body", [
+    "self.env['res.partner'].browse(self.env.context.get('ids')).unlink()",  # probe
+    "self.env['res.partner'].search([('id','in',self.env.context.get('ids',[]))]).unlink()",
+    "self.env['res.partner'].browse(self._context['partner_ids']).write({'active': False})",
+])
+def test_m2_python_ctx_ids_high(body):
+    assert "high" in _sev(_mu(body), "mass-change")
+
+
+@pytest.mark.parametrize("body", [
+    "self.env['res.partner'].browse(self.env.context.get('active_ids')).unlink()",
+    "self.env['res.partner'].search([('id','in',self.env.context.get('active_ids',[]))]).unlink()",
+])
+def test_m2_python_active_ids_silent(body):
+    assert "high" not in _sev(_mu(body), "mass-change")
+
