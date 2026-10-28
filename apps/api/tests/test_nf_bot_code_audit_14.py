@@ -120,3 +120,39 @@ def test_h3_mass_change_high(body):
 ])
 def test_h3_bounded_silent(body):
     assert "high" not in _sev(_mu(body), "mass-change")
+
+
+# ---------------------------------------------------------------- H4 route normalisation, call_button, JSON-2 parity
+@pytest.mark.parametrize("src", [
+    "fetch('/json/2/res.users/%77rite',{method:'POST'});",  # probes
+    "fetch('/web/dataset/call_kw/res.%75sers/write',{method:'POST'});",
+    "fetch('/web/dataset/./call_kw/res.users/write',{method:'POST'});",
+    "fetch('/web/x/../dataset/call_kw/res.users/write',{method:'POST'});",
+    "fetch('/web\\\\dataset\\\\call_kw/res.users/write',{method:'POST'});",
+    "fetch('/web/dataset/call_button/res.users/action_reset_password',{method:'POST'});",
+    "fetch(new URL('call_kw/res.users/write', location.origin+'/web/dataset/'),{method:'POST'});",
+    "fetch(new URL('../call_kw/res.users/write', location.origin+'/web/dataset/x/'),{method:'POST'});",
+    "const u=new URL('/web/dataset/call_kw/res.partner/read',location.origin); u.pathname=u.pathname.replace('partner/read','users/write'); fetch(u,{method:'POST'});",
+    "fetch('/web/dataset/call_kw%2Fres.users%2Fwrite',{method:'POST'});",  # neighbours
+    "fetch('/web//dataset//call_kw/res.users/unlink',{method:'POST'});",
+    "fetch('/json/2/res.users/write/.',{method:'POST'});",
+    "fetch('/web/dataset/call_button',{method:'POST',body:JSON.stringify({params:{model:'res.users',method:'action_reset_password',args:[[1]]}})});",
+])
+def test_h4_normalised_route_sensitive_high(src):
+    assert "high" in _sev(_js(src), "js-sensitive-model")
+
+
+@pytest.mark.parametrize("src", [
+    "const r=await (await fetch('/json/2/res.partner/search',{method:'POST',body:JSON.stringify({domain:[]})})).json(); fetch('/json/2/res.partner/unlink',{method:'POST',body:JSON.stringify({ids:r})});",  # probe
+    "const r=await (await fetch('/json/2/res.partner/search',{method:'POST',body:JSON.stringify({})})).json(); fetch('/json/2/res.partner/unlink',{method:'POST',body:JSON.stringify({ids:r})});",
+])
+def test_h4_json2_search_unlink_mass(src):
+    assert "high" in _sev(_js(src), "js-mass-change")
+
+
+def test_h4_benign_routes_silent():
+    for src in ("fetch('/web/image/res.partner/1/avatar_128');",
+                "fetch('/web/dataset/call_kw/res.partner/read',{method:'POST',body:JSON.stringify({params:{args:[[1]]}})});"):
+        assert "high" not in _sev(_js(src), "js-sensitive-model")
+    j2 = "const r=await (await fetch('/json/2/res.partner/search',{method:'POST',body:JSON.stringify({domain:[['id','=',1]]})})).json(); fetch('/json/2/res.partner/unlink',{method:'POST',body:JSON.stringify({ids:r})});"
+    assert "high" not in _sev(_js(j2), "js-mass-change")

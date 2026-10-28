@@ -43,7 +43,7 @@ let URL_MUTS = new Map(); // CA13 H2: URL var -> [[prop, value]] writes (u.pathn
 let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
 // ORM HTTP endpoints reached with fetch / XHR / sendBeacon / axios (CA9 H6)
 // CA13 M2: Odoo 19/20 JSON-1/JSON-2 APIs (/json/2/<model>/<method>) are the ORM too
-const ORM_ROUTE = /\/web\/dataset\/(?:call_kw|call_button|call|search_read|resequence)\b|\/jsonrpc\b|\/xmlrpc\b|\/json\/[12](?:\/|\b)|\/web\/session\/authenticate/i;
+const ORM_ROUTE = /\/web\/dataset\/(?:call_kw|call_button|call|search_read|resequence)\b|\/web\/action\/run\b|\/jsonrpc\b|\/xmlrpc\b|\/json\/[12](?:\/|\b)|\/web\/session\/authenticate/i;
 // literal JS value (numbers, booleans, null, strings, arrays of those)
 function jsVal(n) {
   if (!n) return { ok: false };
@@ -321,7 +321,37 @@ function lit(n) {
 // CA12 H2: fold a URL expression to a pattern; \u0001 marks a runtime part. Follows once-bound
 // variables, new URL(path, base), Request(url), .href/.toString()/String(), + chains and templates.
 const RT = "\u0001";
-function urlPat(n, d = 0) {
+// CA14 H4: WHATWG-style path normalisation before any route match: percent-decoding, \ -> /,
+// collapsed //, resolved . and .. segments
+function normUrl(u) {
+  if (u === null || u === undefined) return u;
+  let s = u.replace(/\\/g, "/");
+  for (let i = 0; i < 3; i++) {
+    const t = s.replace(/%([0-9a-f]{2})/gi, (_m, h) => String.fromCharCode(parseInt(h, 16)));
+    if (t === s) break;
+    s = t.replace(/\\/g, "/");
+  }
+  const m = s.match(/^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([\s\S]*)$/i);
+  const pre = m[1] || "", rest = m[2];
+  const qi = rest.search(/[?#]/);
+  const q = qi >= 0 ? rest.slice(qi) : "";
+  const segs = (qi >= 0 ? rest.slice(0, qi) : rest).replace(/\/{2,}/g, "/").split("/");
+  const out = [];
+  segs.forEach((sg, i) => {
+    const end = i === segs.length - 1;
+    if (sg === "." || sg === "..") {
+      const rel = !pre && segs[0] !== "" && !segs[0].includes(RT);  // relative ref: keep leading ..
+      if (sg === ".." && out.length > (rel ? 0 : 1) && out[out.length - 1] !== "..") out.pop();
+      else if (sg === ".." && rel) out.push("..");
+      if (end) out.push("");
+      return;
+    }
+    out.push(sg);
+  });
+  return pre + out.join("/") + q;
+}
+function urlPat(n, d = 0) { return normUrl(urlPat0(n, d)); }
+function urlPat0(n, d = 0) {
   if (!n || d > 8) return null;
   const s = lit(n);
   if (s !== null) return s;
@@ -333,7 +363,9 @@ function urlPat(n, d = 0) {
   if (n.type === "NewExpression" && n.callee.type === "Identifier" && ["URL", "Request"].includes(n.callee.name) && n.arguments.length) {
     const a = urlPat(n.arguments[0], d + 1) ?? RT;
     if (n.callee.name === "Request" || n.arguments.length === 1 || /^(\/|[a-z][a-z0-9+.-]*:)/i.test(a)) return a;
-    return (urlPat(n.arguments[1], d + 1) ?? RT) + (a.startsWith("/") ? "" : "/") + a;
+    const base = urlPat(n.arguments[1], d + 1) ?? RT;  // CA14 H4: resolve against the base directory
+    if (a.startsWith("/")) { const o = base.match(/^([a-z][a-z0-9+.-]*:\/\/[^/]*)/i); return (o ? o[1] : base.startsWith("/") ? "" : RT) + a; }
+    return (base.includes("/") ? base.replace(/[^/]*$/, "") : base + "/") + a;
   }
   if (n.type === "TemplateLiteral") {
     let o = n.quasis[0].value.cooked;
@@ -360,10 +392,10 @@ function urlCands(n, d = 0) {
     else cur = RT + "/" + RT;  // host/origin/protocol/unknown property: anything
     out.push(cur);
   }
-  return out;
+  return out.map(normUrl);
 }
 // could a URL pattern reach an ORM endpoint (runtime parts may be anything)
-const ORM_PATHS = ["/web/dataset/call_kw/a.a/write", "/web/dataset/call_kw", "/web/dataset/call_button", "/web/dataset/call", "/jsonrpc", "/xmlrpc/2/object"];
+const ORM_PATHS = ["/web/dataset/call_kw/a.a/write", "/web/dataset/call_kw", "/web/dataset/call_button", "/web/dataset/call_button/a.a/write", "/web/dataset/call", "/web/dataset/search_read", "/web/action/run", "/json/2/a.a/write", "/json/1/a.a/write", "/jsonrpc", "/xmlrpc/2/object"];
 function mayReachOrm(pat) {
   if (pat === null) return true;
   const path = pat.split(/[?#]/)[0];
@@ -795,7 +827,7 @@ function auditJs(text) {
     const route = route0.split(RT).join("${...}");
     const sev = dyn ? "high" : "medium";  // CA12 H2: runtime URL that may be the ORM: unprovable is HIGH
     const get = (x, k) => x && x.type === "ObjectExpression" ? (x.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
-    const seg = route0.match(/\/(?:web\/dataset\/call_kw|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
+    const seg = normUrl(route0).match(/\/(?:web\/dataset\/call_kw|web\/dataset\/call_button|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
     let model = seg ? seg[1] : null, method = seg ? (seg[2] || null) : null, args = null;
     if (model && model.includes(RT)) model = null;
     if (method && method.includes(RT)) method = null;
@@ -816,11 +848,13 @@ function auditJs(text) {
       if (dyn) add("high", "js-sensitive-model", n, `${what}() may reach the ORM (${route}) with an unprovable model/method: treated as a privileged write.`);
       return;
     }
-    const first = args && args.type === "ArrayExpression" ? args.elements[0] : null;
+    let first = args && args.type === "ArrayExpression" ? args.elements[0] : null;
+    if (!first && o && /\/json\/[12]\//i.test(normUrl(route0))) first = get(o, "ids");  // CA14 H4: JSON-2 ids
     if (MASS_JS.test(method || "") && first && emptySearch(first)) {
       add("high", "js-mass-change", n, `${what}() ${method} over every record (ids from an unbounded search) through ${route}.`);
     }
-    if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method))) {
+    const button = /\/web\/dataset\/call_button/i.test(normUrl(route0));  // CA14 H4: any button method runs model code
+    if (model && SENSITIVE.has(model) && (method === null || WRITE_METHODS.has(method) || (button && method))) {
       add(method === null ? "medium" : "high", "js-sensitive-model", n, `${what}() ${method || "<runtime method>"} on ${model} through ${route} from the browser.`);
     } else if (model && SECRET_MODELS.has(model)) {
       add("medium", "js-sensitive-model", n, `${what}() reads ${model} through ${route} from the browser.`);
@@ -1029,7 +1063,7 @@ function auditJs(text) {
       if (["rpc", "jsonrpc", "this.rpc", "rpc.query", "ajax.rpc", "session.rpc"].includes(r) || last(r) === "rpc") {
         const route = lit(a0);
         if (route !== null) {
-          const seg = route.match(/\/(?:web\/dataset\/call_kw|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
+          const seg = normUrl(route).match(/\/(?:web\/dataset\/call_kw|web\/dataset\/call_button|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
           const p = n.arguments[1];
           let model = seg ? seg[1] : null, method = seg ? (seg[2] || null) : null;
           if (p && p.type === "ObjectExpression") {
@@ -1080,6 +1114,8 @@ function auditJs(text) {
       const cands = rawUrl && rawUrl.type ? urlCands(rawUrl) : [rawUrl];
       const ormC = cands.find((x) => x && ORM_ROUTE.test(x));
       const rawRoute = ormC || cands[cands.length - 1];
+      if (rawUrl && cands.length > 1 && ormC && cands.slice(cands.indexOf(ormC) + 1).some((x) => x === null || x.includes(RT)))
+        add("high", "js-sensitive-model", n, `${rawWhat}() to a URL rewritten at runtime after naming the ORM (${ormC.split(RT).join("${...}")}): the final model/method is unprovable.`);
       if (rawRoute && ORM_ROUTE.test(rawRoute)) gradeOrmBody(n, rawWhat, rawRoute, rawBody);
       else if (rawUrl && !rawBody && (rawRoute === null || rawRoute.includes(RT)) && mayReachOrm(rawRoute) &&
                /^(post|put|patch|delete)$/i.test(lit(optProp(n.arguments[1], "method")) || (r === "navigator.sendBeacon" ? "post" : ""))) {
@@ -1610,6 +1646,18 @@ function emptySearch(node) {
       if (nm === "call" && SEARCHES.test(lit(x.arguments[1]) || "")) {
         const a = x.arguments[2];
         if (!a || (a.type === "ArrayExpression" ? (a.elements.length === 0 || isEmpty(a.elements[0])) : false)) { found = true; return; }
+      }
+    }
+    // CA14 H4: JSON-2 search, fetch('/json/2/<model>/search', {body: {domain: []}}) (no domain = all)
+    if (x.type === "CallExpression" && x.callee && x.arguments.length && /^(fetch|rpc)$/.test(x.callee.name || (x.callee.property && x.callee.property.name) || "")) {
+      const u = urlPat(x.arguments[0]);
+      if (u && /\/json\/[12]\/[^/]+\/(search|search_read|web_search_read|search_fetch)\b/i.test(u)) {
+        const opt = x.arguments[1];
+        const gp = (o, k) => o && o.type === "ObjectExpression" ? (o.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
+        let body = x.callee.name === "fetch" ? gp(opt, "body") : opt;
+        if (body && body.type === "CallExpression" && body.arguments.length) body = body.arguments[0];
+        const dom = body && body.type === "ObjectExpression" ? gp(body, "domain") : null;
+        if (!body || body.type !== "ObjectExpression" || !dom || isEmpty(dom)) { found = true; return; }
       }
     }
     // rpc payload {model, method: 'search', args: [[]]} / kwargs {domain: []}
