@@ -3562,6 +3562,76 @@ def _secret_source(x: ast.AST, consts: dict[str, str], cfg_names: set[str]) -> s
     return None
 
 
+_NET_SEND = re.compile(
+    r"^(?:requests|httpx|aiohttp)\.(?:post|put|patch|get|delete|request)$|^(?:requests|httpx)\.\w*[Ss]ession\(\)\.\w+$"
+    r"|(^|\.)urlopen$|^urllib\.request\.Request$|^http\.client\.HTTPS?Connection$|^socket\.create_connection$"
+)
+_FILE_READ = frozenset({"read", "read_text", "read_bytes", "readlines", "readline"})
+_ORM_BULK = frozenset({"search_read", "read", "fetchall", "fetchone", "dictfetchall", "export_data", "read_group",
+                       "_read_group", "web_search_read"})
+
+
+def _net_egress(c: _Ctx, path: str, tree: ast.AST) -> None:
+    """CA14 M4: outbound calls. Payload tainted by file content or bulk ORM/SQL reads is exfiltration (HIGH);
+    a host that is not a constant (or a named config key) is unprovable (MEDIUM)."""
+    for f in (x for x in ast.walk(tree) if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        tainted: dict[str, str] = {}
+
+        def src(e: ast.AST) -> str | None:
+            for z in ast.walk(e):
+                if isinstance(z, ast.Name) and z.id in tainted:
+                    return tainted[z.id]
+                if isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute):
+                    if z.func.attr in _FILE_READ and any(isinstance(y, ast.Call) and getattr(y.func, "id", getattr(y.func, "attr", "")) in ("open", "Path", "file_open")
+                                                       for y in ast.walk(z.func.value)) or z.func.attr in ("read_text", "read_bytes"):
+                        return "file content"
+                    recv = ast.unparse(z.func.value)
+                    if z.func.attr in _ORM_BULK and (z.func.attr != "read" or re.search(r"\benv\b|\.(search|browse)\(|^self$", recv)):
+                        return f"ORM/SQL data ({z.func.attr})"
+            return None
+
+        for _ in range(3):
+            for st in ast.walk(f):
+                if isinstance(st, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and st.value is not None and (w := src(st.value)):
+                    for t in (st.targets if isinstance(st, ast.Assign) else [st.target]):
+                        for z in ast.walk(t):
+                            if isinstance(z, ast.Name):
+                                tainted.setdefault(z.id, w)
+                if isinstance(st, (ast.With, ast.AsyncWith)):
+                    for it in st.items:
+                        if isinstance(it.context_expr, ast.Call) and getattr(it.context_expr.func, "id", "") == "open" and isinstance(it.optional_vars, ast.Name):
+                            tainted.setdefault(it.optional_vars.id, "file content")
+        consts = _str_consts(f)
+        for st in ast.walk(f):
+            if not isinstance(st, ast.Call):
+                continue
+            nm = _dotted(st.func)
+            send = bool(_NET_SEND.search(nm)) or (isinstance(st.func, ast.Attribute) and st.func.attr in ("send", "sendall", "request")
+                                                 and any(isinstance(y, ast.Call) and _NET_SEND.search(_dotted(y.func)) for y in ast.walk(st.func.value)))
+            if not send:
+                continue
+            payload = st.args[1:] + [k.value for k in st.keywords if k.arg in ("data", "json", "files", "body", "params")]
+            if isinstance(st.func, ast.Attribute) and st.func.attr in ("send", "sendall"):
+                payload = list(st.args)
+            w = next((w for a in payload if (w := src(a))), None)
+            if w:
+                c.add(HIGH, "network-exfiltration", path, st.lineno,
+                      f"{f.name}() sends {w} to the network ({nm}).",
+                      "Never send file contents or bulk record data out; post only the fields the integration needs.")
+                continue
+            host = st.args[0] if st.args else next((k.value for k in st.keywords if k.arg in ("url", "host")), None)
+            if host is None or isinstance(host, (ast.Tuple, ast.List)) and host.elts and _fold_str(host.elts[0]):
+                continue
+            ok = _fold_str(host) is not None or (isinstance(host, ast.Name) and host.id in consts) or any(
+                isinstance(z, ast.Call) and isinstance(z.func, ast.Attribute) and z.func.attr == "get_param" and z.args
+                and (_fold_str(z.args[0]) or (isinstance(z.args[0], ast.Name) and z.args[0].id in consts)) for z in ast.walk(host)) or (
+                isinstance(host, ast.JoinedStr) and host.values and isinstance(host.values[0], ast.Constant) and re.match(r"https?://[\w.-]+/", str(host.values[0].value)))
+            if not ok:
+                c.add(MEDIUM, "outbound-network", path, st.lineno,
+                      f"{f.name}() calls {nm} on a host computed at runtime: destination unprovable.",
+                      "Use a constant endpoint or a named ir.config_parameter key.")
+
+
 def _secret_sources(c: _Ctx, path: str, tree: ast.AST) -> None:
     """CA14 H1: secret material (config, env, unprovable get_param keys, session ids) read in a
     route, or sent out by mail/network/log from any code, is HIGH."""
@@ -3817,6 +3887,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
     res = flow.Resolver(tree, _ALIAS_ROOTS)
     _secret_sources(c, path, tree)  # CA14 H1
     _sql_flows(c, path, tree)  # CA14 H2
+    _net_egress(c, path, tree)  # CA14 M4
     malias = flow.method_aliases(tree)
     local_sql, sql_safe = _local_sql(tree)
     tar = any(v.split(".")[0] == "tarfile" for v in res.alias.values())

