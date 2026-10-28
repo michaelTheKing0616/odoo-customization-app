@@ -125,3 +125,29 @@ def test_m1_non_test_same_severity():
 def test_m1_benign_test_silent():
     body = "class T(TransactionCase):\n    def test_a(self):\n        self.assertTrue(self.env['res.partner'].search([('id', '=', 1)]))\n"
     assert not _sev({"tests/test_x.py": _TH + body}, "dangerous-call")
+
+
+# ---------------------------------------------------------------- M2 QWeb list/dict pop() on render values
+def _qw(expr):
+    return {"report/r.xml": f"<odoo><template id='r'><t t-foreach='range(2)' t-as='i'><t t-set='x' t-value=\"{expr}\"/><span t-out='x'/></t></template></odoo>"}
+
+
+@pytest.mark.parametrize("expr", [
+    "current_data[1].pop()",
+    "quantity.popitem()",
+    "rows.pop(0)",
+    "vals.setdefault('a', 1)",
+])
+def test_m2_local_container_pop_silent(expr):
+    assert not _sev(_qw(expr), "unsafe-expression")
+
+
+@pytest.mark.parametrize("expr", [
+    "request.session.pop('uid')",
+    "request.session.clear()",
+    "env.context.pop('x')",
+    "user.sudo().write({'active': False})",
+    "doc.update({'name': 'x'})",
+])
+def test_m2_shared_state_mutation_high(expr):
+    assert "high" in _sev(_qw(expr), "unsafe-expression")

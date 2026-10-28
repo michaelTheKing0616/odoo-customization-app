@@ -4242,6 +4242,18 @@ _EXPR_SAFE_CALLS = frozenset(
         "user",
     }
 )
+# container mutators (no recordset defines them): harmful only on shared state (session, env, registry)
+_EXPR_CONTAINER_MUT = frozenset({"pop", "popitem", "setdefault", "clear"})
+_EXPR_SHARED = frozenset({"request", "session", "httprequest", "env", "context", "registry", "pool", "cr", "_cr",
+                          "self", "user", "company", "website", "odoo", "http", "ir", "config", "tools"})
+
+
+def _expr_shared(n: ast.AST) -> bool:
+    """Does a receiver reach session/env/registry state (vs. a list/dict value of the render)?"""
+    return any((isinstance(x, ast.Name) and x.id in _EXPR_SHARED) or (isinstance(x, ast.Attribute) and x.attr in _EXPR_SHARED)
+               or isinstance(x, ast.Call) for x in ast.walk(n))
+
+
 _INLINE_EXPR = re.compile(r"\{\{(.+?)\}\}|\$\{(.+?)\}", re.S)
 _TPL_EXPR_ATTRS = (
     "t-out",
@@ -4311,6 +4323,8 @@ def _audit_expr(
                 # controller; it cannot be steered to write/elevate from the template.
                 unknown.append(f"{fn.value.id}[{_const(fn.slice)!r}]()")
                 continue
+            if nm in _EXPR_CONTAINER_MUT and isinstance(fn, ast.Attribute) and not _expr_shared(fn.value):
+                continue  # CA12 M2: list/dict pop() on a render-local value; recordsets have no pop()
             if nm in _EXPR_BAD_CALLS or nm in _EXPR_WRITE or not nm:
                 high.append(f"{nm or ast.unparse(fn)[:30]}()")
             elif nm not in _EXPR_SAFE_CALLS:
