@@ -577,7 +577,9 @@ class _Ctx:
 
 
 # codes whose severity test files keep (exec sinks run wherever the test runs; tamper forges the gate)
-_TEST_KEEP_RANK = frozenset({"test-tamper", "dangerous-call", "safe-eval"})
+_TEST_KEEP_RANK = frozenset(
+    {"test-tamper", "dangerous-call", "safe-eval", "eval-exec", "compile-code", "outbound-network"}
+)  # CA13 M1: eval/exec/compile and network clients run wherever the test runs
 
 
 # ---------------------------------------------------------------- python

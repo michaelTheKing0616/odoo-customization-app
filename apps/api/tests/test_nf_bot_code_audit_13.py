@@ -122,3 +122,23 @@ def test_l2_props_and_this_domain_agree():
     js2 = "this.dialog.add(C, {domain: []});"
     assert "high" in _sev(_js(a + "\n" + js2), "js-mass-change")
 
+
+# ---------------------------------------------------------------- M1 exec sinks / network keep rank in tests/
+_TH = "from odoo.tests.common import TransactionCase\n\n\nclass T(TransactionCase):\n    def test_a(self):\n"
+
+
+@pytest.mark.parametrize("line,code,sev", [
+    ("eval(self.env.context.get('x', ''))", "eval-exec", "high"),
+    ("exec(self.env.context.get('x', ''))", "eval-exec", "high"),
+    ("compile(self.env.context.get('x', ''), 'f', 'exec')", "compile-code", "high"),
+    ("compile('1', 'f', 'eval')", "compile-code", "medium"),
+])
+def test_m1_exec_sinks_keep_rank_in_tests(line, code, sev):
+    for path in ("tests/test_a.py", "tests/sub/test_b.py"):
+        assert sev in _sev({path: _TH + "        " + line + "\n"}, code)
+
+
+def test_m1_outbound_network_keeps_rank_in_tests():
+    src = "import requests\n" + _TH + "        requests.get('http://x')\n"
+    prod = _sev({"models/a.py": src}, "outbound-network")
+    assert prod and _sev({"tests/test_a.py": src}, "outbound-network") == prod
