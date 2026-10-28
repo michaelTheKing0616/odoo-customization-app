@@ -142,3 +142,21 @@ def test_m1_outbound_network_keeps_rank_in_tests():
     src = "import requests\n" + _TH + "        requests.get('http://x')\n"
     prod = _sev({"models/a.py": src}, "outbound-network")
     assert prod and _sev({"tests/test_a.py": src}, "outbound-network") == prod
+
+
+# ---------------------------------------------------------------- M2 Odoo 19/20 JSON-1/JSON-2 routes
+@pytest.mark.parametrize("src", [
+    "fetch('/json/2/res.users/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:[1],vals:{}})});",
+    "fetch('/json/2/res.users/unlink',{method:'POST',body:JSON.stringify({ids:[1]})});",
+    "fetch(location.origin + '/json/2/res.groups/write',{method:'POST',body:JSON.stringify({ids:[1],vals:{}})});",
+    "const x=new XMLHttpRequest(); x.open('POST','/json/2/res.users/write'); x.send(JSON.stringify({ids:[1]}));",
+    "rpc('/json/2/res.users/write', {ids:[1], vals:{}});",
+    "fetch('/JSON/2/res.users/write',{method:'POST',body:JSON.stringify({ids:[1]})});",
+])
+def test_m2_json2_routes_sensitive_high(src):
+    assert "high" in _sev(_js(src), "js-sensitive-model")
+
+
+def test_m2_json2_benign_model_not_sensitive():
+    src = "fetch('/json/2/res.partner/search_read',{method:'POST',body:JSON.stringify({domain:[['id','=',1]]})});"
+    assert "high" not in _sev(_js(src), "js-sensitive-model")

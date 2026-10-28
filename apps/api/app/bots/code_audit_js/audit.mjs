@@ -42,7 +42,8 @@ let URL_OBJS = new Map();
 let URL_MUTS = new Map(); // CA13 H2: URL var -> [[prop, value]] writes (u.pathname = .. / Object.assign(u, {..})) // CA12 H2: once-bound new URL(..) whose path is never reassigned (search/hash may be)
 let DOM_VARS = new Map(); // CA9 H5: identifier (once-bound) / helper name -> domain-valued expression(s)
 // ORM HTTP endpoints reached with fetch / XHR / sendBeacon / axios (CA9 H6)
-const ORM_ROUTE = /\/web\/dataset\/(?:call_kw|call_button|call|search_read|resequence)\b|\/jsonrpc\b|\/xmlrpc\b|\/web\/session\/authenticate/;
+// CA13 M2: Odoo 19/20 JSON-1/JSON-2 APIs (/json/2/<model>/<method>) are the ORM too
+const ORM_ROUTE = /\/web\/dataset\/(?:call_kw|call_button|call|search_read|resequence)\b|\/jsonrpc\b|\/xmlrpc\b|\/json\/[12](?:\/|\b)|\/web\/session\/authenticate/i;
 // literal JS value (numbers, booleans, null, strings, arrays of those)
 function jsVal(n) {
   if (!n) return { ok: false };
@@ -794,7 +795,7 @@ function auditJs(text) {
     const route = route0.split(RT).join("${...}");
     const sev = dyn ? "high" : "medium";  // CA12 H2: runtime URL that may be the ORM: unprovable is HIGH
     const get = (x, k) => x && x.type === "ObjectExpression" ? (x.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
-    const seg = route0.match(/\/web\/dataset\/call_kw\/([^/]+)(?:\/([^/?]+))?/);
+    const seg = route0.match(/\/(?:web\/dataset\/call_kw|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
     let model = seg ? seg[1] : null, method = seg ? (seg[2] || null) : null, args = null;
     if (model && model.includes(RT)) model = null;
     if (method && method.includes(RT)) method = null;
@@ -1028,7 +1029,7 @@ function auditJs(text) {
       if (["rpc", "jsonrpc", "this.rpc", "rpc.query", "ajax.rpc", "session.rpc"].includes(r) || last(r) === "rpc") {
         const route = lit(a0);
         if (route !== null) {
-          const seg = route.match(/\/web\/dataset\/call_kw\/([^/]+)(?:\/([^/?]+))?/);
+          const seg = route.match(/\/(?:web\/dataset\/call_kw|json\/[12])\/([^/?#]+)(?:\/([^/?#]+))?/i);
           const p = n.arguments[1];
           let model = seg ? seg[1] : null, method = seg ? (seg[2] || null) : null;
           if (p && p.type === "ObjectExpression") {
