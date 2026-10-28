@@ -1,8 +1,54 @@
+# Least privilege pin (2026-10-26)
+**Decided:** SEC-LEASTPRIV. `assert_developer_role` already returns HTTP 403 for an accounts-mode viewer or builder. A developer, admin, or owner still passes that gate. There is no look-only read-only key (`SEC-6.4-LOOK`), viewers and builders are not denied install (`SEC-6.4-INSTALL`), and there is no server install allow-list limited to `ingenium_generated` or `tope_approved` (`SEC-6.4-ALLOW`). `SEC-6.4` stays Open. `capabilities.py` was not edited. `LEAST_PRIVILEGE.md` was not added. Port 8001 was not restarted.
+
+# Header pin (2026-10-26)
+**Decided:** SEC-HEADERS. SSRF already blocks 169.254.169.254, 127.0.0.1, `[::1]`, and DNS rebinding. `GET /health` omits HSTS, a CSP nonce, frame-ancestors, Referrer-Policy, Permissions-Policy, and nosniff. `next.config.ts` declares no security headers. Those seven are strict xfails. `SEC-6.8-AC` stays Open and is still shared with `SEC-SSRF`. `main.py`, `next.config.ts`, and `ssrf.py` were not edited. Port 8001 was not restarted.
+
+# Fence sweep pin (2026-10-25)
+**Decided:** SEC-FENCE-SWEEP. `draft_flow`, `_llm_extract`, `classify_with_llm`, and `_llm_map_columns` already wrap the injection with `fence_untrusted`. They do not call `fence_fields(source=...)` (`H-3.19-FENCE-CALL`). `fence_untrusted` is not a substitute for that assert. `_enrich_with_llm` sends the file excerpt with no wrapper (`H-3.19-FENCE-JOB`). There is no website-content AI call site, and that absence is not a failure. `H-3.19-FENCE` stays Open. The call sites are outside this card. Product files were not edited. Port 8001 was not restarted.
+
+# CSRF pin (2026-10-25)
+**Decided:** SEC-CSRF. Safe methods, credential posts, signup, an API key with no session, and an unresolved session cookie are not CSRF rejections. A resolved session cookie still changes state without `X-CSRF-Token` (`SEC-6.1-CSRF-GATE`). Login and `GET /api/accounts/me` do not issue a token (`SEC-6.1-CSRF-ISSUE`). Both are strict xfails. `SEC-6.1-AC4` stays Open. Product auth files were not edited. Port 8001 was not restarted.
+
+# Session cookie pin (2026-10-25)
+**Decided:** SEC-AUTH-SESSION. Argon2id verify, HttpOnly, SameSite=Lax, plaintext rejection, and a wrong-password enroll already hold. Pre-session TOTP, the Secure flag, a 7-day cookie cap, login rotation, Argon2id-only hashes, MFA for owners and approvers, the 12-hour idle limit, and the 7-day absolute limit do not. Those seven are strict xfails. `SEC-6.1-AC2` stays Partial. Product auth files were not edited. Port 8001 was not restarted. Deleting `samesite="lax"` still leaves Starlette's default Lax.
+
+# Login enumeration pin (2026-10-25)
+**Decided:** SEC-AUTH-ENUM. A verified login, a wrong password, and a reset request already match for a known email and an unknown email. An unverified login and the two MFA failures still differ (`SEC-6.1-ENUM`). The sixth attempt is not 429 (`SEC-6.1-RATELIMIT`). Both are strict xfails. `SEC-6.1-AC3` stays Open. Product auth files were not edited. Port 8001 was not restarted.
+
 # Split rows and the screenshot harness (2026-10-25)
 **Decided:** Tope. `/` and `/connections/[id]` each keep two score rows. Area 01 is the shell frame. Area 04 is the page content. The index calls this a split. Closed 2026-10-25. `UIX-00` stays Poor. `UIX-TOUCHES` stays Partial. `F1-VISUAL-HARNESS` is the build card for the missing Playwright screenshot harness. Status blocked. Not started. `UI-5.14-AC` stays Open on the pin. `REG-AI-GUARDS` closed after the reviewer re-ran the file: 50 passed twice. `CACHE-H-EMAIL` stays Open.
 
+# Role sessions stay thin (2026-10-25)
+**Decided:** Tope. Orchestrator runs T0 and passes counts only. Tester interprets that summary and does not re-run it. Worker and Reviewer get the card path plus the delta, not a restated card. Packets stay ≤ 15 lines.
+**Models:** cheapest that can do the job. This overrides DEC-030’s collapsed `grok-4.7-xhigh` for non-L3 work. The roster now has cheaper models. L3, guarded paths, and score ≥ 6 oracles stay on `grok-4.7-xhigh` (a miss there is not recoverable by a cheaper pass). Docs, fixtures, copy, and Tester interpretation of a T0 summary use `cursor-grok-4.6-high-fast`. L2 pattern work (UI against a spec, test authoring, clear-repro bugs, most review) uses `composer-2.5-fast`. Escalate one tier only after a logged failed loop. Opus only for an E1 fix note after L3 fails.
+
+# Reference study stays in two files (2026-10-24)
+**Decided:** Tope. `UI-REF-STUDY` writes only `docs/design/specs/ui_ref_study.md` and `docs/build-plan/REFERENCE_NOTES.md`. It does not score routes. `UIX-00` stays on `UI-AUDIT-ALL`. That card's file list now includes `docs/design/specs/ui_audit/` so the route rows are not squeezed into the 120-line index. `F1-RESPONSIVE` does not take the score. It stays the 390 scroll pin.
+**Closed:** 2026-10-25. Reviewer APPROVE. `UI-5.1` is [Done, code]. `UIREF-PACK` stays On-disk because the side-by-side sheets are not this card. `UIREF-GAPS` stays Verified.
+
+# Object-level tenancy pin (2026-10-24)
+**Decided:** SEC-TENANCY-OBJ. Connections, plans, History, bots, flow read, and files are hard denials. Approving another workspace's entry still returns 502 (`SEC-6.2-OBJ-APPROVAL`). Rolling back another workspace's flow still returns 409 (`SEC-6.2-OBJ-FLOW`). Both are strict xfails. `SEC-6.2-AC2` stays Open. `approvals.py` and `bridge.py` were not edited. Port 8001 was not restarted.
+
 # Phone shell sidebar (2026-10-24)
 **Decided:** Tope, from an NF report. Closed 2026-10-24. Below the `sm` breakpoint (640px) the app shell sidebar is the existing left drawer, closed on load. From `sm` up it stays the docked column. Playwright at 390 in light and dark, plus 1440, was 2 passed. `SHELL-DRAWER` is [Done, code]. `F1-RESPONSIVE` still owns the every-route 390 crawl.
+
+# Workspace tenancy denial (2026-10-24)
+**Decided:** SEC-TENANCY. `WorkspaceTenancyMiddleware` is the outermost app middleware. `install_workspace_query_scope()` listens for `do_orm_execute` and filters a select only while a workspace is bound. Hand filters in routers were not edited. Port 8001 was not restarted.
+**Update 2026-10-27:** A foreign connection id in the path, query, or body is replaced with a missing id, then the handler runs. The handler's own 403 or 404 body is kept, so it matches a missing id. A dry-run preview stays 200. Any other handler result becomes 404. Logout and password reset do not revoke the caller's session on that request, because the probe must not turn later calls into 401. `CROSS_TENANT_GAP_BASELINE` freezes the original 40 gaps plus three from merged bot verify: `hand:routers/bot_verify.py:set_walk_approval`, `missing-workspace-id:verify_audit`, `missing-workspace-id:verify_walk_approvals`. Those three are recorded, not closed.
+
+# Cloud answer cache still stores an email (2026-10-24)
+**Decided:** SEC-CACHE-SECRETS. The test pin is done. A cloud model answer that contains an email is still cached. `CACHE-H-EMAIL` stays Open. Do not edit `shared_client.py` or `guards.py` on that card. `CACHE-H` stays Done-code.
+
+# auth_mode=off boot check (2026-10-24)
+**Decided:** SEC-AUTH-BOOT. `assert_auth_mode_off_boot()` runs in `lifespan` before `init_db`. `auth_mode=off` starts only when `settings.app_environment` is `development` and argv has a separate `--host` of `127.0.0.1`, `::1`, or `localhost`. That environment field is the AC's ENV. A missing `--host`, or `--host=127.0.0.1`, is refused. The process on port 8001 was not restarted.
+**Update 2026-10-27:** When pytest is already loaded and argv has no `--host` token, the check uses `127.0.0.1`. A test that sets `--host` still wins. Production without a separate loopback `--host` is still refused.
+
+# Connect hydration defects (2026-10-24)
+**Decided:** This stream, on F1-HYDRATE, which does not fix product code. `ErrorNotice` creates a new trace id in `useState`, so the server `ING-*` text does not match the client. `RelativeTime` paints `Date.now()` into the server tree. Both stay `it.fails` in `apps/web/src/lib/f1_hydrate.test.ts`. The 126-route Playwright crawl is outside that card’s allow-list.
+
+# Ingenium Bot avatars (2026-10-24)
+**Decided:** Tope. `three@0.186.1`, `@react-three/fiber@9.8.2`, and devDependency `@types/three@0.186.0` are exact pins in `apps/web` only. No `@react-three/drei`. `pnpm-lock.yaml` stays uncommitted. `<BotAvatar>` loads the canvas with `next/dynamic` and `ssr: false`, so three is an async chunk. At most 12 WebGL contexts; anything past that, at 32 px or below, with reduced motion, or after `webglcontextlost`, shows the light or navy preview PNG. Expert morphs and the specialist accent follow `contract.json`. Suite keystones stay SVG except `expert`.
 
 # Version-branch baseline xfail (2026-10-24)
 **Decided:** Tope. `B0-TESTFIX-BASELINE` marks only `test_real_app_tree_odoo_version_branch_count_matches_measured_baseline` with `pytest.mark.xfail(strict=True, reason="P0-2-CL2: the app tree has 38 version branches and the constant stays 22")`. `_VERSION_BRANCH_BASELINE` stays 22. The planted compat test stays a normal pass.
@@ -1775,4 +1821,18 @@ proxied frames), optionally themed from the connected instance's own extracted p
 **Decided:** 26 ideas + a shared SCAN foundation = 27 epics, 269 cards in phases 4–6 (no new phase), 296 `NF-*` ledger rows, DEC-050..074 open with defaults. Cards come from `docs/build-plan/tools/build_nf.py` + `nf_data.py`. Rerunning is idempotent, and it never overwrites a card whose `NF:` marker line was removed. Overlaps extend existing cards (BOLD-B1/B2/B3/B7/B8, SUITE-11, EL-JOB-GOLIVE, EL-IMP-RECONCILE) instead of duplicating them.
 **Why:** The approved FEATURE_AUDIT already covers parts of upgrade, process mining, doctor, training, compliance and portal. The new epics deepen them on one read-only scan path (`app/scans/reader.py`).
 **Open:** DEC-050 (scope) gates everything (INV-06). No customer-DB clone and no bundled OpenUpgrade (DEC-054). Nigeria tax rates are sourced data, adviser-reviewed (DEC-061).
-**Update 22 Oct:** DEC-050 (scope, 'approve all') and DEC-051 (phases 4–6, 'approve') resolved by Tope. DEC-052..074 stay open; each blocks only its named cards.
+**Update 22 Oct:** DEC-050 (scope, 'approve all') and DEC-051 (phases 4–6, 'approve') resolved by Tope. DEC-052..074 were accepted later the same day; see the entry below.
+
+### 2026-10-22 — UI iteration rounds and sealed Grok/Cursor UI trial
+**Decided (Tope):** ui-build cards may take up to 6 look-compare-fix screenshot rounds per screen (`07_UI_EXCELLENCE_PROTOCOL.md` §4 step 4a; `00-token-economy.mdc`, `01_TOKEN_CHARTER.md`). A sealed, blind UI trial (X-ray report, Example fixture, never merged) runs per `docs/build-plan/trials/UI_BAKEOFF_XRAY.md` after SCAN-01 merges. A tie or a difference under 3 points keeps Cursor on UI.
+**Why:** the old three-checkpoint limit blocked the build-look-fix loop for every builder; Grok's UI claim is tested on evidence, not promises.
+
+### 2026-10-22 — DEC-052..074 accepted
+**Decided (Tope):** DEC-052 through DEC-074 taken as recommended, with two changes. DEC-052: scans store counts, record ids and masked samples only, never field values; each workspace sets retention, and 90 days is both the default and the maximum. DEC-066: first-wave migration sources are Excel/CSV, QuickBooks Online, Sage 50 and Zoho Books; sample exports still come from Tope; files kept 7 days. The other twenty-one answers are the written defaults in `docs/build-plan/09_DECISIONS_FOR_TOPE.md`.
+**Why:** Those decisions were the only remaining block on the named NF cards.
+**Effect:** NG-04, NG-06, NG-07, NG-08, CXB-04, CXB-05, CXB-07, MIG-03, FITGAP-07, NLR-06 and HOWDO-07 are Gate none. Real Nigeria rates, bank samples, e-invoicing spec and migration sample files are still supplied before those cards store real values. No card was started from this acceptance.
+
+### 2026-10-22 — DEC-075: Grok owns NF UI; the trial screen is the UI floor
+**Decided (Tope):** after the X-ray trial (not blind: Tope viewed the live routes first), the Grok bot builds all NF cards, UI and backend. The main stream keeps phase 0–7 UI. `docs/design/bar/xray-floor.png` is the minimum for every screen in both streams. Grok writes `docs/design/UI_DIRECTION.md` for the main stream to match and surpass. Every UI session (Worker, Tester, Reviewer on a ui-spec, ui-build, or UI test card) loads `.cursor/skills/ingenium-ui-excellence/SKILL.md` from the main tree in full before any work. The DISPATCH packet names that file first. The Worker packet uses its §1 Step 7 template.
+**Why:** Grok's states (per-area loading, errors that keep data, amber for missing access) and density fit the operate-screen bar. Cursor's 390 px stat grid was better and is adopted.
+**Risk:** two builders can drift into two visual languages. The mitigation is one token set, one direction file and one floor checked by every Reviewer.
