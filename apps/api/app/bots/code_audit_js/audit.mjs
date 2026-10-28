@@ -810,7 +810,16 @@ function auditJs(text) {
       // the JSON body is graded with the same taxonomy as orm.* / rpc()
       let rawUrl = null, rawBody = null, rawWhat = r;
       const optProp = (o, k) => o && o.type === "ObjectExpression" ? (o.properties.find((q) => q.key && (q.key.name || q.key.value) === k) || {}).value || null : null;
-      if (r === "fetch" || r === "navigator.sendBeacon") { rawUrl = a0; rawBody = r === "fetch" ? optProp(n.arguments[1], "body") : n.arguments[1]; }
+      if (r === "fetch" || r === "navigator.sendBeacon") {
+        rawUrl = a0; rawBody = r === "fetch" ? optProp(n.arguments[1], "body") : n.arguments[1];
+        // CA11 H8: fetch(new Request(url, {body})) / const q = new Request(..); fetch(q)
+        let rq = a0;
+        if (rq && rq.type === "Identifier" && DOM_VARS.has(rq.name)) rq = DOM_VARS.get(rq.name).find((v) => v && v.type === "NewExpression") || rq;
+        if (rq && rq.type === "NewExpression" && rq.callee.type === "Identifier" && rq.callee.name === "Request") {
+          rawUrl = rq.arguments[0]; rawBody = rawBody || optProp(rq.arguments[1], "body");
+          rawWhat = "fetch(Request)";
+        }
+      }
       else if (/(^|\.)(axios|http|ajax)\.(post|put|patch|request)$/.test(r) || /^(\$|jQuery)\.(post|ajax)$/.test(r)) {
         if (a0 && a0.type === "ObjectExpression") { rawUrl = optProp(a0, "url"); rawBody = optProp(a0, "data") || optProp(a0, "body"); }
         else { rawUrl = a0; rawBody = n.arguments[1]; }
@@ -825,6 +834,14 @@ function auditJs(text) {
       const k = urlKind(n.source);
       if (k !== "local") add(k === "external" ? "high" : "medium", "js-dynamic-import", n,
         `import() of ${k === "external" ? "an external" : "a runtime-built"} URL.`);
+    }
+    // CA11 L2: an HTML form posted to an ORM endpoint (form.action / setAttribute('action'))
+    {
+      let act = null;
+      if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression" && /^(action|formAction)$/.test(n.left.property.name || n.left.property.value || "")) act = n.right;
+      if (n.type === "CallExpression" && n.callee.type === "MemberExpression" && (n.callee.property.name === "setAttribute") && /^(action|formaction)$/i.test(lit(n.arguments[0]) || "")) act = n.arguments[1];
+      const au = act ? lit(act) : null;
+      if (au && ORM_ROUTE.test(au)) add("medium", "js-raw-orm-request", n, `HTML form posts to the ORM endpoint ${au}: CSRF-shaped ORM call, flagged.`);
     }
     if (n.type === "AssignmentExpression" && n.left.type === "MemberExpression") {
       const r = resolve(n.left) || "";

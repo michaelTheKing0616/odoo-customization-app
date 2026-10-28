@@ -277,3 +277,36 @@ def test_h7_js_bounded_silent(src):
 def test_h7_view_state_domain_silent():
     src = f"class L {{ async del() {{ const ids = await {O}.search(this.resModel, this.domain, {{limit: 80}}); await {O}.unlink(this.resModel, ids); }} }}"
     assert not _sev(_js(src), "js-mass-change")
+
+
+# ---------------------------------------------------------------- H8 fetch(Request) to call_kw / L2 form post
+B = "JSON.stringify({jsonrpc: '2.0', params: {args: [[2], {groups_id: [[4, 1]]}], kwargs: {}}})"
+
+
+@pytest.mark.parametrize("src", [
+    f"fetch(new Request('/web/dataset/call_kw/res.users/write', {{method: 'POST', body: {B}}}));",  # probe
+    f"const q = new Request('/web/dataset/call_kw/res.users/write', {{method: 'POST', body: {B}}}); fetch(q);",
+    f"fetch(new Request('/web/dataset/call_kw', {{method: 'POST', body: JSON.stringify({{params: {{model: 'res.groups', method: 'write', args: [[1], {{}}]}}}})}}));",
+    f"fetch('/web/dataset/call_kw/res.users/write', {{method: 'POST', body: {B}}});",
+])
+def test_h8_fetch_request_call_kw_high(src):
+    assert "high" in _sev(_js(src), "js-sensitive-model")
+
+
+def test_h8_benign_request_silent():
+    src = "fetch(new Request('/my/route', {method: 'POST', body: JSON.stringify({a: 1})}));"
+    assert not _sev(_js(src), "js-sensitive-model")
+
+
+@pytest.mark.parametrize("src", [
+    "const f = document.createElement('form'); f.action = '/web/dataset/call_kw/res.users/write'; f.method = 'post'; f.submit();",  # probe
+    "const f = document.createElement('form'); f.setAttribute('action', '/web/dataset/call_kw'); f.submit();",
+    "const b = document.createElement('button'); b.formAction = '/web/dataset/call_button'; b.click();",
+])
+def test_l2_form_to_orm_flagged(src):
+    assert _sev(_js(src), "js-raw-orm-request")
+
+
+def test_l2_benign_form_silent():
+    src = "const f = document.createElement('form'); f.action = '/shop/cart/update'; f.submit();"
+    assert not _sev(_js(src), "js-raw-orm-request")
