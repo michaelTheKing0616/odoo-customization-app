@@ -3428,6 +3428,137 @@ def _review6_py(c: _Ctx, path: str, tree: ast.AST, malias: dict[str, str]) -> No
                       "Drop sudo(), or check access_token / ownership (_document_check_access) before reading.")  # fmt: skip
 
 
+# CA14 H1: secret sources. A config/param/env/session-id read is secret unless its key is a
+# provably non-secret constant (folds to a literal that names nothing secret).
+_CFG_KEY_SECRET = re.compile(
+    r"passw|secret|key|token|user|host|port|dsn|db_|database|smtp|admin|proxy|ssl|cert|auth|session|credential|private",
+    re.I,
+)
+_SECRET_SINK_CALLS = re.compile(
+    r"(^|\.)(send_mail|message_post|message_notify|_message_log|send_email|build_email|"
+    r"post|get|put|patch|request|urlopen|urlretrieve|sendall|send|sendto|connect|"
+    r"info|warning|error|debug|critical|exception|log)$"
+)
+_NET_ROOTS = ("requests", "urllib", "httpx", "http.client", "socket", "aiohttp", "smtplib", "ftplib", "xmlrpc")
+
+
+_SECRET_CARRY = frozenset({"dict", "list", "tuple", "set", "str", "repr", "format", "join", "dumps", "encode",
+                           "decode", "strip", "lower", "upper", "get", "copy", "update", "b64encode", "hexlify", "bytes"})
+
+
+def _secret_source(x: ast.AST, consts: dict[str, str], cfg_names: set[str]) -> str | None:
+    def key_ok(k: ast.AST | None, rx: re.Pattern) -> bool:
+        if k is None:
+            return False
+        v = _fold_str(k)
+        if v is None and isinstance(k, ast.Name):
+            v = consts.get(k.id)
+        return v is not None and not rx.search(v)
+
+    if isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute):
+        a, recv = x.func.attr, _dotted(x.func.value)
+        if a == "get_param":
+            k0 = x.args[0] if x.args else None
+            if key_ok(k0, _CFG_SECURITY):
+                return None
+            v0 = _fold_str(k0) if k0 is not None else None
+            if v0 is None and isinstance(k0, ast.Name):
+                v0 = consts.get(k0.id)
+            return f"ir.config_parameter.get_param({v0!r})" if v0 else "ir.config_parameter.get_param(<unprovable key>)"
+        if a in ("get", "pop", "__getitem__") and (recv in cfg_names or recv.endswith("tools.config") or recv == "os.environ"):
+            return None if key_ok(x.args[0] if x.args else None, _CFG_KEY_SECRET) else f"{recv}.{a}(..)"
+    if isinstance(x, ast.Call) and _dotted(x.func) in ("os.getenv", "getenv", "os.environ.get"):
+        return None if key_ok(x.args[0] if x.args else None, _CFG_KEY_SECRET) else "os.getenv(..)"
+    if isinstance(x, ast.Subscript):
+        recv = _dotted(x.value)
+        if recv in cfg_names or recv.endswith("tools.config") or recv == "os.environ":
+            return None if key_ok(x.slice, _CFG_KEY_SECRET) else f"{recv}[..]"
+    if isinstance(x, ast.Attribute) and x.attr in ("sid", "session_token", "csrf_secret") and "session" in _dotted(x.value):
+        return f"{_dotted(x.value)}.{x.attr}"
+    if isinstance(x, ast.Name) and x.id == "environ" and x.id in cfg_names:
+        return "os.environ"
+    return None
+
+
+def _secret_sources(c: _Ctx, path: str, tree: ast.AST) -> None:
+    """CA14 H1: secret material (config, env, unprovable get_param keys, session ids) read in a
+    route, or sent out by mail/network/log from any code, is HIGH."""
+    cfg_names: set[str] = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and n.module in ("odoo.tools", "odoo.tools.config", "os"):
+            for al in n.names:
+                if al.name in ("config", "environ"):
+                    cfg_names.add(al.asname or al.name)
+    seen = {(f.file, f.line) for f in c.f if f.code in ("route-secret-read", "secret-exfiltration")}
+    for f in (x for x in ast.walk(tree) if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        consts = _str_consts(f)
+        auth = _route_auth(f)
+        tainted: dict[str, str] = {}
+
+        def src_of(e: ast.AST) -> str | None:
+            # taint survives copies/formatting; an opaque call (requests.get(.., key)) consumes it
+            stack = [e]
+            while stack:
+                z = stack.pop()
+                w = _secret_source(z, consts, cfg_names)
+                if w:
+                    return w
+                if isinstance(z, ast.Name) and z.id in tainted:
+                    return tainted[z.id]
+                if isinstance(z, ast.Call):
+                    nm = z.func.attr if isinstance(z.func, ast.Attribute) else getattr(z.func, "id", "")
+                    if nm not in _SECRET_CARRY:
+                        continue
+                stack.extend(ast.iter_child_nodes(z))
+            return None
+
+        for _ in range(3):
+            for st in ast.walk(f):
+                if isinstance(st, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and st.value is not None and (w := src_of(st.value)):
+                    tgts = st.targets if isinstance(st, ast.Assign) else [st.target]
+                    for t in tgts:
+                        for z in ast.walk(t):
+                            if isinstance(z, ast.Name):
+                                tainted.setdefault(z.id, w)
+        if auth:
+            public = auth in ("public", "none", "dynamic")
+            hit = None
+            for st in ast.walk(f):
+                if isinstance(st, (ast.Return, ast.Yield)) and st.value is not None and (w := src_of(st.value)):
+                    hit = (st.lineno, w, True)
+                    break
+            if hit is None and public:
+                for st in ast.walk(f):
+                    if (w := _secret_source(st, consts, cfg_names)):
+                        hit = (getattr(st, "lineno", f.lineno), w, False)
+                        break
+            if hit and (path, hit[0]) not in seen:
+                seen.add((path, hit[0]))
+                c.add(HIGH, "route-secret-read", path, hit[0],
+                      f"auth='{auth}' route {f.name}() {'returns' if hit[2] else 'reads'} secret material ({hit[1]}):"
+                      " the key is not a provably non-secret constant.",
+                      "Never read server config, environment, session ids or caller-chosen parameters in a route.")  # fmt: skip
+        for st in ast.walk(f):
+            if not isinstance(st, ast.Call):
+                continue
+            nm = _dotted(st.func)
+            create_mail = isinstance(st.func, ast.Attribute) and st.func.attr in ("create", "write") and "mail.mail" in ast.unparse(st.func.value)
+            net = nm.startswith(_NET_ROOTS) or bool(_SECRET_SINK_CALLS.search(nm) and re.search(r"(^|\.)(_logger|logger|logging|requests|httpx|session|conn|sock|smtp|s)\.", nm + "."))
+            mail = bool(re.search(r"(^|\.)(send_mail|message_post|message_notify|send_email|build_email)$", nm))
+            if not (create_mail or net or mail):
+                continue
+            for a0 in [*st.args, *[k.value for k in st.keywords]]:
+                w = src_of(a0)
+                if w and net and not (create_mail or mail or re.match(r"(_logger|logger|logging)\.", nm)) and w.startswith("ir.config_parameter.get_param('"):
+                    w = None  # a module's own named integration key sent to its API: by design, not exfiltration
+                if w and (path, st.lineno) not in seen:
+                    seen.add((path, st.lineno))
+                    c.add(HIGH, "secret-exfiltration", path, st.lineno,
+                          f"{f.name}() sends secret material ({w}) out through {nm or 'mail.mail'}().",
+                          "Never mail, log or transmit server config, environment values, parameters or session ids.")  # fmt: skip
+                    break
+
+
 def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> None:
     try:
         # bytes: the parser honours a PEP 263 coding cookie and a BOM, like Python itself
@@ -3526,6 +3657,7 @@ def _audit_py(c: _Ctx, path: str, body: bytes, server_code: bool = False) -> Non
     )
     aliases = _aliases(tree)
     res = flow.Resolver(tree, _ALIAS_ROOTS)
+    _secret_sources(c, path, tree)  # CA14 H1
     malias = flow.method_aliases(tree)
     local_sql, sql_safe = _local_sql(tree)
     tar = any(v.split(".")[0] == "tarfile" for v in res.alias.values())
