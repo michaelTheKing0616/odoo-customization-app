@@ -329,3 +329,17 @@ Audit suites, forward and reverse: 1588 passed, 38 skipped each.
 Stock run (19 modules, v17 and v19, bbe85efc): GATE OK, unaudited==0. HIGH 2846 -> 3708 vs CA13 (86214fab). v19 by code: unsafe-expression +493 (M1 t-call session/env bodies; e.g. website_sale +119), mass-change +3, route-sql-secret +1, js-sensitive-model -12 (L2), xml-function-destructive -54 (M3).
 gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed.
 bl_08: 4 passed.
+
+## CODE-AUDIT-15 (robustness review of REVIEW-CODE-AUDIT-12: 6 HIGH / 3 MEDIUM / 2 LOW)
+Rule: provably bounded, else HIGH.
+- H1/H2/H5/H6 (90468f76): secret taint model (whole config/environ/session/cookie objects, aliases, bound methods, getattr), template-secret-output, logger sinks. Field-assignment and setattr writes are graded as write(). One outbound sink set (Session/SMTP/socket/http.client/mail.mail) with URL, secret and data taint; a runtime host is now network-exfiltration HIGH (was MEDIUM). map/filter/lambda/zip/chain id collections are covered.
+- M1/M2 (829e444c): QWeb state taint means the value evaluates to session/env/context/registry/cr. Literal t-call targets are resolved and audited with the bound state. Comprehension targets inherit taint.
+- H4/M3 (3a4a4c79, test twin 90b81462): runtime model on a destructive JS orm call is HIGH. props.resModel/resIds delete is MEDIUM only inside a List/Form/Kanban controller, else HIGH.
+- H3 (0ed3decd): JS state aliases cover nested destructuring, array/object holders (including h[0]), Object(x), sequence expressions, computed keys, and escapes to non-pure calls (Reflect/Object.assign are treated as writes, not escapes).
+- L2 (d15b6732): non-canonical ORM paths (case, ";x") under /web/dataset or /json/N are js-raw-orm-request MEDIUM (fail closed).
+- L1 (9b3a4323): documented. Only odoo-19.0@bbe85efc is pinned; other versions and CRLF/appended copies stay HIGH.
+
+Tests: tests/test_nf_bot_code_audit_15.py (112 cases).
+Audit suites, forward and reverse: 1698 passed, 38 skipped, plus 1 stale CA14 twin that was fixed in 90b81462 and re-run: passed.
+Stock run (19 modules, v17 and v19): GATE OK, unaudited==0. HIGH vs fe202f09 is -337 per version (v17 1979->1642, v19 1729->1392). By code: unsafe-expression -488 (M1/M2 precision: calls, attributes and plain values are not state), mass-change +81 (H2 field-assignment writes, H6 map/filter ids), js-sensitive-model +59 (H4/M3 runtime model / props outside a controller), network-exfiltration +10 (H5 runtime host and new sinks), template-secret-output +1 (H1).
+gate_live (ODOO_LIVE=1, INGENIUM_LIVE_INFRA=1): 2 passed. bl_08: 4 passed.
