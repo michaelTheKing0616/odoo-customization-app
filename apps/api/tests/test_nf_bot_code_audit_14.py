@@ -242,7 +242,7 @@ def test_m2_runtime_model_or_ids_high(src, rule):
 @pytest.mark.parametrize("src", [
     "class C extends Component { async go(){ await this.orm.unlink('res.partner', this.props.resIds); } }",
     "class C extends Component { async go(){ await this.orm.unlink('res.partner', [1, 2]); } }",
-    "class C extends Component { async go(){ await this.orm.unlink(this.props.resModel, [this.props.resId]); } }",
+    # CA15 M3: props.resModel unlink outside a List/Form controller is now HIGH (see test_nf_bot_code_audit_15)
 ])
 def test_m2_selection_twins_silent(src):
     f = _js(src)
