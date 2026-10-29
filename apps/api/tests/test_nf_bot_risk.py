@@ -842,3 +842,64 @@ def test_outside_plan_changes_need_l2_review() -> None:
     assert check(d, low).missing == "outside-plan-review"
     hi = dataclasses.replace(g, approval=max(2, g.approval), outside_plan_fields=side)
     assert getattr(check(d, hi), "missing", "") != "outside-plan-review"
+
+
+@pytest.mark.parametrize("v", [17, 18, 19, 20])
+@pytest.mark.parametrize("route", ["A", "B"])
+def test_outgoing_mail_server_setting_keeps_class_needs_l2(v, route) -> None:
+    d = cl.classify("s:external_email_server_default", ctx(v, route))
+    assert d.cls == "R2" and d.tier == 2, d
+    assert ("res.config.settings", "external_email_server_default") in ru.FIELD_TIER_FLOORS
+    # negative: a neighbouring R2 setting with no reviewed floor stays L1
+    o = cl.classify("s:external_report_layout_id", ctx(v, route))
+    assert o.cls == "R2" and o.tier == 1, o
+
+
+def test_field_tier_floor_rules() -> None:
+    m, f = "res.config.settings", "external_email_server_default"
+    assert ru.field_tier_floor(m, frozenset({f})) == 2
+    assert ru.field_tier_floor(m, None) == 2  # unknown field set: worst
+    assert ru.field_tier_floor(m, frozenset({"external_report_layout_id"})) == 1
+    assert ru.field_tier_floor("res.partner", frozenset({f})) == 1
+    assert ru.field_tier_floor(None, None) == 1
+    with pytest.raises(TypeError):
+        ru.FIELD_TIER_FLOORS[(m, "x")] = (1, "")  # type: ignore[index]
+
+
+def test_mail_server_writes_floor_l2() -> None:
+    m = "ir.mail_server"
+    assert ru.field_tier_floor(m, frozenset({"smtp_host"})) == 2
+    assert ru.field_tier_floor(m, frozenset({"name"})) == 2  # any field
+    assert ru.field_tier_floor(m, frozenset()) == 2  # create / unlink: no field set
+    assert ru.field_tier_floor(m, None) == 2
+    assert ru.field_tier_floor("ir.mail_server_x", frozenset({"name"})) == 1
+
+
+@pytest.mark.parametrize("verb", ["write", "create", "unlink"])
+def test_mail_server_write_tasks_need_l2(verb) -> None:
+    assert cl._tier_floor(f"m:ir.mail_server:{verb}", ctx(17, "A")) == 2
+    assert cl._tier_floor("m:ir.mail_server:export", ctx(17, "A")) == 1
+
+
+@pytest.mark.parametrize("v", [17, 18, 19, 20])
+@pytest.mark.parametrize("verb", ["change", "create", "delete", "mass-write", "import", "archive"])
+def test_mail_server_catalogue_rows_reach_l2(v, verb) -> None:
+    d = cl.classify(f"m:ir.mail_server:{verb}", ctx(v, "A"))
+    assert isinstance(d, cl.Decision), d
+    assert d.tier >= 2, d
+    assert cl._tier_floor(f"m:ir.mail_server:{verb}", ctx(v, "A")) >= 2
+
+
+def test_walker_path_cannot_write_settings_model() -> None:
+    """The walker classifies m:<model>:write; settings have no m: row, so the walker refuses them
+    and settings changes go through the settings bot (which applies the same L2 floor)."""
+    r = cl.classify(
+        "m:res.config.settings:write",
+        ctx(17, "A", fields=frozenset({"external_email_server_default"})),
+    )
+    assert isinstance(r, ru.Refusal)
+    from app.bots import settings as st
+
+    assert st.L2_SETTINGS == {
+        "external_email_server_default": "changes which server sends all outgoing email"
+    }

@@ -263,6 +263,11 @@ def test_ac2_negative_dev_counts_refused_before_query(monkeypatch: pytest.Monkey
     The counts are integers from a child that does not import conftest. This
     process does not query the dev database.
     """
+    try:
+        with socket.create_connection(("127.0.0.1", 5433), timeout=1.0):
+            pass
+    except OSError:
+        pytest.skip("dev App DB Postgres on 127.0.0.1:5433 is not running; AC2 needs its real row counts")
     before = _dev_table_counts()
     calls = _seal_socket(monkeypatch)
     with pytest.raises(ConnectionRefusedError, match="does not start with ingenium_"):

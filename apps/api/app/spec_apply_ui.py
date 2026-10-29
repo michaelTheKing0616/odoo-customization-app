@@ -820,7 +820,11 @@ def _resolve_or_create_group_id(
     )
     if found:
         return int(found[0])
-    return int(client.execute_kw("res.groups", "create", [{"name": name}]))
+    created = client.execute_kw("res.groups", "create", [{"name": name}])
+    # Odoo 17+ answers a list-of-vals create with a list of ids.
+    if isinstance(created, list):
+        created = created[0] if created else None
+    return int(created) if created is not None else None
 
 
 def _ensure_spec_groups(client: OdooClient, spec: dict[str, Any], result: UiApplyResult) -> None:

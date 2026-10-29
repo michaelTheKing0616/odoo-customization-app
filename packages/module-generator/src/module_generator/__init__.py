@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -416,6 +417,7 @@ class FieldSpec:
     readonly: bool = False
     relation: str | None = None
     relation_field: str | None = None
+    relation_table: str | None = None  # many2many: explicit link table
     selection: str | None = None  # Python literal e.g. [('a','A')]
     help: str | None = None
     related: str | None = None
@@ -439,6 +441,10 @@ class FieldSpec:
         parts: list[str] = []
         if self.ttype in {"many2one", "many2many"} and self.relation:
             parts.append(f"{self.relation!r}")
+            if self.ttype == "many2many" and self.relation_table:
+                parts.append(
+                    f"relation={self.relation_table!r}, column1='x_src_id', column2='x_dst_id'"
+                )
         elif self.ttype == "one2many" and self.relation and self.relation_field:
             parts.append(f"{self.relation!r}, {self.relation_field!r}")
         elif self.ttype == "related" and self.relation:
@@ -909,6 +915,8 @@ def _env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["py"] = lambda v: repr(v)
+    # JSON string literals are valid Python literals; quotes/backslashes/newlines escaped.
+    env.filters["pystr"] = lambda v: json.dumps(str(v))
     from xml.sax.saxutils import escape as xml_escape
 
     def _xml(value: object) -> str:

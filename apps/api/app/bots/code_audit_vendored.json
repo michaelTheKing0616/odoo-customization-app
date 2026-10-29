@@ -1,0 +1,11 @@
+{
+ "131308a834660adcdc33c7a5ee0e5b6a0e4f308afbf209bac20a2ff9ca1b85a0": "odoo-19.0@bbe85efc web/static/lib/hoot/mock/network.js",
+ "134ffa3ac361f389db17b88b5f0d2023fab9c6850f7514201ff4b67f309d360a": "odoo-19.0@bbe85efc web/static/lib/pdfjs/build/pdf.worker.js",
+ "3dcb640738610b7d184c43ab6b005437c122be721a9d601849b1e61a0963eb6a": "odoo-19.0@bbe85efc web/static/lib/ace/ace.js",
+ "80b936b536b1d1fb3d3e6eeaf2a14289d08055b06cf709c6e0b44944d8e31617": "odoo-19.0@bbe85efc web/static/src/core/network/rpc.js",
+ "85ee2b24ef9583b18c097e2bc993c5ef94000a3084f773a33bf130865e92656a": "odoo-19.0@bbe85efc web/static/lib/jquery/jquery.js",
+ "8f7aeb5f7cb4ad73155b3df8879dc15223f11dcbb59e928fb95b0c898da131ba": "odoo-19.0@bbe85efc web/static/src/core/utils/files.js",
+ "c92b7b1278468e99b012a2792e581c606ab9bd629587649b6faf22d79a1b6c7a": "odoo-19.0@bbe85efc web/static/src/core/network/download.js",
+ "f567ed0a40e6bccf0f93340340b384b37ae4532aafab675c292edd1d5897174f": "odoo-19.0@bbe85efc web/static/lib/pdfjs/build/pdf.js",
+ "ff4f49006bec1986b8ec27487a72a5494dab889df109a1671aa467040178a1f7": "odoo-19.0@bbe85efc web/static/lib/stacktracejs/stacktrace.js"
+}

@@ -84,7 +84,7 @@ _RESIDUAL_NONE_RE = re.compile(
     r"(?i)("
     r"custom\s+residual\s*:?\s*none|"
     r"residual\s*:?\s*none|"
-    r"custom code is none"
+    r"custom\s+code\s*(?:is|:)\s*none"
     r")"
 )
 _SECTION_HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$")
@@ -214,7 +214,7 @@ _PROCESS_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 # "custom code is a visitor log" / "Residual is the punch card, not a new POS".
 _EXPLICIT_RESIDUAL_RE = re.compile(
-    r"(?i)\b(?:custom\s+)?residual\s*(?:is|:)\s*"
+    r"(?i)\b(?:(?:custom\s+)?residual|custom\s+code)\s*(?:is|:)\s*"
     r"(?:a|an|the|just|simply|only)?\s*"
     r"([^.,;\n]+?)(?=\s*(?:,|\.|$|\n|\(|—|-|\bnot\b))"
 )
@@ -406,7 +406,7 @@ def stated_app_name(prompt: str) -> str:
 def stated_residual_kind(prompt: str) -> tuple[str, str]:
     """Return ('none'|'named'|'unstated', text). 'Do not invent x_invoice' is not none."""
     text = prompt or ""
-    section = _section_body(text, ("custom residual",))
+    section = _section_body(text, ("custom residual", "custom code"))
     if section:
         first = section.strip().split("\n")[0].strip().lstrip("-* ").strip()
         if re.match(r"(?i)^none\b", first):

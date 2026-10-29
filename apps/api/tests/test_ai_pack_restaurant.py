@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from app.ai_domain_pack_law_firm import scaffold_teaching_blob
 from app.ai_domain_pack_restaurant import restaurant_pack
 from app.ai_domain_packs import merge_domain_pack, retrieve_domain_pack_lexical
@@ -56,6 +58,11 @@ def test_merge_deepens_thin_restaurant_order() -> None:
             }
         ]
     }
+    # restaurant is not curated (stock POS Restaurant); uncued pack fields need operator craft.
+    bare, _ = merge_domain_pack(copy.deepcopy(thin), restaurant_pack())
+    bare_order = next(m for m in bare["models"] if m["model"] == "x_order")
+    assert "x_line_ids" not in {f.get("name") for f in bare_order["fields"]}
+    thin["_approved_craft"] = {"allow": ["x_line_ids"]}
     merged, notes = merge_domain_pack(thin, restaurant_pack())
     order = next(m for m in merged["models"] if m["model"] == "x_order")
     names = {f.get("name") for f in order["fields"]}

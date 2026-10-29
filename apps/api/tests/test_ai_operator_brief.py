@@ -150,7 +150,7 @@ def test_autopilot_packet_has_structured_brief_no_receipt_residual() -> None:
     assert packet.custom_residuals == []
     assert "point_of_sale" in packet.stock_apps
     assert any("Unknowns" in w for w in packet.warnings)
-    assert any("Option A" in d for d in packet.decision_record)
+    assert any("custom code" in d for d in packet.decision_record)
 
 
 def test_brief_llm_contract_is_shape_agnostic_not_visitor_specific() -> None:

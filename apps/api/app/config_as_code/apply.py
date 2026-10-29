@@ -140,7 +140,9 @@ class FakeConfigPort:
             current.update(values)
             self.rows[key] = current
 
-    def execute_kw(self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None) -> Any:
+    def execute_kw(
+        self, model: str, method: str, args: list[Any], kwargs: dict[str, Any] | None = None
+    ) -> Any:
         """Model-method calls (settings execute, set_param, module buttons): recorded, no network."""
         self.calls.append(("call", model, method, list(args or []), dict(kwargs or {})))
         return True
@@ -301,6 +303,8 @@ def _row_for(port: Any, xmlid: str, params: dict[str, Any]) -> dict[str, Any] | 
         if not isinstance(body, dict):
             continue
         if key and body.get("key") == key:
+            return body
+        if key and key in body and body.get(key) == params.get("value"):
             return body
         if name and body.get("name") == name and (not model or body.get("model") == model):
             return body

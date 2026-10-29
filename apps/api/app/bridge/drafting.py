@@ -164,15 +164,20 @@ def check_draft(d: dict[str, Any], model_exists: Any = None) -> list[str]:
 def draft_flow(text: str, *, model_exists: Any = None, call: Any = None) -> dict[str, Any]:
     from app.ai_client.guards import fence_untrusted
 
-    if call is None:
-        from app.view_engine_ai import _call as call
     payload = {
         "request": fence_untrusted(text[:4000], source="bridge_flow_request"),
         "connectors": {k: list(c.entities) for k, c in BY_KEY.items() if c.status == "available"},
     }
-    d = call(SYSTEM, payload, SCHEMA, "bridge_flow_draft")
+    if call is None:
+        from app.view_engine_ai import designer_json
+
+        d = designer_json(SYSTEM, payload, SCHEMA, "bridge_flow_draft")
+    else:
+        d = call(SYSTEM, payload, SCHEMA, "bridge_flow_draft")
     d = {k: d.get(k) for k in SCHEMA["properties"]}
     errs = check_draft(d, model_exists)
+    if model_exists is None and d.get("odoo_model"):
+        errs.append(f"{d['odoo_model']} couldn't be checked against this database, so the draft can't be used yet.")
     c = BY_KEY.get(str(d.get("connector")))
     d["money"] = bool(c and c.money)
     return {

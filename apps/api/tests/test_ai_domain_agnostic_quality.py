@@ -715,6 +715,8 @@ def test_collapse_omits_related_stock_documents_from_header_form() -> None:
                 ],
             },
         ],
+        # 49d76500: a related stock M2O leaves the form only when a smart button covers it.
+        "smart_buttons": [{"on_model": "x_job", "related_model": "crm.lead", "label": "Leads"}],
         "views": [
             {
                 "model": "x_job",
@@ -739,6 +741,12 @@ def test_collapse_omits_related_stock_documents_from_header_form() -> None:
     names = {f["name"] for f in draft["models"][0]["fields"]}
     assert "x_lead_id" in names
 
+    draft.pop("smart_buttons")
+    draft["views"][0]["arch"] = draft["views"][0]["arch"].replace(
+        '<field name="x_name" />', '<field name="x_name" /><field name="x_lead_id" />', 1
+    )
+    collapse_header_o2ms_into_notebook(draft)
+    assert 'name="x_lead_id"' in str(draft["views"][0]["arch"])
 
 def test_stock_analytic_account_not_dropped_as_orphan() -> None:
     from app.ai_model_quality import repair_orphan_relations

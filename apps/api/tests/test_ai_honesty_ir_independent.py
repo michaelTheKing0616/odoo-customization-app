@@ -678,7 +678,7 @@ class TestWave3FlashFieldFiller:
         copy2 = banner_for_mode(
             str(seed_status.get("mode")), reason=str(seed_status.get("reason"))
         ) or ""
-        assert "Flash unavailable" in copy2 or "locked residual" in copy2.lower()
+        assert "AI was unavailable" in copy2 and "residual fields from your brief" in copy2
 
     def test_display_and_technical_name_from_residual_noun(self) -> None:
         display, slug = naming_from_residual(VISITOR_LOG)

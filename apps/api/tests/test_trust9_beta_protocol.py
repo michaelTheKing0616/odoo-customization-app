@@ -26,6 +26,15 @@ from app.production_readiness import confirm_least_privilege, run_snapshot_drill
 from app.settings import settings  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _offline_drill(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The drill reads a CSV from Odoo; these gate tests have no Odoo, so it is a fixed artifact."""
+    monkeypatch.setattr(
+        "app.production_readiness.build_drill_csv_artifact",
+        lambda db, connection: ("id,name\n1,Drill Co\n", "res.company", "live_export", "1 row"),
+    )
+
+
 @pytest.fixture
 def client() -> TestClient:
     init_db()

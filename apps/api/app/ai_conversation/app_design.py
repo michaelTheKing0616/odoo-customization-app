@@ -2933,7 +2933,7 @@ def build_app_design(
     if use_llm and _orph.mode() != "off":
         from app.llm_provider import get_llm_provider_for_tier as _tier
 
-        outcome["orphan_repair"] = _orph.repair_step(design, prompt, grounding=grounding, packet=schema_packet,
+        outcome["orphan_repair"] = _orph.repair_step(design, prompt, grounding=grounding, schema_packet=schema_packet,
                                                      snapshot=live, provider=_tier("fast"))
     agent_assumptions = list(design.assumptions) if design.playback else []
     design.assumptions = agent_assumptions + [

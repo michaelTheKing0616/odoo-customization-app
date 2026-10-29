@@ -7,12 +7,17 @@ bisecting batches so one failing or conflicting module never blocks the rest (re
 ``not_introspectable``), then read ir.module.module, ir.model, ir.model.fields and
 ir.model.fields.selection. Output is sorted, compact, gzip (mtime 0) -> deterministic.
 
-    python scripts/gen_versioncaps.py 17 20 [--port-base 18300] [--keep]
+    python scripts/gen_versioncaps.py 17 20 [--port-base 18300] [--keep] [--date YYYY-MM-DD]
+
+Every file carries ``provenance`` (version, edition, generation date, source image + local image
+id, base version, generator, RPC sources); the loader refuses a file without it. The generator
+writes it itself in the same step as the data (``write``); nothing is stamped afterwards.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import gzip
 import json
 import subprocess
@@ -41,7 +46,7 @@ def sh(*a: str, env: dict | None = None, check: bool = True) -> str:
 
 class Box:
     def __init__(self, v: int, port: int) -> None:
-        self.v, self.port, self.name = v, port, f"ingenium_caps_v{v}"
+        self.v, self.port, self.name = v, port, f"ws-caps-v{v}"
         self.addons = tempfile.mkdtemp(prefix="caps_addons_")
         self.env = {
             "ISB_NAME": self.name,
@@ -197,7 +202,8 @@ def refresh_depends(b: Box) -> Path:
     for n, m in caps["modules"].items():
         m["depends"] = deps.get(n, [])
     check_depends(caps["modules"])
-    return write(caps)
+    caps.pop("provenance", None)  # this run re-reads depends: it writes its own provenance
+    return write(caps, datetime.date.today().isoformat(), "depends refreshed from the apps list")
 
 
 def read_caps(b: Box, failed: list[str]) -> dict:
@@ -244,6 +250,19 @@ def read_caps(b: Box, failed: list[str]) -> dict:
         models[f["model"]]["fields"][f["name"]] = row
     for m in models.values():
         m["fields"] = dict(sorted(m["fields"].items()))
+    # scheduled actions: name -> modules whose xml id names the record (owning app)
+    names = {
+        c["id"]: c["name"]
+        for c in b.call(
+            "ir.cron", "search_read", [["active", "in", [True, False]]], fields=["name"]
+        )
+    }
+    crons: dict[str, set[str]] = {}
+    for x in b.call(
+        "ir.model.data", "search_read", [["model", "=", "ir.cron"]], fields=["module", "res_id"]
+    ):
+        if x["res_id"] in names and not x["module"].startswith("__"):
+            crons.setdefault(names[x["res_id"]], set()).add(x["module"])
     base = {
         k: v
         for k, v in b.call(
@@ -260,10 +279,114 @@ def read_caps(b: Box, failed: list[str]) -> dict:
         "field_row": ["type", "relation", "required", "modules", "selection?"],
         "modules": dict(sorted(mods.items())),
         "models": dict(sorted(models.items())),
+        "crons": {k: sorted(v) for k, v in sorted(crons.items())},
     }
 
 
-def write(caps: dict) -> Path:
+GENERATOR = "apps/api/scripts/gen_versioncaps.py"
+SOURCES = [
+    "ir.module.module",
+    "ir.module.module.dependency",
+    "ir.model",
+    "ir.model.fields",
+    "ir.model.fields.selection",
+    "ir.cron",
+    "ir.model.data",
+]
+
+
+# Scheduled actions Odoo creates per record at runtime (no xml id, so not in "crons"). Each is
+# probed over RPC: create one record of `model` with `vals` (plus a partner named PROBE where
+# `partner` is set), then read the ir.cron rows that appeared. The name with PROBE replaced by
+# "{}" is the template; the cron's own model must equal `model` (else the probe fails).
+CRON_PROBES = [
+    {
+        "module": "lunch",
+        "model": "lunch.supplier",
+        "vals": {"send_by": "mail", "automatic_email_time": 12.0},
+        "partner": "partner_id",
+    },
+]
+PROBE = "Ingenium Probe Supplier"
+
+
+def probe_cron_templates(b: Box) -> list[dict]:
+    out = []
+    for pr in CRON_PROBES:
+        mod = b.call(
+            "ir.module.module", "search_read", [["name", "=", pr["module"]]], fields=["state"]
+        )
+        if not mod:
+            continue
+        if mod[0]["state"] != "installed":
+            b.call("ir.module.module", "button_immediate_install", [mod[0]["id"]])
+            b.wait()
+        before = set(b.call("ir.cron", "search", [["active", "in", [True, False]]]))
+        vals = dict(pr["vals"])
+        if pr.get("partner"):
+            vals[pr["partner"]] = b.call("res.partner", "create", {"name": PROBE})
+        b.call(pr["model"], "create", vals)
+        new = [
+            c
+            for c in b.call(
+                "ir.cron",
+                "search_read",
+                [["active", "in", [True, False]]],
+                fields=["name", "model_id"],
+            )
+            if c["id"] not in before
+        ]
+        if len(new) != 1 or PROBE not in new[0]["name"]:
+            raise RuntimeError(f"cron probe {pr['model']}: {len(new)} new cron(s)")
+        m = b.call("ir.model", "read", [new[0]["model_id"][0]], fields=["model"])[0]["model"]
+        if m != pr["model"]:
+            raise RuntimeError(f"cron probe {pr['model']}: cron model {m}")
+        out.append({"template": new[0]["name"].replace(PROBE, "{}"), "model": m})
+    return out
+
+
+def write_cron_templates(v: int, templates: list[dict], date: str) -> Path:
+    """Add the probed templates to the existing caps file, with their own provenance."""
+    p = OUT / f"caps_{v}.json.gz"
+    caps = json.loads(gzip.decompress(p.read_bytes()))
+    caps["cron_templates"] = templates
+    caps["provenance"]["cron_templates"] = {
+        "generated": date,
+        "image_id": image_id(v),
+        "method": "public XML-RPC: create one record per CRON_PROBES row, read the new ir.cron",
+    }
+    raw = json.dumps(caps, sort_keys=True, separators=(",", ":")).encode()
+    with open(p, "wb") as fh, gzip.GzipFile(fileobj=fh, mode="wb", mtime=0, filename="") as gz:
+        gz.write(raw)
+    return p
+
+
+def image_id(v: int) -> str:
+    return sh("docker", "image", "inspect", f"odoo:{v}", "--format", "{{.Id}}").strip()
+
+
+def provenance(caps: dict, date: str, method: str = "") -> dict:
+    datetime.date.fromisoformat(date)  # refuse a malformed date
+    p = {
+        "major": caps["major"],
+        "edition": caps.get("edition", "community"),
+        "generated": date,
+        "source_image": f"odoo:{caps['major']}",
+        "image_id": image_id(caps["major"]),
+        "base_version": caps.get("base_version"),
+        "generator": GENERATOR,
+        "sources": SOURCES,
+        "method": method
+        or "public XML-RPC on a disposable sandbox with every installable Community module",
+    }
+    return p
+
+
+def write(caps: dict, date: str, method: str = "") -> Path:
+    """Write the catalogue with the provenance of THIS run (never stamped onto old data)."""
+    if "provenance" in caps:
+        raise ValueError("provenance is written by the generator run, not supplied")
+    caps = {**caps, "provenance": provenance(caps, date, method)}
     OUT.mkdir(parents=True, exist_ok=True)
     p = OUT / f"caps_{caps['major']}.json.gz"
     raw = json.dumps(caps, sort_keys=True, separators=(",", ":")).encode()
@@ -278,16 +401,25 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--port-base", type=int, default=18300)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--depends-only", action="store_true", help="refresh depends in existing files")
+    ap.add_argument("--cron-templates-only", action="store_true", help="probe runtime crons")
+    ap.add_argument("--date", default=datetime.date.today().isoformat())
     a = ap.parse_args(argv)
     for v in a.versions:
         b = Box(v, a.port_base + v)
         try:
             b.up()
+            if a.cron_templates_only:
+                t = probe_cron_templates(b)
+                print(
+                    f"[{v}] cron templates {t} -> {write_cron_templates(v, t, a.date)}", flush=True
+                )
+                continue
             if a.depends_only:
                 print(f"[{v}] depends refreshed {refresh_depends(b)}", flush=True)
                 continue
             failed = install_all(b, log=lambda s, v=v: print(f"[{v}]{s}", flush=True))
-            p = write(read_caps(b, failed))
+            caps = read_caps(b, failed)
+            p = write(caps, a.date)
             print(f"[{v}] wrote {p} failed={failed}", flush=True)
         finally:
             if not a.keep:

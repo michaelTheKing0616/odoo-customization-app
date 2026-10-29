@@ -271,7 +271,7 @@ def test_sla_on_invoices_is_senior_inherit() -> None:
     assert "x_sla_due" in names
     assert any(str(f.get("string")) == "SLA due date" for f in inherit["fields"])
     assert draft["depends"] == ["account"]
-    assert draft["display_name"] == "SLA"
+    assert draft["display_name"] == "SLA Due Date"
     assert not (draft.get("menus") or [])
     assert not (draft.get("groups") or [])
     assert inherit.get("mixins") in (None, [])

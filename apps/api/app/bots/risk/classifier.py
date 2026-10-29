@@ -64,6 +64,17 @@ class Decision:
         return {"class": self.cls, "controls": list(self.controls), "tier": f"L{self.tier}"}
 
 
+def cron_owner_row(task_id: str, version: Any) -> str | None:
+    """The owning app stored on the catalogue row of scheduled action ``task_id`` for
+    ``version`` (generated from the version catalogue; see gen_risk_rows.py)."""
+    try:
+        doc = json.loads(ROWS_FILE.read_text())
+        o = doc.get("cron_owners", {}).get(task_id, {}).get(str(version))
+    except (OSError, ValueError, AttributeError):
+        return None
+    return o if isinstance(o, str) and o else None
+
+
 @lru_cache(maxsize=1)
 def catalogue() -> tuple[dict[str, tuple[str, frozenset[int]]], dict[str, list[str]], str]:
     doc = json.loads(ROWS_FILE.read_text())
@@ -238,6 +249,16 @@ def _effect(task_id: str, base: str, ctx: ClassifyCtx) -> bt.Effect | bt.Unresol
 _READ_VERBS = ("export",)
 
 
+def _tier_floor(task_id: str, ctx: ClassifyCtx) -> int:
+    """Reviewed approval floor (rules.FIELD_TIER_FLOORS) for the fields a write task touches."""
+    kind, rest = _parts(task_id)
+    if kind == "s":
+        return rules.field_tier_floor("res.config.settings", frozenset({rest}))
+    if kind == "m" and rest.rsplit(":", 1)[-1] not in _READ_VERBS:
+        return rules.field_tier_floor(_model_of(task_id), ctx.fields)
+    return 1
+
+
 def task_floor(task_id: str, fields: frozenset[str] | None = None) -> tuple[str, str] | None:
     """The sensitivity floor of the model/fields/key a task touches (reads have none)."""
     kind, rest = _parts(task_id)
@@ -344,7 +365,7 @@ def classify(task_id: str, ctx: ClassifyCtx) -> Decision | Refusal:
         cls=cls,
         subkind=sub,
         controls=tuple(rules.route_controls(cls, sub, ctx.route, controls[cls])),
-        tier=rules.required_tier(cls, sub, ctx.route, ctx.policy),
+        tier=max(rules.required_tier(cls, sub, ctx.route, ctx.policy), _tier_floor(task_id, ctx)),
         route=ctx.route,
         version=ctx.version,
         strict_copy=rules.strict_copy(cls, sub, ctx.route),

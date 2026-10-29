@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+
 from app.ai_domain_pack_law_firm import scaffold_teaching_blob
 from app.ai_domain_pack_project_tracker import project_tracker_pack
 from app.ai_domain_packs import merge_domain_pack, retrieve_domain_pack_lexical
@@ -49,6 +51,11 @@ def test_merge_deepens_thin_project_task() -> None:
             }
         ]
     }
+    # project_tracker is not curated (stock Project); uncued pack fields need operator craft.
+    bare, _ = merge_domain_pack(copy.deepcopy(thin), project_tracker_pack())
+    bare_task = next(m for m in bare["models"] if m["model"] == "x_task")
+    assert "x_project_id" not in {f.get("name") for f in bare_task["fields"]}
+    thin["_approved_craft"] = {"allow": ["x_project_id"]}
     merged, notes = merge_domain_pack(thin, project_tracker_pack())
     task = next(m for m in merged["models"] if m["model"] == "x_task")
     names = {f.get("name") for f in task["fields"]}

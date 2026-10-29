@@ -13,7 +13,7 @@ FIELDS = {"name": {"type": "char", "string": "Number"}, "partner_id": {"type": "
 
 
 def _fake(monkeypatch, answer):
-    monkeypatch.setattr(vai, "_call", lambda *a, **k: answer)
+    monkeypatch.setattr(vai, "designer_json", lambda *a, **k: answer)
 
 
 def test_report_add_and_move_then_validator_authorizes(monkeypatch):

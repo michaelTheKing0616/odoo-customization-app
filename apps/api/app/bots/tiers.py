@@ -19,6 +19,7 @@ unknown task kind, an unextractable model, bad input or a failing check is "unkn
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -39,6 +40,11 @@ _CAPABILITIES = MappingProxyType(
         "module-test-gate": False,
     }
 )
+# Human review switch for module authoring. A reviewer flips this literal to True in a reviewed
+# commit after verifying module_authoring.REVIEW_CHECKLIST and the gate's T3 preconditions.
+# Nothing reads it from input or the environment; module_authoring.derived_capability() shows
+# how 'module-authoring' would be derived. It does not change _CAPABILITIES or REQUIRED.
+MODULE_AUTHORING_REVIEWED = False
 REQUIRED = MappingProxyType(
     {
         T1: ("data-settings",),
@@ -51,6 +57,9 @@ _T1_KINDS = frozenset({"m", "s", "seq", "param", "g", "b", "wiz", "sa", "cron", 
 _T2_KINDS = frozenset({"c", "v"})
 _T3_KINDS = frozenset({"code"})
 _T1_MOD_VERBS = frozenset({"install", "upgrade", "uninstall"})
+# Kinds graded by the app (module) that ships the record, not by a model.
+_MODULE_KINDS = frozenset({"r", "cron"})
+_MODULE_RE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 # Kinds whose id carries no model; nothing to check against versioncaps.
 _NO_MODEL_KINDS = frozenset({"s", "seq", "param", "g", "mod", "code"})
 
@@ -77,8 +86,8 @@ CLAIM = (
     "runs only when its app and model are confirmed for your Odoo version, and uninstalling "
     "an app always needs your approval and a backup. Module code (T3) is coming but not yet "
     "available: bots say so and tell you what you can do instead. When a task cannot be "
-    "checked, nothing runs. Report and scheduled-action tasks are not graded yet and "
-    "never run until they are."
+    "checked, nothing runs. Report tasks are checked against the app that ships the "
+    "report; scheduled-action tasks only run when you name the app they belong to."
 )
 
 
@@ -108,7 +117,8 @@ def tier_of(task_id: Any) -> int | None:
 def model_of(task_id: str) -> str | None:
     """Model named by a task id. Pinned by tests: m/b/wiz/sa via the classifier; c/v
     (``c:<model>:<verb>``, ``v:<model>:<type>``) and t (``t:<name>:<model>:<verb>``) here.
-    r/cron ids carry no model -> None. Raises on classifier faults (caller fails closed)."""
+    r/cron ids carry no model -> None (graded by module, see module_of). Raises on classifier
+    faults (caller fails closed)."""
     kind, _, rest = task_id.partition(":")
     if kind in ("m", "b", "wiz", "sa"):
         return classifier._model_of(task_id)  # noqa: SLF001 - shared task-id parser
@@ -118,6 +128,25 @@ def model_of(task_id: str) -> str | None:
     if kind == "t":
         parts = rest.split(":")
         return parts[-2] if len(parts) >= 3 and parts[-2] else None
+    return None
+
+
+def module_of(task_id: str, module_hint: str | None = None, version: Any = None) -> str | None:
+    """App that owns a report or scheduled-action task. ``r:<module>.<xml id>``: the xml id
+    prefix (Odoo names a record's xml id after the module that defines it). ``cron:<name>``:
+    the owning app stored in the version catalogue (generator, ir.model.data); a caller's
+    ``module_hint`` is never trusted: it must equal that owner, else None (refused)."""
+    kind, _, rest = task_id.partition(":")
+    if kind == "r":
+        mod, dot, name = rest.partition(".")
+        return mod if dot and name and _MODULE_RE.fullmatch(mod) else None
+    if kind == "cron":
+        owner = classifier.cron_owner_row(task_id, version)
+        if owner != caps.cron_owner(version, rest):  # row and version catalogue must agree
+            return None
+        if owner is None or (module_hint is not None and module_hint != owner):
+            return None
+        return owner
     return None
 
 
@@ -165,6 +194,8 @@ def assess(
     module_hint: str | None = None,
 ) -> Assessment:
     tid = task_id if isinstance(task_id, str) else repr(task_id)
+    if isinstance(edition, str):
+        edition = edition.strip().lower()  # "Enterprise" is enterprise
     tier = tier_of(task_id)
     if tier is None:
         return _unknown(
@@ -197,6 +228,8 @@ def assess(
             floor,
         )
     kind = tid.partition(":")[0]
+    if kind in _MODULE_KINDS:
+        return _assess_by_module(tid, tier, floor, version, edition, installed_modules, module_hint)
     if kind in _NO_MODEL_KINDS:
         return Assessment(tid, tier, OK, "", (), floor)
     try:
@@ -313,3 +346,122 @@ def compose(parts: Iterable[Assessment]) -> Plan:
     grade = worst if worst in _GRADE_RANK else UNKNOWN
     order = tuple(p.task_id for p in sorted(ps, key=lambda p: -(p.tier or 0)))
     return Plan(ps, order, tier, grade)
+
+
+def _installed_ok(installed_modules: Any) -> bool:
+    return isinstance(installed_modules, (list, tuple, set, frozenset)) and all(
+        isinstance(m, str) for m in installed_modules
+    )
+
+
+def _enterprise_app(version: Any, name: str | None) -> bool:
+    try:
+        info = caps.module_info(version, name) if isinstance(name, str) else None
+    except Exception:  # noqa: BLE001 - fail closed (not Enterprise -> unknown)
+        return False
+    return isinstance(info, dict) and info.get("edition") == "enterprise"
+
+
+def _assess_by_module(
+    tid: str,
+    tier: int,
+    floor: tuple[str, str] | None,
+    version: Any,
+    edition: Any,
+    installed_modules: Any,
+    module_hint: str | None,
+) -> Assessment:
+    """Report / scheduled-action task: the catalogue row must list this version, then the app
+    that ships it is graded like any app (installed, needs install, Enterprise-only)."""
+    try:
+        row = classifier.catalogue()[0].get(tid)
+    except Exception:  # noqa: BLE001 - fail closed
+        return _unknown(tid, tier, "The task list could not be read, so nothing runs.", floor=floor)
+    if row is None and tid.startswith("cron:") and _enterprise_app(version, module_hint):
+        return Assessment(
+            tid,
+            tier,
+            NEEDS_EDITION,
+            f"This scheduled action comes from the Odoo Enterprise app '{module_hint}'. "
+            "Ingenium's task list is read from Community, so it cannot confirm Enterprise "
+            "scheduled actions or their owner (needs-Enterprise); it will not run.",
+            ("run it from Odoo directly, or ask for the Enterprise scheduled action to be added",),
+            floor,
+        )
+    if row is None:
+        return _unknown(
+            tid,
+            tier,
+            "This report or scheduled action is not in Ingenium's task list, so it will not run.",
+            "check the name of the report or scheduled action",
+            floor=floor,
+        )
+    versions = row[1]
+    if isinstance(version, bool) or not isinstance(version, int) or version not in versions:
+        if isinstance(version, int) and not isinstance(version, bool) and versions:
+            alt = tuple(f"this exists in Odoo {v}" for v in sorted(versions))
+            return Assessment(
+                tid, tier, NOT_IN_VERSION, "This is not in this Odoo version.", alt, floor
+            )
+        return _unknown(tid, tier, "The version check failed, so nothing runs.", floor=floor)
+    mod = module_of(tid, module_hint, version)
+    if mod is None and tid.startswith("cron:") and module_hint is not None:
+        owner = module_of(tid, None, version)
+        if owner is not None:
+            return _unknown(
+                tid,
+                tier,
+                f"This scheduled action belongs to the app '{owner}', not '{module_hint}', "
+                "so it will not run.",
+                f"name the app '{owner}' or check the scheduled action",
+                floor=floor,
+            )
+    if mod is None:
+        return _unknown(
+            tid,
+            tier,
+            "Ingenium cannot tell which app this scheduled action belongs to, so it cannot "
+            "confirm it is possible here.",
+            "name the app (module) the scheduled action belongs to",
+            floor=floor,
+        )
+    if not _installed_ok(installed_modules) or not isinstance(edition, str):
+        return _unknown(
+            tid,
+            tier,
+            "Ingenium could not read which apps are installed, so it cannot check this task.",
+            "reconnect the database and try again",
+            floor=floor,
+        )
+    if mod in installed_modules:
+        return Assessment(tid, tier, OK, "", (), floor)
+    try:
+        info = caps.module_info(version, mod)
+    except Exception:  # noqa: BLE001 - fail closed
+        info = None
+    if not isinstance(info, dict):
+        return _unknown(
+            tid,
+            tier,
+            f"Ingenium could not confirm the app '{mod}' exists in this Odoo version.",
+            "check the app name, or connect a database that has it",
+            floor=floor,
+        )
+    if info.get("edition") == "enterprise" and edition != "enterprise":
+        return Assessment(
+            tid,
+            tier,
+            NEEDS_EDITION,
+            f"The app '{mod}' is only in Odoo Enterprise.",
+            ("use a Community alternative if one exists, or upgrade to Enterprise",),
+            floor,
+        )
+    return Assessment(
+        tid,
+        tier,
+        NEEDS_STEP,
+        f"This needs the app '{mod}', which is not installed yet.",
+        ("install the app first (bots can do this as a separate, approved step)",),
+        floor,
+        (f"mod:{mod}:install",),
+    )

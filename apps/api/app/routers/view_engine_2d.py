@@ -687,7 +687,7 @@ def explain_export(connection_id: str, body: ExplainExportBody, db: Session = De
         from app import view_engine_ai as vai
 
         try:
-            got = vai._call(v2d.TRANSLATE_SYSTEM, {"target_language": body.lang, "steps": [{"title": s["title"], "text": s["text"]} for s in steps]},
+            got = vai.designer_json(v2d.TRANSLATE_SYSTEM, {"target_language": body.lang, "steps": [{"title": s["title"], "text": s["text"]} for s in steps]},
                             v2d.TRANSLATE_SCHEMA, "explain_translate")
             tr = v2d.check_translation(steps, got)
         except vai.AIUnavailable:

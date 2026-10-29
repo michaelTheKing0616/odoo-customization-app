@@ -60,6 +60,10 @@ class Plan:
     undo_route: str | None = None  # "before_image" (reversible) | "snapshot" (irreversible)
     snapshot_verified: bool = False
     outside_plan: frozenset[str] = field(default_factory=frozenset)
+    # BOT-SPINE-WIRE: a floor from checks outside this module (walker class, outgoing messages,
+    # lockout); tiers only go up. ``call``: a gate.call job (button/create): no field values.
+    min_tier: int = 1
+    call: bool = False
 
     def unique_ids(self) -> list[Any]:
         return list(dict.fromkeys(self.ids))
@@ -86,6 +90,8 @@ def facts_hash(plan: Plan) -> str:
         "rh": plan.rehearsal_id,
         "rh_ok": bool(plan.rehearsal_passed),
     }
+    if plan.min_tier != 1 or plan.call:  # absent keys keep earlier facts hashes unchanged
+        facts |= {"min": plan.min_tier, "call": bool(plan.call)}
     return hashlib.sha256(json.dumps(facts, sort_keys=True).encode()).hexdigest()
 
 
@@ -101,7 +107,9 @@ def classify(plan: Plan, checkpoint: int = RUN_CAP) -> Tiering:
     n = len(plan.unique_ids())
     if plan.risk_class not in CLASSES:
         return Tiering(None, (), "We couldn't tell how risky this change is, so it can't run.")
-    if n < 1 or not plan.values or not isinstance(plan.values, Mapping):
+    if plan.min_tier not in (1, 2, 3):
+        return Tiering(None, (), "We couldn't tell how risky this change is, so it can't run.")
+    if n < 1 or not isinstance(plan.values, Mapping) or not (plan.values or plan.call):
         return Tiering(None, (), "This plan doesn't say which records or values to change.")
     if not plan.rehearsal_id or not plan.rehearsal_passed:
         return Tiering(None, (), "It hasn't passed a practice run on a copy of your database yet.")
@@ -120,6 +128,9 @@ def classify(plan: Plan, checkpoint: int = RUN_CAP) -> Tiering:
         tier = max(tier, 2)
         names = ", ".join(sorted(plan.outside_plan)[:5])
         reasons.append(f"Odoo also changes other fields on these records ({names}).")
+    if plan.min_tier > tier:
+        tier = plan.min_tier
+        reasons.append(f"Other safety checks on this change rate it level {tier}.")
     if irr:
         tier = 3
         reasons.append("It can't be undone in place; undo means restoring the backup.")

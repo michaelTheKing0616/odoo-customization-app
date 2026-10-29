@@ -8,6 +8,8 @@ not invent fields/M2Os/O2Ms/menus beyond the closed IR.
 
 from __future__ import annotations
 
+import copy
+
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
@@ -651,6 +653,10 @@ def merge_proposals(
                 }
                 if prop.payload.get("inherit"):
                     row["inherit"] = prop.payload.get("inherit")
+                # Admitted model keeps its declared workflow graph and mixins.
+                for key in ("state_field", "mixins"):
+                    if prop.payload.get(key):
+                        row[key] = copy.deepcopy(prop.payload[key])
                 ir.models.append(row)
                 ir.fields_by_model.setdefault(
                     prop.name,
@@ -712,6 +718,9 @@ def apply_ir_to_draft(ir: GenerateIR, draft: dict[str, Any]) -> list[str]:
             new_model["is_workflow"] = row.get("is_workflow")
         if row.get("inherit"):
             new_model["inherit"] = row.get("inherit")
+        for key in ("state_field", "mixins"):
+            if row.get(key):
+                new_model[key] = copy.deepcopy(row[key])
         draft.setdefault("models", []).append(new_model)
         by_id[mid] = new_model
         notes.append(f"generate_ir: admitted model {mid}")

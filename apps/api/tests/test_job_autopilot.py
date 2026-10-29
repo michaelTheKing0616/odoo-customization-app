@@ -868,7 +868,36 @@ def test_executor_sandbox_stock_only_smoke() -> None:
     assert result.config_packet.get("secrets_excluded") is True
 
 
+
+def _real_conn_id() -> str:
+    """A stored connection row: the global safety gate looks the id up before the route runs."""
+    import uuid
+
+    from app.crypto import encrypt_secret
+    from app.db import SessionLocal, init_db
+    from app.db_models import OdooConnection
+
+    init_db()
+    db = SessionLocal()
+    try:
+        row = OdooConnection(
+            name=f"job-autopilot-{uuid.uuid4().hex[:8]}",
+            url="http://127.0.0.1:8069",
+            db_name="odoo_dev",
+            username="admin",
+            secret_encrypted=encrypt_secret("admin"),
+            server_version="19.0",
+            write_mode="standard",
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return str(row.id)
+    finally:
+        db.close()
+
 def test_packet_endpoint_json() -> None:
+    cid = _real_conn_id()
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -877,7 +906,7 @@ def test_packet_endpoint_json() -> None:
     with patch("app.routers.job_autopilot.get_connection_or_404", return_value=fake):
         with TestClient(app) as c:
             res = c.post(
-                "/api/connections/c1/job-autopilot/packet",
+                f"/api/connections/{cid}/job-autopilot/packet",
                 json={
                     "prompt": "Sell products and invoice in Germany. Customers book studio sessions.",
                     "use_llm": False,
@@ -892,6 +921,7 @@ def test_packet_endpoint_json() -> None:
 
 
 def test_run_endpoint_refuses_production() -> None:
+    cid = _real_conn_id()
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -902,7 +932,7 @@ def test_run_endpoint_refuses_production() -> None:
     with patch("app.routers.job_autopilot.get_connection_or_404", return_value=fake):
         with TestClient(app) as c:
             res = c.post(
-                "/api/connections/c1/job-autopilot/run",
+                f"/api/connections/{cid}/job-autopilot/run",
                 json={
                     "prompt": "invoice customers",
                     "confirm_advanced": True,
@@ -916,6 +946,7 @@ def test_run_endpoint_refuses_production() -> None:
 
 
 def test_run_endpoint_queues_sandbox() -> None:
+    cid = _real_conn_id()
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -930,7 +961,7 @@ def test_run_endpoint_queues_sandbox() -> None:
                 with patch("app.routers.job_autopilot.enqueue") as enqueued:
                     with TestClient(app) as c:
                         res = c.post(
-                            "/api/connections/c1/job-autopilot/run",
+                            f"/api/connections/{cid}/job-autopilot/run",
                             json={"prompt": "invoice customers", "use_llm": False},
                         )
     assert res.status_code == 200, res.text
@@ -941,6 +972,7 @@ def test_run_endpoint_queues_sandbox() -> None:
 
 
 def test_run_endpoint_attaches_in_flight_job() -> None:
+    cid = _real_conn_id()
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -953,7 +985,7 @@ def test_run_endpoint_attaches_in_flight_job() -> None:
                 with patch("app.routers.job_autopilot.enqueue") as enqueued:
                     with TestClient(app) as c:
                         res = c.post(
-                            "/api/connections/c1/job-autopilot/run",
+                            f"/api/connections/{cid}/job-autopilot/run",
                             json={"prompt": "invoice customers", "use_llm": False},
                         )
     assert res.status_code == 200, res.text
@@ -1257,6 +1289,7 @@ def test_promote_to_refuses_same_connection_and_missing_zip() -> None:
 
 
 def test_promote_to_endpoint_requires_confirm() -> None:
+    cid = _real_conn_id()
     from fastapi.testclient import TestClient
 
     from app.main import app
@@ -1268,7 +1301,7 @@ def test_promote_to_endpoint_requires_confirm() -> None:
     ):
         with TestClient(app) as c:
             res = c.post(
-                "/api/connections/c1/job-autopilot/promote-to",
+                f"/api/connections/{cid}/job-autopilot/promote-to",
                 json={"target_connection_id": "c2", "zip_base64": "UEs="},
             )
     assert res.status_code == 403, res.text

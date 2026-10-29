@@ -11,6 +11,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal
 
 Route = Literal["A", "B"]  # A = RPC-only (Odoo Online, hosted); B = direct DB + filestore access
@@ -878,6 +879,32 @@ def route_controls(cls: str, subkind: str | None, route: Route, base: list[str])
     if not reversible:
         res += ["typed-confirmation", "stated-limit"]
     return _dedupe(res)
+
+
+# Reviewed approval floors that keep the risk class: (model, field) -> (min tier, plain reason).
+# The class (and its undo route) is unchanged; only who approves goes up.
+FIELD_TIER_FLOORS: Mapping[tuple[str, str], tuple[int, str]] = MappingProxyType(
+    {
+        ("res.config.settings", "external_email_server_default"): (
+            2,
+            "changes which server sends all outgoing email",
+        ),
+        # "*": every write task on the model (create / write / unlink, any field)
+        ("ir.mail_server", "*"): (
+            2,
+            "changes an outgoing mail server (where email is sent, and as whom)",
+        ),
+    }
+)
+
+
+def field_tier_floor(model: str | None, fields: frozenset[str] | None) -> int:
+    """Min tier from FIELD_TIER_FLOORS; fields=None (unknown set) takes the model's worst; a
+    "*" row applies to every write on the model whatever the fields."""
+    if not model:
+        return 1
+    rows = [(f, t) for (m, f), (t, _) in FIELD_TIER_FLOORS.items() if m == model]
+    return max([1] + [t for f, t in rows if fields is None or f == "*" or f in fields])
 
 
 def required_tier(cls: str, subkind: str | None, route: Route, policy: Policy) -> int:

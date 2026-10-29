@@ -66,7 +66,25 @@ def test_unpacked_insurance_brief_is_stock_first_without_a_pack() -> None:
     assert "account.move" in models
     assert "sale.order" in models
     assert "hr.employee" in models
-    assert "depth_models" not in depth_gaps(draft, "comprehensive")
+    # Closed-class gate (6648b166): no density padding, and party/line satellites plus the
+    # sale.order bridge need a positive brief cue (4fdbbd67, 49d76500). Uncued brief stays thin.
+    assert "depth_models" in depth_gaps(draft, "comprehensive")
+    assert "x_policy_party" not in ids
+    assert "x_policy_line" not in ids
+    assert "sale.order" not in ids
+    cued_prompt = (
+        INSURANCE_PROMPT
+        + " Policy parties (insured, beneficiary) and coverage line items."
+        + " Quotations smart button on the policy."
+    )
+    draft = seed_unpacked_draft(
+        cued_prompt,
+        briefing=build_domain_briefing(cued_prompt),
+        ambition="comprehensive",
+    )
+    ids = {m["model"] for m in draft["models"] if isinstance(m, dict)}
+    assert "x_bill" not in ids
+    assert "x_invoice" not in ids
     assert "x_policy_party" in ids
     assert "x_policy_line" in ids
     assert "sale.order" in ids

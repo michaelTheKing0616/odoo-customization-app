@@ -351,7 +351,9 @@ class TestMergePack:
         assert "x_ai_only" in ai_vehicle, "AI extra field must be preserved"
 
         assert any("domain pack added model" in w for w in warnings)
-        assert any("domain pack added field" in w for w in warnings)
+        # Stock-first: pack vehicle fields land on the new fleet.vehicle extension, not on the
+        # thin x_rent_vehicle, so they are reported as an added model rather than added fields.
+        assert "domain pack added model fleet.vehicle" in warnings
         assert merged.get("smart_buttons")
         assert merged.get("automations")
         assert merged.get("domain_pack") == "car_rental"

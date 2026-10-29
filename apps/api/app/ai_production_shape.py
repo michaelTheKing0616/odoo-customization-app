@@ -418,6 +418,10 @@ def run_production_shape_pass(draft: dict[str, Any]) -> list[str]:
     notes.extend(apply_line_subtotal_computes(draft))
     notes.extend(apply_order_header_total_computes(draft))
     notes.extend(synthesize_smart_buttons_from_relations(draft))
+    # New buttons may cover related stock M2Os: re-strip forms (rule 49d76500).
+    from app.ai_enrich import collapse_header_o2ms_into_notebook
+
+    notes.extend(collapse_header_o2ms_into_notebook(draft))
     amb = str(draft.get("_ambition") or "standard")
     notes.extend(ensure_min_automations(draft, amb))  # type: ignore[arg-type]
     notes.extend(reconcile_depth_metadata(draft))

@@ -741,6 +741,9 @@ def _ensure_inherit_field_floor(
     # Locked Diagnosis block lives on the raw prompt — intent_corpus drops it.
     # Always pass the original prompt so parse_locked_diagnosis can recover Must-do.
     explicit = extract_field_ir(prompt, constraints=constraints or None)
+    # Without stated constraints, a domain noun's own pack beats the sentence-slug IR.
+    if explicit and not constraints and _SEMANTIC_NOUN_RE.search((clean_prompt or "").lower()):
+        explicit = []
     inferred = explicit if explicit else infer_extension_fields(
         clean_prompt or prompt, pad=grain != "field_pack"
     )

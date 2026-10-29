@@ -6,8 +6,10 @@ import gzip
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from functools import cached_property, lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 DATA = Path(__file__).with_name("data")
@@ -15,6 +17,28 @@ MAJORS = (17, 18, 19, 20)
 FITGAP_TABLE = Path(__file__).resolve().parents[1] / "fitgap" / "fitgap_table.json"
 # Pulled in by Odoo itself on every database; a missing one is never "needs install".
 ALWAYS = frozenset({"base", "web"})
+# Reviewed: public model names of Enterprise apps (not in any Community catalogue), so a model
+# alone grades enterprise-only without a module hint. Each module is in fitgap_table.json.
+ENTERPRISE_MODELS: Mapping[str, str] = MappingProxyType(
+    {
+        "helpdesk.ticket": "helpdesk",
+        "helpdesk.team": "helpdesk",
+        "planning.slot": "planning",
+        "documents.document": "documents",
+        "sign.request": "sign",
+        "sign.template": "sign",
+        "quality.check": "quality_control",
+        "quality.point": "quality_control",
+        "quality.alert": "quality_control",
+        "mrp.eco": "mrp_plm",
+        "approval.request": "approvals",
+        "approval.category": "approvals",
+        "social.post": "social",
+        "knowledge.article": "knowledge",
+        "appointment.type": "appointment",
+        "account.asset": "account_asset",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -77,9 +101,35 @@ def _load_file(major: int) -> Caps | None:
         d = json.loads(gzip.decompress(p.read_bytes()))
     except (OSError, ValueError, EOFError):  # missing, truncated, not gzip, bad JSON
         return None
-    if not _shape_ok(d) or d.get("major") != major:
+    if not _shape_ok(d) or d.get("major") != major or not _prov_ok(d.get("provenance"), major):
         return None
     return Caps(major, d, _enterprise())
+
+
+_PROV_KEYS = ("major", "edition", "generated", "source_image", "image_id", "generator", "sources")
+
+
+def _prov_ok(p: Any, major: int) -> bool:
+    """A catalogue without provenance (version, date, source image) is not trusted."""
+    if not isinstance(p, dict) or any(not p.get(k) for k in _PROV_KEYS):
+        return False
+    try:
+        date.fromisoformat(str(p["generated"]))
+    except ValueError:
+        return False
+    return (
+        p["major"] == major
+        and p["source_image"] == f"odoo:{major}"
+        and str(p["image_id"]).startswith("sha256:")
+        and isinstance(p["sources"], list)
+    )
+
+
+def provenance(major: Any) -> dict[str, Any] | None:
+    """Where ``major``'s catalogue came from (copy), or None when there is no trusted file."""
+    c = load(major)
+    p = c.data.get("provenance") if c else None
+    return dict(p) if isinstance(p, dict) else None
 
 
 def _shape_ok(d: Any) -> bool:
@@ -109,10 +159,9 @@ _OVERRIDE: dict[int, Caps | None] = {}
 
 def load(major: Any) -> Caps | None:
     """Catalogue for ``major`` or None (fail closed). Tests may inject via ``_OVERRIDE``."""
-    try:
-        m = int(str(major).split(".")[0])
-    except (TypeError, ValueError):
+    if type(major) is not int:  # plain int major only: '17', 17.0, '17.x', True are refused
         return None
+    m = major
     if m in _OVERRIDE:
         return _OVERRIDE[m]
     return _load_file(m) if m in MAJORS else None
@@ -146,6 +195,40 @@ def module_info(version: Any, name: str) -> dict[str, Any] | None:
             "note": "enterprise-only; fields not verifiable",
         }
     return None
+
+
+def cron_owner(version: Any, name: Any) -> str | None:
+    """The one app that owns scheduled action ``name`` in stock ``version``: the module whose
+    xml id names it (generator, ir.model.data), else, for a scheduled action Odoo creates per
+    record at runtime, the app defining the model of the one matching probed template
+    ("cron_templates", e.g. "Lunch: send automatic email to {}"). None when unknown or
+    ambiguous (fail closed)."""
+    c = load(version)
+    if c is None or not isinstance(name, str):
+        return None
+    mods = c.data.get("crons", {}).get(name)
+    if mods is not None:
+        ok = isinstance(mods, list) and len(mods) == 1 and isinstance(mods[0], str)
+        return mods[0] if ok else None
+    hits = {
+        t["model"]
+        for t in c.data.get("cron_templates", [])
+        if isinstance(t, dict) and _template_match(t.get("template"), name)
+    }
+    if len(hits) != 1:
+        return None
+    m = c.models.get(next(iter(hits)))
+    return _definer(c, list(m.get("modules", ()))) if m else None
+
+
+def _template_match(template: Any, name: str) -> bool:
+    """``template`` has one "{}" for the record's name; ``name`` may carry a placeholder
+    such as "{supplier}" (catalogue) or a real record name (runtime)."""
+    if not isinstance(template, str) or template.count("{}") != 1:
+        return False
+    head, tail = template.split("{}")
+    mid = name[len(head) : len(name) - len(tail) if tail else None]
+    return name.startswith(head) and name.endswith(tail) and bool(mid.strip())
 
 
 def model_info(version: Any, model: str) -> dict[str, Any] | None:
@@ -263,6 +346,7 @@ def _availability(version, edition, installed_modules, model, fields, module_hin
     fields = sorted(set(fields))
     m = c.models.get(model)
     if m is None:
+        module_hint = module_hint or ENTERPRISE_MODELS.get(model)
         hint = module_hint if module_hint and _ent(c, module_hint) else None
         if hint:
             return _ent_verdict(c, hint, ent_db, inst, model)
@@ -347,10 +431,18 @@ def _ent_verdict(c: Caps, name: str, ent_db: bool, inst: frozenset[str], model: 
             "from catalogue; read the live database",
             name,
         )
+    if ent_db:  # an Enterprise database that does not have the app yet: install it
+        return Verdict(
+            "available-needs-install",
+            f"{model} needs Enterprise module {name}, not installed on this Enterprise "
+            "database; needs install (fields and dependencies not verifiable from catalogue)",
+            name,
+            (name,),
+        )
     return Verdict(
         "enterprise-only",
-        f"{model} needs Enterprise module {name}; fields not verifiable"
-        + ("" if ent_db else "; this is a Community database"),
+        f"{model} needs Enterprise module {name}; fields not verifiable; "
+        "this is a Community database",
         name,
     )
 

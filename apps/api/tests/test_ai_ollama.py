@@ -181,7 +181,8 @@ def test_draft_module_with_monkeypatched_ollama(
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["ok"] is True
-    assert body["draft"]["technical_name"] == "demo_books"
+    # names are grounded in the brief (title_is_grounded): the LLM's "demo_books" is renamed
+    assert body["draft"]["technical_name"] == "artisan_commission_studio"
     assert body["draft"]["models"][0]["model"] == "x_book"
     # enrich should add menus/views
     assert body["draft"]["menus"]

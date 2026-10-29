@@ -1668,7 +1668,7 @@ def report_from_document(connection_id: str, body: FromDocBody, db: Session = De
                   if not n.startswith(("message_", "activity_", "__")) and m.get("type") not in {"binary", "properties", "json"}][:250]
     line_fields = {k: [{"name": n, "label": m.get("string"), "type": m.get("type")} for n, m in v.items()][:80] for k, v in related.items()}
     try:
-        prop = vai._call(v2.DOC_SYSTEM_PROMPT, {"lines": lines, "fields": field_list, "line_fields": line_fields}, v2.DOC_SCHEMA, "report_from_document")
+        prop = vai.designer_json(v2.DOC_SYSTEM_PROMPT, {"lines": lines, "fields": field_list, "line_fields": line_fields}, v2.DOC_SCHEMA, "report_from_document")
     except vai.AIUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     blocks: list[dict[str, Any]] = []

@@ -368,3 +368,215 @@ def test_real_dependency_facts():
         assert {"mrp", "stock", "product"} <= set(chain)
         c = C._load_file(v)
         assert sum(1 for m in c.listed.values() if m["depends"]) >= 0.8 * (len(c.listed) - 1)
+
+
+# ------------------------------------------------------------ provenance (fail closed)
+@pytest.mark.skipif(not REAL, reason="catalogue not generated")
+def test_provenance_present_and_matches():
+    C._load_file.cache_clear()
+    for v in REAL:
+        p = vc.provenance(v)
+        assert p["major"] == v and p["source_image"] == f"odoo:{v}" and p["edition"] == "community"
+        assert p["image_id"].startswith("sha256:") and p["generated"] >= "2026-10-26"
+        assert "ir.model.fields" in p["sources"]
+    assert vc.provenance(99) is None and vc.provenance("x") is None
+
+
+def _write_caps(path, d):
+    import gzip
+    import json
+
+    path.write_bytes(gzip.compress(json.dumps(d).encode()))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d.pop("provenance"),
+        lambda d: d["provenance"].update(major=18),
+        lambda d: d["provenance"].update(source_image="odoo:18"),
+        lambda d: d["provenance"].update(generated="yesterday"),
+        lambda d: d["provenance"].update(image_id=""),
+        lambda d: d["provenance"].pop("sources"),
+    ],
+)
+@pytest.mark.skipif(17 not in REAL, reason="catalogue 17 not generated")
+def test_bad_provenance_refused(tmp_path, monkeypatch, mutate):
+    import copy
+
+    d = copy.deepcopy(dict(C._load_file(17).data))
+    mutate(d)
+    _write_caps(tmp_path / "caps_17.json.gz", d)
+    monkeypatch.setattr(C, "DATA", tmp_path)
+    C._load_file.cache_clear()
+    try:
+        assert C._load_file(17) is None
+        assert vc.availability(17, "community", [], "mrp.bom").status == "unknown"
+    finally:
+        C._load_file.cache_clear()
+
+
+@pytest.mark.parametrize("raw", [b"", b"not gzip", b"\x1f\x8b\x08\x00garbage"])
+def test_corrupt_catalogue_refused(tmp_path, monkeypatch, raw):
+    (tmp_path / "caps_17.json.gz").write_bytes(raw)
+    monkeypatch.setattr(C, "DATA", tmp_path)
+    C._load_file.cache_clear()
+    try:
+        assert C._load_file(17) is None and vc.provenance(17) is None
+    finally:
+        C._load_file.cache_clear()
+
+
+def _live_script():
+    import importlib.util
+    import pathlib
+
+    p = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "verify_versioncaps_live.py"
+    spec = importlib.util.spec_from_file_location("verify_vc_live", p)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _cmp_caps():
+    from types import SimpleNamespace
+
+    models = {
+        "res.users.log": {
+            "fields": {
+                "create_uid": ["integer", "", False, ["base", "extra_mod"]],
+                "id": ["integer", "", True, ["base"]],
+            }
+        },
+        "res.partner": {"fields": {"name": ["char", "", True, ["base"]]}},
+    }
+    return SimpleNamespace(listed=["base", "extra_mod", "test_x"], models=models)
+
+
+def test_versioncaps_live_compare_match_and_each_diff() -> None:
+    cmp = _live_script().compare
+    caps = _cmp_caps()
+    live = {
+        "res.users.log": {"create_uid": ("integer", ""), "id": ("integer", "")},
+        "res.partner": {"name": ("char", "")},
+    }
+    out = cmp(caps, {"base", "extra_mod", "test_y"}, live, ("test_",), {"base", "extra_mod"})
+    assert out == {
+        "modules_live_not_in_catalogue": [],
+        "modules_catalogue_not_live": [],
+        "models_live_not_in_catalogue": [],
+        "fields_live_not_in_catalogue": [],
+        "fields_type_mismatch": [],
+        "_install_dependent": [],
+    }
+    bad = {
+        "res.partner": {"name": ("text", ""), "zz_new": ("char", "")},
+        "zz.model": {"x": ("char", "")},
+    }
+    out = cmp(caps, {"base", "other"}, bad, ("test_",), {"base"})
+    assert out["modules_live_not_in_catalogue"] == ["other"]
+    assert out["modules_catalogue_not_live"] == ["extra_mod"]
+    assert out["models_live_not_in_catalogue"] == ["zz.model"]
+    assert out["fields_live_not_in_catalogue"] == ["res.partner.zz_new"]
+    # every catalogue module is installed: a type change is a real mismatch
+    assert out["fields_type_mismatch"] == ["res.partner.name"]
+    assert out["_install_dependent"] == []
+
+
+def test_versioncaps_live_compare_install_dependent_types() -> None:
+    cmp = _live_script().compare
+    caps = _cmp_caps()
+    live = {"res.users.log": {"create_uid": ("many2one", "res.users"), "id": ("integer", "")}}
+    # a module behind the catalogue type is not installed: install-dependent, not a mismatch
+    out = cmp(caps, {"base"}, live, (), {"base"})
+    assert out["_install_dependent"] == ["res.users.log.create_uid"]
+    assert out["fields_type_mismatch"] == []
+    # negative: all its modules installed -> mismatch; no installed set given -> mismatch
+    out = cmp(caps, {"base"}, live, (), {"base", "extra_mod"})
+    assert out["fields_type_mismatch"] == ["res.users.log.create_uid"]
+    assert out["_install_dependent"] == []
+    out = cmp(caps, {"base"}, live, ())
+    assert out["fields_type_mismatch"] == ["res.users.log.create_uid"]
+    assert out["_install_dependent"] == []
+    # negative: a matching type is never listed, whatever is installed
+    ok = {"res.users.log": {"create_uid": ("integer", "")}}
+    out = cmp(caps, {"base"}, ok, (), set())
+    assert out["fields_type_mismatch"] == [] and out["_install_dependent"] == []
+
+
+# ---- round 8 VERSION-CAPS 7: load() takes a plain int major only
+
+
+@pytest.mark.parametrize("bad", ["17", 17.0, "17.x", "17.0", True, False, None, b"17"])
+def test_load_refuses_non_int_major(bad):
+    assert C.load(bad) is None
+
+
+def test_load_accepts_plain_int_major():
+    assert C.load(17) is not None and C.load(16) is None
+
+
+# ---- round 8 VERSION-CAPS 8: Enterprise model -> module map
+
+
+@pytest.mark.parametrize("v", [17, 18, 19, 20])
+def test_enterprise_model_without_hint_grades_enterprise_only(v):
+    r = C.availability(v, "community", ["base"], "helpdesk.ticket")
+    assert (r.status, r.module) == ("enterprise-only", "helpdesk"), (v, r)
+    # an Enterprise database without the app: it only needs installing (round 9)
+    for ed in ("enterprise", "Enterprise"):
+        r = C.availability(v, ed, ["base"], "helpdesk.ticket")
+        assert (r.status, r.module) == ("available-needs-install", "helpdesk"), (v, ed, r)
+        assert r.missing_depends == ("helpdesk",)
+    r = C.availability(v, "enterprise", ["base", "helpdesk"], "helpdesk.ticket")
+    assert r.status == "unknown" and "read the live database" in r.reason
+
+
+def test_enterprise_model_map_modules_are_reviewed_enterprise_modules():
+    c = C.load(17)
+    for model, mod in C.ENTERPRISE_MODELS.items():
+        assert mod in c.enterprise and model not in c.models, (model, mod)
+
+
+def test_enterprise_map_does_not_touch_unknown_or_community_models():
+    r = C.availability(17, "enterprise", ["base"], "x.nowhere.model")
+    assert r.status == "unknown" and r.module is None
+    assert C.availability(17, "community", ["base"], "res.partner").status == "installed-ok"
+
+
+# ---- round 8 VERSION-CAPS 9: the generator writes its own provenance (no stamping)
+
+
+def _gen():
+    import importlib.util
+    import pathlib
+
+    p = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "gen_versioncaps.py"
+    spec = importlib.util.spec_from_file_location("gen_vc_r8", p)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_generator_write_carries_its_own_provenance(tmp_path, monkeypatch):
+    import gzip
+    import json
+
+    gen = _gen()
+    monkeypatch.setattr(gen, "OUT", tmp_path)
+    monkeypatch.setattr(gen, "image_id", lambda v: "sha256:abc")
+    out = gen.write({"major": 17, "modules": {}, "models": {}}, "2026-10-27")
+    p = json.loads(gzip.decompress(out.read_bytes()))["provenance"]
+    assert p["major"] == 17 and p["generated"] == "2026-10-27" and p["image_id"] == "sha256:abc"
+    assert "stamped" not in p
+
+
+def test_generator_refuses_supplied_provenance_and_stamp_mode(tmp_path, monkeypatch):
+    gen = _gen()
+    monkeypatch.setattr(gen, "OUT", tmp_path)
+    with pytest.raises(ValueError):
+        gen.write({"major": 17, "provenance": {"stamped": "x"}}, "2026-10-27")
+    with pytest.raises(SystemExit):
+        gen.main(["17", "--stamp-only"])
+    with pytest.raises(ValueError):
+        gen.write({"major": 17}, "not-a-date")

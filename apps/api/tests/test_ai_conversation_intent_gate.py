@@ -137,9 +137,9 @@ def test_stock_chip_after_simple_document_does_not_wipe_residual() -> None:
         answer_text="Stock Community apps only",
         resolved_answers=answers,
     )
-    assert "Custom residual: named in brief" in wiped
+    assert "Custom code: named in brief" in wiped
     assert "Capability path: residual_app" in wiped
-    assert "stock Community apps only" not in wiped.split("Custom residual", 1)[-1][:80]
+    assert "stock Community apps only" not in wiped.split("Custom code", 1)[-1][:80]
     assert answers["ir_confidence"] == "residual_app"
     from app.ai_generation_engine import classify_generation
     from app.ai_operator_brief import wants_stock_reuse
@@ -273,7 +273,7 @@ def test_on_existing_form_does_not_stamp_named_residual() -> None:
         answer_id="on_existing_form",
         answer_text="Add it to a form you already use",
     )
-    assert "Custom residual: named in brief" not in merged
+    assert "Custom code: named in brief" not in merged
     assert "existing Odoo form" in merged
     assert "Do not create a new home-screen app" in merged
     assert answers.get("ir_confidence") != "residual_app"

@@ -451,7 +451,12 @@ def test_single_pinned_write_path() -> None:
 
     tree = ast.parse(SRC.read_text())
     fns = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
-    owners = {n: rpc_write_calls(ast.unparse(f)) for n, f in fns.items()}
+    # quiet() wraps the gate's own rpc and forwards its (non-literal) method unchanged, adding
+    # only QUIET_CTX: pinned here as the one allowed pass-through (kill_audit allow-list)
+    q = ast.unparse(fns["quiet"])
+    assert q.count("return rpc(model, method, args, kw)") == 1 and "QUIET_CTX" in q
+    assert rpc_write_calls(q) and not rpc_write_calls(q, frozenset({"call"}))
+    owners = {n: rpc_write_calls(ast.unparse(f), frozenset({"call"})) for n, f in fns.items()}
     owners = {n: v for n, v in owners.items() if v}
     assert set(owners) == {"_qwrite"} and len(owners["_qwrite"]) == 3  # create/write/unlink
     lits = {

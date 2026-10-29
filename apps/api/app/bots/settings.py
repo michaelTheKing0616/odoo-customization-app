@@ -38,6 +38,13 @@ _SIMPLE = {
 }
 
 
+# Settings with a reviewed approval floor (single source: rules.FIELD_TIER_FLOORS); the
+# classifier applies the same floor, this keeps the plain reason line on the preview.
+L2_SETTINGS: Mapping[str, str] = {
+    f: why for (m, f), (t, why) in rr.FIELD_TIER_FLOORS.items() if m == MODEL and t >= 2
+}
+
+
 def _no(reason: str) -> Refusal:
     return Refusal(RF, MISS, reason[:180])
 
@@ -106,6 +113,9 @@ class SettingsBot:
             if rr.rank(d.cls) > rr.rank(cls):
                 cls = d.cls
             tier = max(tier, d.tier)
+            if f in L2_SETTINGS:
+                tier = max(tier, 2)
+                lines.append(f"{f}: {L2_SETTINGS[f]} (needs L2 approval)")
             if f.startswith("module_"):
                 snap, tier = True, 3
                 lines.append(f"{f}: installs an app (no automatic undo; snapshot required)")

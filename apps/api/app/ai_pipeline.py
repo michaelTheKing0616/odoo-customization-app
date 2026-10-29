@@ -267,6 +267,11 @@ def seed_studio_draft(prompt: str) -> dict[str, Any]:
                 draft["technical_name"] = residual_slug[:64]
         except Exception:  # noqa: BLE001
             pass
+        if draft.get("groups") or draft.get("access_rules"):
+            # Pack groups/ACLs were keyed on the pack slug; follow the residual rename.
+            from app.ai_odoo_app_bar import sync_security_groups_to_technical_name
+
+            sync_security_groups_to_technical_name(draft)
         attach_operator_brief(draft, user_prompt=prompt)
         draft["_pipeline"] = "pack_seed"
         attach_llm_status(draft, mode="pack_fallback")

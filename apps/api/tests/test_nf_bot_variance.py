@@ -462,3 +462,61 @@ def test_caller_domain_validated():
 def test_bad_arguments_fail_closed(kw):
     out, odoo = run([mv(1, 10, 10)], **kw)
     assert out["rows"][0]["status"] == "cannot-measure" and not odoo.calls
+
+
+# BOT-VERSION-CAPS runtime wiring: absent model/field -> catalogue verdict (read-only).
+_CAPS_M = {"bom_qty": {"model": "mrp.bom", "actual": {"field": "product_qty"}}}
+
+
+def test_caps_missing_model_says_needs_install():
+    odoo = Odoo({}, {})
+    out = analyse(odoo, metrics=_CAPS_M, version=17, installed_modules=["base"])
+    (r,) = out["rows"]
+    assert r["status"] == "cannot-measure" and not out["ok"]
+    assert r["capability"]["status"] == "available-needs-install"
+    assert r["capability"]["module"] == "mrp" and "needs install" in r["reason"]
+
+
+def test_caps_reads_installed_list_when_not_given():
+    odoo = Odoo({}, {"ir.module.module": [{"name": "base"}]})
+    r = analyse(odoo, metrics=_CAPS_M, version=17)["rows"][0]
+    assert r["capability"]["status"] == "available-needs-install"
+    assert ("ir.module.module", "search_read") in odoo.calls
+
+
+def test_caps_missing_field_not_in_version():
+    from app.bots.versioncaps import caps as C
+
+    f17, f20 = (set(C.load(v).models["res.partner"]["fields"]) for v in (17, 20))
+    new = sorted(f20 - f17)[0]
+    m = {"p": {"model": "res.partner", "actual": {"field": new}}}
+    r = analyse(
+        Odoo({"res.partner": ["name"]}, {}), metrics=m, version=17, installed_modules=["base"]
+    )["rows"][0]
+    assert r["status"] == "cannot-measure"
+    assert r["capability"]["status"] == "not-in-this-version"
+    assert new in r["reason"]
+
+
+@pytest.mark.parametrize("version", [99, "x", None])
+def test_caps_fail_closed_unknown_version(version):
+    r = analyse(Odoo({}, {}), metrics=_CAPS_M, version=version, installed_modules=[])["rows"][0]
+    assert r["status"] == "cannot-measure"
+    if version is None:
+        assert "capability" not in r
+    else:
+        assert r["capability"]["status"] == "unknown" and "nothing verified" in r["reason"]
+
+
+def test_caps_missing_catalogue_fails_closed(monkeypatch):
+    from app.bots.versioncaps import caps as C
+
+    monkeypatch.setitem(C._OVERRIDE, 17, None)
+    r = analyse(Odoo({}, {}), metrics=_CAPS_M, version=17, installed_modules=[])["rows"][0]
+    assert r["status"] == "cannot-measure" and r["capability"]["status"] == "unknown"
+
+
+def test_caps_present_model_unchanged():
+    odoo = Odoo({"mrp.bom": ["product_qty"]}, {"mrp.bom": []})
+    r = analyse(odoo, metrics=_CAPS_M, version=17, installed_modules=["mrp"])["rows"][0]
+    assert "capability" not in r

@@ -286,6 +286,9 @@ def _record_count(url: str) -> int:
         engine.dispose()
 
 
+_ADMIN_DB = "ingenium_b0_cluster_admin"
+
+
 class _DisposableCluster:
     """A private Postgres cluster. App databases created here are ingenium_*."""
 
@@ -338,13 +341,23 @@ class _DisposableCluster:
             if log_path.exists():
                 log = log_path.read_text(errors="replace")[-2000:]
             raise AssertionError((start.stderr or start.stdout) + "\n" + log)
+        # The test db guard refuses the maintenance database ``postgres``, so the
+        # admin connection uses its own ingenium_ database made by createdb.
+        made = subprocess.run(
+            [_bin("createdb"), "-h", "127.0.0.1", "-p", str(self.port), "-U", "ingenium", _ADMIN_DB],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if made.returncode != 0:
+            raise AssertionError((made.stderr or made.stdout)[-2000:])
 
     def database_url(self, name: str) -> str:
         if _DISPOSABLE_NAME.fullmatch(name) is None:
             raise AssertionError(f"refusing database name {name}")
         _refuse_port(self.port)
         admin = create_engine(
-            f"postgresql+psycopg://ingenium@127.0.0.1:{self.port}/postgres",
+            f"postgresql+psycopg://ingenium@127.0.0.1:{self.port}/{_ADMIN_DB}",
             isolation_level="AUTOCOMMIT",
             poolclass=NullPool,
         )
@@ -369,7 +382,7 @@ class _DisposableCluster:
             return
         _refuse_port(self.port)
         admin = create_engine(
-            f"postgresql+psycopg://ingenium@127.0.0.1:{self.port}/postgres",
+            f"postgresql+psycopg://ingenium@127.0.0.1:{self.port}/{_ADMIN_DB}",
             isolation_level="AUTOCOMMIT",
             poolclass=NullPool,
         )

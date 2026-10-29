@@ -115,7 +115,7 @@ def _provider() -> Any:
     return prov
 
 
-def _call(system: str, payload: dict[str, Any], schema: dict[str, Any], step: str) -> dict[str, Any]:
+def designer_json(system: str, payload: dict[str, Any], schema: dict[str, Any], step: str) -> dict[str, Any]:
     from app.llm_json import parse_llm_json_object
     from app.llm_provider import LLMError, generate_json_with_timeout_retry
 
@@ -246,7 +246,7 @@ def propose_edit(text: str, tree: dict[str, Any], fields: dict[str, Any], groups
     payload = {"request": text, "screen": slim_tree(tree), "fields": field_list(fields), "note": AMBIGUITY_NOTE}
     if groups:
         payload["groups"] = groups
-    raw = _call(EDIT_SYSTEM_PROMPT, payload, EDIT_SCHEMA, "view_designer_edit")
+    raw = designer_json(EDIT_SYSTEM_PROMPT, payload, EDIT_SCHEMA, "view_designer_edit")
     if choices_out is not None and isinstance(raw, dict) and isinstance(raw.get("choices"), list):
         choices_out.extend(c for c in (str(x).strip()[:120] for x in raw["choices"][:3]) if c)
     ids: set[str] = set()
@@ -333,7 +333,7 @@ def propose_condition(text: str, attr: str, fields: dict[str, Any], values: dict
         "fields": field_list(usable, values),
         "operators": vl.OP_WORDS,
     }
-    raw = _call(CONDITION_SYSTEM_PROMPT, payload, CONDITION_SCHEMA, "view_designer_condition")
+    raw = designer_json(CONDITION_SYSTEM_PROMPT, payload, CONDITION_SCHEMA, "view_designer_condition")
     return validate_condition_proposal(raw, usable, lookup)
 
 
@@ -361,4 +361,4 @@ TIDY_SCHEMA: dict[str, Any] = {
 
 def propose_sections(screen_fields: list[dict[str, Any]]) -> dict[str, Any]:
     payload = {"fields": screen_fields[:120]}
-    return _call(TIDY_SYSTEM_PROMPT, payload, TIDY_SCHEMA, "view_designer_tidy")
+    return designer_json(TIDY_SYSTEM_PROMPT, payload, TIDY_SCHEMA, "view_designer_tidy")

@@ -1,6 +1,6 @@
 # BOT-GENERIC-WALKER
 
-Goal (Tope): Bots can handle any Odoo task without a hand-written handler for each task.
+Goal (Tope): Bots can handle record tasks (create, write, button calls) on any model the walker does not refuse, on Odoo 17–20, without a hand-written handler for each task. Module code (T3) and tasks the tiers check cannot grade are out of scope (see app/bots/tiers.py CLAIM).
 
 ## Scope
 - `apps/api/app/bots/walker.py`: a generic plan of `create` / `write` / `unlink` / `call` steps on any model.

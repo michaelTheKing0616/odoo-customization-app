@@ -139,7 +139,7 @@ def inline_ai(connection_id: str, body: AIBody, db: Session = Depends(get_db)) -
     if body.action == "explain":
         out["code"] = ""
     check = cr_ai.authorize(out["code"], body.code, lambda c: lint(
-        c, major=major, model_names=set(names), fields_of=_fields_fn(client, _key(row))))
+        c, major=major, model_names=set(names), fields_of=_fields_fn(client, _key(row))), schema_known=bool(names))
     if not check["ok"]:
         return {"ok": False, "reason": check["reason"], "explanation": out["explanation"], "code": ""}
     return {"ok": True, "explanation": out["explanation"], "code": out["code"], "issues": check["issues"], "money": check["money"]}

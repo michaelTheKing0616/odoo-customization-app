@@ -365,7 +365,12 @@ def analyse(
     rolling: int | None = None,
     limit: int = DEFAULT_LIMIT,
     metrics: Mapping[str, Mapping] | None = None,
+    version: Any = None,
+    edition: str = "community",
+    installed_modules: Iterable[str] | None = None,
 ) -> dict:
+    """``version`` (Odoo major) turns a missing model/field into a catalogue verdict: available
+    in this version (needs install), needs Enterprise, or not in this version. Read-only."""
     cat = dict(metrics) if metrics is not None else load_metrics()
     ids = sorted(set(metric_ids) if metric_ids is not None else cat)
     standards, tolerances = standards or {}, tolerances or {}
@@ -400,6 +405,8 @@ def analyse(
             rolling,
             limit,
         )
+        if version is not None:
+            _caps_note(res, m, call, version, edition, installed_modules)
         if any(r.get("truncated") for r in res):
             truncated.append(mid)
         rows.extend(res)
@@ -424,6 +431,44 @@ def analyse(
         and all(s == "within" for s in roll),
         "plan": plan,
     }
+
+
+def _caps_note(res, m, call, version, edition, installed) -> None:
+    """Annotate cannot-measure rows for an absent model/field with the version catalogue verdict.
+    Fail closed: any catalogue or read fault leaves the row as it was (still cannot-measure)."""
+    from app.bots.versioncaps import availability
+
+    mod = m["model"]
+    absent = (f"model {mod} not readable", f"model {mod} missing")
+    rows = [
+        r
+        for r in res
+        if r.get("status") == "cannot-measure"
+        and (
+            r.get("reason") in absent
+            or str(r.get("reason", "")).startswith(f"missing fields on {mod}:")
+        )
+    ]
+    if not rows:
+        return
+    if installed is None:
+        try:
+            got = call(
+                "ir.module.module",
+                "search_read",
+                [[["state", "=", "installed"]]],
+                {"fields": ["name"]},
+            )
+            installed = [
+                g["name"] for g in got if isinstance(g, Mapping) and isinstance(g.get("name"), str)
+            ]
+        except Exception:  # noqa: BLE001 - unreadable list: claim nothing is installed
+            installed = []
+    fields = sorted(_needed(m, None, []) - {"id"})
+    v = availability(version, edition, list(installed), m["model"], fields)
+    for r in rows:
+        r["capability"] = v.to_dict()
+        r["reason"] = f"{r['reason']}; {v.reason}"
 
 
 def _read_all(call, model, dom, fields, limit, m, fg) -> tuple[list, bool, str]:

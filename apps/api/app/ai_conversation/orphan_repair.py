@@ -78,7 +78,7 @@ def merge(design: Any, proposed: Any, orphan_ids: set[str]) -> dict[str, Any]:
     return added
 
 
-def repair_step(design: Any, prompt: str, *, grounding: Any = None, packet: Any = None, snapshot: Any = None,
+def repair_step(design: Any, prompt: str, *, grounding: Any = None, schema_packet: Any = None, snapshot: Any = None,
                 provider: Any = None) -> dict[str, Any]:
     """At most one LLM call. Returns a log record (also appended to INGENIUM_SHADOW_LOG)."""
     import copy
@@ -94,7 +94,7 @@ def repair_step(design: Any, prompt: str, *, grounding: Any = None, packet: Any 
     rec: dict[str, Any] = {"at": time.time(), "brief_hash": hashlib.sha256(prompt.encode()).hexdigest()[:12], "mode": m,
                            "orphans": [r.get("id") for r in orphans], "called": False}
     if orphans and provider is not None:
-        user = ad.design_user_prompt(prompt, grounding, packet, budget=len(design.new_models), intent_contract=design.intent_contract,
+        user = ad.design_user_prompt(prompt, grounding, schema_packet, budget=len(design.new_models), intent_contract=design.intent_contract,
                                      repair_issues=repair_prompt_issues(orphans), previous=design.to_dict(), snapshot=snapshot)
         parsed, meta = ad._call_llm(provider, user, ad.design_system_prompt(grounding), min(60.0, ad.design_timeout_for(prompt)))
         rec.update(called=True, status=meta.get("status"), model=meta.get("model"))

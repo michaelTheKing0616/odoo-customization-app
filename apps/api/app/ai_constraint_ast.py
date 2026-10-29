@@ -706,6 +706,11 @@ def iter_add_field_labels(text: str) -> list[str]:
             body,
             maxsplit=1,
         )[0].strip()
+        # Trailing host locative ("on invoices", "to partner") names the host, not the field.
+        body = re.sub(
+            r"(?i)\s+(?:on|to|for)\s+(?:the\s+|all\s+|each\s+)?[\w /&-]{2,40}$", "", body
+        ).strip()
+        body = re.sub(r"(?i)\s+field$", "", body).strip()
         for chunk in split_conjunction_chunks(body):
             labels.extend(expand_field_chunk(chunk))
     return _dedupe_strs(labels)
